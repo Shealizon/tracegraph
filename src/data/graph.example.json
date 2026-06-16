@@ -1,0 +1,54 @@
+{
+  "format": "relation-graph@1",
+  "meta": {
+    "title": "示例：通用关系结构",
+    "profile": "generic",
+    "bodyFormat": "markdown"
+  },
+  "types": [
+    { "id": "primary", "label": "结论", "color": "#7c9cff", "order": 0 },
+    { "id": "support", "label": "支撑", "color": "#7dd3a8", "order": 1 },
+    { "id": "source",  "label": "来源", "color": "#8a8a98", "leaf": true, "order": 2 }
+  ],
+  "relations": [
+    { "id": "ref",  "label": "依据", "numbering": "n" },
+    { "id": "cite", "label": "出处", "numbering": "[n]" }
+  ],
+  "nodes": [
+    {
+      "id": "C1",
+      "type": "primary",
+      "number": "1",
+      "title": "主结论",
+      "sections": [
+        { "kind": "statement", "body": "主结论依赖支撑 \\ref{S1}，并引用来源 \\cite{SRC}。" },
+        { "kind": "proof", "body": "由 \\ref{S1} 直接得到。" }
+      ],
+      "anchors": [{ "id": "C1", "kind": "node", "number": "1" }],
+      "refs": [
+        { "target": "S1", "relation": "ref", "where": "statement" },
+        { "target": "SRC", "relation": "cite", "where": "statement" }
+      ]
+    },
+    {
+      "id": "S1",
+      "type": "support",
+      "number": "1",
+      "title": "支撑命题",
+      "sections": [
+        { "kind": "statement", "body": "支撑命题的内容。" }
+      ],
+      "anchors": [{ "id": "S1", "kind": "node", "number": "1" }],
+      "refs": []
+    },
+    {
+      "id": "SRC",
+      "type": "source",
+      "number": "1",
+      "title": "外部来源",
+      "sections": [],
+      "anchors": [{ "id": "SRC", "kind": "cite", "number": "1" }],
+      "refs": []
+    }
+  ]
+}
