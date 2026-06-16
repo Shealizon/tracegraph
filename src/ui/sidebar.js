@@ -18,21 +18,23 @@ export function buildSidebar(ctx, root) {
   const app = document.getElementById('app');
   app.querySelector('.sidebar-settings')?.remove();
   const rail = ensureCollapseRail(app);
-  const collapsed = localStorage.getItem('hg-sidebar-collapsed') === '1';
+  const collapsed = ctx.sidebarCollapsed ?? (localStorage.getItem('hg-sidebar-collapsed') === '1');
   const setCollapsed = (on) => {
+    ctx.sidebarCollapsed = on;
     app.classList.toggle('sidebar-collapsed', on);
     localStorage.setItem('hg-sidebar-collapsed', on ? '1' : '0');
     rail.title = on ? '展开侧栏' : '折叠侧栏';
+    ctx.writeHash && ctx.writeHash();
   };
   rail.onclick = () => setCollapsed(!app.classList.contains('sidebar-collapsed'));
   setCollapsed(collapsed);
 
-  const head = el('div', 'side-head');
-  head.innerHTML = `<div><div class="side-title">${escapeHtml(model.meta.title || '关系图')}</div><div class="side-sub">${model.meta.counts.statements} 节点 · ${model.meta.counts.edges} 关系${model.hasCycle ? ' · 含环' : ''}</div></div>`;
-  root.appendChild(head);
   const tools = el('div', 'side-toolbar');
   tools.appendChild(buildThemeSwitch(ctx));
   root.appendChild(tools);
+  const head = el('div', 'side-head');
+  head.innerHTML = `<div><div class="side-title">${escapeHtml(model.meta.title || '关系图')}</div><div class="side-sub">${model.meta.counts.statements} 节点 · ${model.meta.counts.edges} 关系${model.hasCycle ? ' · 含环' : ''}</div></div>`;
+  root.appendChild(head);
 
   // 搜索
   const grpSearch = group(root, '搜索');
@@ -47,7 +49,7 @@ export function buildSidebar(ctx, root) {
   const grpMode = group(root, '视图');
   const modeSet = el('div', 'side-segment');
   const modeBtns = {};
-  for (const [key, label] of [['show-all', '全部关系'], ['show-modals-only', '仅 Modals']]) {
+  for (const [key, label] of [['show-all', '显示全部节点'], ['show-modals-only', '仅显示展开框']]) {
     const b = btn(label, 'side-btn mode-radio');
     b.classList.toggle('active', ctx.mode === key);
     b.addEventListener('click', () => ctx.setMode(key));
@@ -56,8 +58,7 @@ export function buildSidebar(ctx, root) {
   }
   grpMode.appendChild(modeSet);
   ctx.syncModeButtons = () => Object.entries(modeBtns).forEach(([k, e]) => e.classList.toggle('active', k === ctx.mode));
-  ctx.refsRaiseEnabled = localStorage.getItem('hg-refs-raise') !== '0';
-  const bRaise = btn('参考线置顶', 'side-btn multi-btn');
+  const bRaise = btn('聚焦内容参考线追踪', 'side-btn multi-btn raise-btn');
   const syncRaise = () => {
     bRaise.classList.toggle('active', ctx.refsRaiseEnabled);
     bRaise.classList.toggle('off', !ctx.refsRaiseEnabled);
@@ -67,18 +68,19 @@ export function buildSidebar(ctx, root) {
     localStorage.setItem('hg-refs-raise', ctx.refsRaiseEnabled ? '1' : '0');
     syncRaise();
     ctx.refLayer.setRaiseEnabled(ctx.refsRaiseEnabled);
+    ctx.writeHash && ctx.writeHash();
   });
   syncRaise();
   grpMode.appendChild(bRaise);
-  const bClose = btn('关闭所有 Modals', 'side-btn trigger-btn');
+  const bClose = btn('折叠所有展开框', 'side-btn trigger-btn danger-btn');
   bClose.addEventListener('click', () => ctx.modals.closeAll());
   grpMode.appendChild(bClose);
-  const bReheat = btn('重新布局', 'side-btn trigger-btn');
+  const bReheat = btn('重新布局', 'side-btn trigger-btn primary-btn');
   bReheat.addEventListener('click', () => graph.reheat(0.8));
   grpMode.appendChild(bReheat);
 
   // 过滤
-  const grpFilter = group(root, '过滤');
+  const grpFilter = group(root, '筛选');
   const types = model.meta.profileResolved?.types?.length
     ? model.meta.profileResolved.types.map((t) => [t.id, t.label || t.id])
     : [...new Set(model.nodes.map((n) => n.type))].map((t) => [t, t]);
@@ -92,25 +94,27 @@ export function buildSidebar(ctx, root) {
       b.classList.toggle('active', ctx.filterActive.has(t));
       b.classList.toggle('off', !ctx.filterActive.has(t));
       applyFilter(ctx);
+      ctx.writeHash && ctx.writeHash();
     });
     grpFilter.appendChild(b);
   }
 
   // 力参数（N4）
-  const grpForce = group(root, '力学');
-  grpForce.appendChild(slider('向心力', 0, 0.6, 0.005, graph.getForce('center'), (v) => graph.setForce('center', v)));
-  grpForce.appendChild(slider('排斥力', 80, 1600, 20, graph.getForce('charge'), (v) => graph.setForce('charge', v)));
-  grpForce.appendChild(slider('链接吸引', 0, 1, 0.02, graph.getForce('link'), (v) => graph.setForce('link', v)));
+  const grpForce = group(root, '力度');
+  grpForce.appendChild(slider('向心力', 0, 0.6, 0.005, graph.getForce('center'), (v) => { graph.setForce('center', v); ctx.writeHash && ctx.writeHash(); }));
+  grpForce.appendChild(slider('排斥力', 80, 1600, 20, graph.getForce('charge'), (v) => { graph.setForce('charge', v); ctx.writeHash && ctx.writeHash(); }));
+  grpForce.appendChild(slider('链接吸引', 0, 1, 0.02, graph.getForce('link'), (v) => { graph.setForce('link', v); ctx.writeHash && ctx.writeHash(); }));
 
   // 显示（N7）：modal 宽度
   const grpShow = group(root, '显示');
-  grpShow.appendChild(slider('Modal 宽度', 280, 620, 10, ctx.modals.getWidth(), (v) => ctx.modals.setWidth(v), 'px'));
+  grpShow.appendChild(slider('Modal 宽度', 280, 620, 10, ctx.modals.getWidth(), (v) => { ctx.modals.setWidth(v); ctx.writeHash && ctx.writeHash(); }, 'px'));
 
   // 隐藏的节点
   const grpHidden = group(root, '已隐藏');
   const hiddenList = el('div', 'hidden-list');
   grpHidden.appendChild(hiddenList);
   ctx.renderHidden = () => renderHidden(ctx, hiddenList);
+  applyFilter(ctx);
   ctx.renderHidden();
 }
 

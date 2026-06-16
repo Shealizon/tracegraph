@@ -89,7 +89,7 @@ body {
   left: 0;
   top: 0;
   bottom: 0;
-  width: 232px;
+  width: 280px;
   background: var(--bg-panel);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -109,7 +109,7 @@ body {
 }
 .side-head { display: block; min-width: 0; }
 .side-head > div { min-width: 0; }
-.side-toolbar { display: flex; justify-content: flex-end; margin-top: 6px; margin-bottom: 2px; }
+.side-toolbar { display: flex; justify-content: flex-start; margin-top: 6px; margin-bottom: 2px; }
 
 /* 三态主题开关：深色 / 跟随系统 / 浅色 */
 .theme-switch {
@@ -160,7 +160,7 @@ body {
 .side-sub { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; }
 .sidebar-rail {
   position: fixed;
-  left: 232px;
+  left: 280px;
   top: calc(50vh - 56px);
   z-index: 31;
   width: 18px;
@@ -209,9 +209,14 @@ body {
 .mode-radio.active { background: var(--bg-modal-solid); border-color: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent); }
 .trigger-btn { border-color: var(--line-soft); background: transparent; }
 .trigger-btn:hover { border-color: var(--accent-soft); }
+.danger-btn { border-color: color-mix(in srgb, #ef4444 72%, var(--line-soft)); }
+.danger-btn:hover { border-color: #ef4444; background: color-mix(in srgb, #ef4444 10%, transparent); }
+.primary-btn { border-color: color-mix(in srgb, var(--accent) 72%, var(--line-soft)); }
+.primary-btn:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .multi-btn { justify-content: flex-start; border-color: transparent; background: transparent; }
 .multi-btn.active { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .multi-btn.off { opacity: .48; }
+.raise-btn { justify-content: center; text-align: center; }
 
 .side-search {
   width: 100%; background: transparent; color: var(--text);

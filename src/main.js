@@ -13,6 +13,7 @@ import { openDetails } from './view/detailsPage.js';
 import { isLeafNode } from './data/schema.js';
 
 const model = buildModel();
+const initialState = readHash();
 
 // 渲染器：label -> 编号 / 类型 / 归属节点
 const numberOf = (key) => model.labelIndex.get(key)?.label.number ?? (model.meta?.bib?.[key] ?? '?');
@@ -35,14 +36,21 @@ const ctx = {
   graph: null,
   modals: null,
   refLayer: null,
-  mode: 'show-all',
-  refsRaiseEnabled: localStorage.getItem('hg-refs-raise') !== '0',
+  mode: initialState.mode || 'show-all',
+  refsRaiseEnabled: initialState.refsRaiseEnabled ?? (localStorage.getItem('hg-refs-raise') !== '0'),
   // 主题模式：dark | light | system（跟随系统）
-  themeMode: localStorage.getItem('hg-theme-mode') || localStorage.getItem('hg-theme') || 'system',
+  themeMode: initialState.themeMode || localStorage.getItem('hg-theme-mode') || localStorage.getItem('hg-theme') || 'system',
   theme: 'dark',
-  hidden: new Set(),
+  hidden: new Set(initialState.hidden),
+  filterActive: initialState.types ? new Set(initialState.types) : null,
+  sidebarCollapsed: initialState.sidebarCollapsed,
   openDetails: (nodeId) => openDetails(ctx, nodeId),
 };
+
+for (const id of ctx.hidden) {
+  const n = model.nodeById.get(id);
+  if (n) n._userHidden = true;
+}
 
 // ---- 主题（三态：暗 / 跟随系统 / 亮） ----
 const systemMql = window.matchMedia('(prefers-color-scheme: light)');
@@ -56,6 +64,7 @@ ctx.setThemeMode = (mode) => {
   localStorage.setItem('hg-theme-mode', mode);
   ctx.applyTheme();
   ctx.syncThemeButtons && ctx.syncThemeButtons();
+  ctx.writeHash && ctx.writeHash();
 };
 systemMql.addEventListener('change', () => { if (ctx.themeMode === 'system') { ctx.applyTheme(); ctx.syncThemeButtons && ctx.syncThemeButtons(); } });
 // 兼容旧的 setTheme 调用：直接当作选定具体主题
@@ -72,6 +81,7 @@ ctx.hideNode = (id) => {
   ctx.graph.updateVisibility();
   ctx.refLayer && ctx.refLayer.refreshRelations();
   ctx.renderHidden && ctx.renderHidden();
+  ctx.writeHash && ctx.writeHash();
 };
 ctx.unhideNode = (id) => {
   const n = model.nodeById.get(id);
@@ -80,6 +90,7 @@ ctx.unhideNode = (id) => {
   ctx.hidden.delete(id);
   ctx.graph.updateVisibility();
   ctx.renderHidden && ctx.renderHidden();
+  ctx.writeHash && ctx.writeHash();
 };
 
 const graph = new ForceGraph(model, {
@@ -91,9 +102,15 @@ const graph = new ForceGraph(model, {
 });
 ctx.graph = graph;
 graph.ctx = ctx;
+if (initialState.force) {
+  if (Number.isFinite(initialState.force.center)) graph.setForce('center', initialState.force.center);
+  if (Number.isFinite(initialState.force.charge)) graph.setForce('charge', initialState.force.charge);
+  if (Number.isFinite(initialState.force.link)) graph.setForce('link', initialState.force.link);
+}
 
 ctx.modals = new ModalManager(ctx, { overlayEl, stageEl });
 ctx.refLayer = new RefLayer(ctx, { overlayEl, stageEl });
+if (Number.isFinite(initialState.modalWidth)) ctx.modals.setWidth(initialState.modalWidth);
 
 // 节点 hover -> 邻居高亮 + 完整信息预览
 graph.nodeEls.forEach((el, id) => {
@@ -117,6 +134,10 @@ ctx.setMode = (key) => {
   ctx.syncModeButtons && ctx.syncModeButtons();
   ctx.writeHash && ctx.writeHash();
 };
+if (ctx.mode !== 'show-all') {
+  graph.setMode(ctx.mode);
+  ctx.modals.onModeChange(ctx.mode);
+}
 
 buildSidebar(ctx, document.getElementById('sidebar'));
 buildZoomControl(ctx, stageEl);
@@ -124,22 +145,37 @@ buildZoomControl(ctx, stageEl);
 // ---- Deep-link：URL hash 恢复 / 写回 ----
 function readHash() {
   const h = new URLSearchParams(location.hash.slice(1));
+  const forceParts = (h.get('force') || '').split(',').map((v) => Number(v));
   return {
     open: (h.get('open') || '').split(',').map((s) => s.trim()).filter(Boolean),
     mode: h.get('mode') || 'show-all',
     focus: h.get('focus') || '',
+    types: h.has('types') ? parseList(h.get('types')) : null,
+    hidden: parseList(h.get('hidden')),
+    force: h.has('force') ? { center: forceParts[0], charge: forceParts[1], link: forceParts[2] } : null,
+    modalWidth: h.has('modal') ? Number(h.get('modal')) : null,
+    refsRaiseEnabled: h.has('refs') ? h.get('refs') !== '0' : null,
+    themeMode: h.get('theme') || '',
+    sidebarCollapsed: h.has('sidebar') ? h.get('sidebar') === '0' : null,
   };
 }
 ctx.writeHash = () => {
-  const ids = [...ctx.modals.open.keys()];
+  const ids = ctx.modals ? [...ctx.modals.open.keys()] : [];
   const params = new URLSearchParams();
   if (ids.length) params.set('open', ids.join(','));
-  if (ctx.mode !== 'show-all') params.set('mode', ctx.mode);
+  params.set('mode', ctx.mode);
+  if (ctx.filterActive) params.set('types', [...ctx.filterActive].join(','));
+  params.set('hidden', [...(ctx.hidden || [])].join(','));
+  if (ctx.graph) params.set('force', ['center', 'charge', 'link'].map((k) => fmtNumber(ctx.graph.getForce(k))).join(','));
+  if (ctx.modals) params.set('modal', String(ctx.modals.getWidth()));
+  params.set('refs', ctx.refsRaiseEnabled ? '1' : '0');
+  params.set('theme', ctx.themeMode);
+  params.set('sidebar', ctx.sidebarCollapsed ? '0' : '1');
   const str = params.toString();
   history.replaceState(null, '', str ? `#${str}` : location.pathname + location.search);
 };
 
-const state = readHash();
+const state = initialState;
 // 等首帧布局后再恢复，保证坐标可用
 setTimeout(() => {
   if (state.open.length) {
@@ -151,6 +187,7 @@ setTimeout(() => {
   }
   if (state.mode && state.mode !== 'show-all' && ctx.setMode) ctx.setMode(state.mode);
   if (state.focus) graph.focusNode(state.focus, 1.0);
+  ctx.writeHash && ctx.writeHash();
 }, 700);
 
 // ---- 公式预渲染（P10），带内存上限 ----
@@ -204,3 +241,11 @@ setTimeout(schedulePrerender, 1500);
 
 // 暴露调试
 window.__ctx = ctx;
+
+function parseList(value) {
+  return (value || '').split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+function fmtNumber(value) {
+  return Number(value).toFixed(4).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+}
