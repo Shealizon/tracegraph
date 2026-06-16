@@ -46,7 +46,6 @@ export function renderLeadingPage({ db, projects, currentProjectId }) {
     if (nextId) setCurrentProjectId(nextId);
     renderLeadingPage({ db, projects: nextProjects, currentProjectId: nextId });
   };
-  const demoProject = createDemoProject(rawDemoGraph);
   root.querySelector('[data-create]').addEventListener('click', async () => {
     const now = new Date().toISOString();
     const project = normalizeProject({
