@@ -51,9 +51,15 @@ function startMain(db, project) {
   const initialState = readHash();
 
   // 渲染器：label -> 编号 / 类型 / 归属节点
-  const numberOf = (key) => model.labelIndex.get(key)?.label.number ?? (model.meta?.bib?.[key] ?? '?');
-  const kindOf = (key) => model.labelIndex.get(key)?.label.kind ?? model.meta.profileResolved?.defaultType ?? 'theorem';
-  const ownerOf = (key) => model.labelIndex.get(key)?.node.id ?? null;
+  const labelEntryOf = (key) => {
+    const direct = model.labelIndex.get(key);
+    if (direct) return direct;
+    const alias = model.meta?.labelAliases?.[key];
+    return alias ? model.labelIndex.get(alias.labelId) : null;
+  };
+  const numberOf = (key) => labelEntryOf(key)?.label.number ?? (model.meta?.bib?.[key] ?? '?');
+  const kindOf = (key) => labelEntryOf(key)?.label.kind ?? model.meta.profileResolved?.defaultType ?? 'theorem';
+  const ownerOf = (key) => labelEntryOf(key)?.node.id ?? null;
   const render = createRenderer({ macros: model.meta.macros, numberOf, kindOf, ownerOf });
 
   const stageEl = document.getElementById('stage');

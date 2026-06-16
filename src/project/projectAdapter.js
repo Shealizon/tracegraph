@@ -73,8 +73,15 @@ export function compileProject(project) {
   const docs = normalized.documents.filter((doc) => enabledDocs.has(doc.id));
   const nodes = [];
   const labelOwner = new Map();
+  const docLabelOwner = new Map();
+  const docAlias = new Map();
+  const labelAliases = {};
 
   for (const doc of docs) {
+    docAlias.set(doc.id, doc.id);
+    docAlias.set(doc.name, doc.id);
+    docAlias.set(slug(doc.name), doc.id);
+    docLabelOwner.set(doc.id, new Map());
     const compiled = compileGraph(doc.graph);
     for (const rawNode of compiled.nodes || []) {
       if (disabledNodes.has(rawNode.id)) continue;
@@ -88,6 +95,11 @@ export function compileProject(project) {
       nodes.push(node);
       for (const label of node.labels) {
         if (!labelOwner.has(label.id)) labelOwner.set(label.id, { node, label });
+        docLabelOwner.get(doc.id).set(label.id, { node, label });
+        docLabelOwner.get(doc.id).set(`${doc.id}/${label.id}`, { node, label });
+        docLabelOwner.get(doc.id).set(`${slug(doc.name)}/${label.id}`, { node, label });
+        labelAliases[`${doc.id}/${label.id}`] = { nodeId: node.id, labelId: label.id };
+        labelAliases[`${slug(doc.name)}/${label.id}`] = { nodeId: node.id, labelId: label.id };
       }
     }
   }
@@ -97,7 +109,8 @@ export function compileProject(project) {
   const seen = new Set();
   for (const node of nodes) {
     for (const ref of node.refs || []) {
-      const owner = labelOwner.get(ref.target);
+      const resolvedTarget = resolveTarget(ref.target, node.documentId, labelOwner, docLabelOwner, docAlias);
+      const owner = resolvedTarget?.owner;
       if (!owner || !nodeById.has(owner.node.id)) {
         ref.resolved = false;
         ref.targetNode = ref.targetNode || null;
@@ -105,6 +118,7 @@ export function compileProject(project) {
       }
       ref.resolved = true;
       ref.targetNode = owner.node.id;
+      ref.target = resolvedTarget.labelId;
       ref.internal = owner.node.id === node.id;
       if (ref.internal) continue;
       const key = relationKey(owner.node.id, ref.target, node.id);
@@ -123,6 +137,7 @@ export function compileProject(project) {
       projectId: normalized.id,
       projectName: normalized.name,
       documents: docs.map((d) => ({ id: d.id, name: d.name, sourceType: d.sourceType })),
+      labelAliases,
       counts: {
         statements: nodes.filter((n) => n.type !== 'bib').length,
         bib: nodes.filter((n) => n.type === 'bib').length,
@@ -133,6 +148,27 @@ export function compileProject(project) {
     nodes,
     edges,
   };
+}
+
+function resolveTarget(target, currentDocId, labelOwner, docLabelOwner, docAlias) {
+  const currentDocLabels = docLabelOwner.get(currentDocId);
+  if (currentDocLabels?.has(target)) return { owner: currentDocLabels.get(target), labelId: target };
+
+  const slash = String(target || '').indexOf('/');
+  if (slash > 0) {
+    const scope = target.slice(0, slash);
+    const labelId = target.slice(slash + 1);
+    const docId = docAlias.get(scope) || docAlias.get(slug(scope));
+    const scopedOwner = docId ? docLabelOwner.get(docId)?.get(labelId) : null;
+    if (scopedOwner) return { owner: scopedOwner, labelId };
+  }
+
+  const globalOwner = labelOwner.get(target);
+  return globalOwner ? { owner: globalOwner, labelId: target } : null;
+}
+
+function slug(value) {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9:_-]+/g, '-').replace(/^-+|-+$/g, '');
 }
 
 export function relationKey(from, fromLabel, to) {

@@ -29,31 +29,17 @@ export function buildSidebar(ctx, root) {
   rail.onclick = () => setCollapsed(!app.classList.contains('sidebar-collapsed'));
   setCollapsed(collapsed);
 
-  const tools = el('div', 'side-toolbar');
-  tools.appendChild(buildThemeSwitch(ctx));
-  root.appendChild(tools);
   const head = el('div', 'side-head');
   head.innerHTML = `<div><div class="side-title">${escapeHtml(model.meta.title || '关系图')}</div><div class="side-sub">${model.meta.counts.statements} 节点 · ${model.meta.counts.edges} 关系${model.hasCycle ? ' · 含环' : ''}</div></div>`;
   root.appendChild(head);
 
-  const grpProject = group(root, '项目');
-  const projectName = el('div', 'project-side-name');
-  projectName.textContent = ctx.project?.name || model.meta.projectName || '当前项目';
-  grpProject.appendChild(projectName);
-  const projectBtns = el('div', 'project-side-actions');
-  const bLeading = btn('返回项目页', 'side-btn');
-  bLeading.addEventListener('click', () => ctx.goLeading && ctx.goLeading());
-  const bConfig = btn('项目配置', 'side-btn primary-btn');
-  bConfig.addEventListener('click', () => ctx.openProjectConfig && ctx.openProjectConfig());
-  const bImport = btn('导入文件', 'side-btn');
-  bImport.addEventListener('click', () => ctx.importFile && ctx.importFile());
-  const bExport = btn('导出项目', 'side-btn');
-  bExport.addEventListener('click', () => ctx.exportProject && ctx.exportProject());
-  projectBtns.appendChild(bLeading);
-  projectBtns.appendChild(bConfig);
-  projectBtns.appendChild(bImport);
-  projectBtns.appendChild(bExport);
-  grpProject.appendChild(projectBtns);
+  const tools = el('div', 'side-toolbar side-quickbar');
+  tools.appendChild(buildThemeSwitch(ctx));
+  tools.appendChild(iconBtn('主页', 'home', () => ctx.goLeading && ctx.goLeading()));
+  tools.appendChild(iconBtn('项目配置', 'settings', () => ctx.openProjectConfig && ctx.openProjectConfig()));
+  tools.appendChild(iconBtn('导入文件', 'upload', () => ctx.importFile && ctx.importFile()));
+  tools.appendChild(iconBtn('导出项目', 'download', () => ctx.exportProject && ctx.exportProject()));
+  root.appendChild(tools);
 
   // 搜索
   const grpSearch = group(root, '搜索');
@@ -273,6 +259,7 @@ function slider(label, min, max, step, value, onInput, unit = '') {
 }
 function group(root, label) { const g = el('div', 'side-group'); const l = el('div', 'side-label'); l.textContent = label; g.appendChild(l); root.appendChild(g); return g; }
 function btn(html, cls = 'side-btn') { const b = el('button', cls); b.innerHTML = html; return b; }
+function iconBtn(title, icon, onClick) { const b = el('button', 'round-icon-btn'); b.type = 'button'; b.title = title; b.setAttribute('aria-label', title); b.innerHTML = ICON[icon] || ''; b.addEventListener('click', onClick); return b; }
 function el(tag, cls) { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
 function add(root, html) { const d = document.createElement('div'); d.innerHTML = html; while (d.firstChild) root.appendChild(d.firstChild); }
 function escapeHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }

@@ -48,7 +48,7 @@ export async function importStructuredJson(db, currentProject = null) {
 export async function importFixedTex(db, currentProject = null) {
   const texFile = await pickFile('.tex,text/x-tex,text/plain');
   if (!texFile) return null;
-  const auxFile = await pickFile('.aux,text/plain', '选择对应 .aux 文件（可取消）');
+  const auxFile = confirm('是否选择对应的 .aux 文件以保留论文编号？') ? await pickFile('.aux,text/plain') : null;
   const graph = extractFixedTexGraph(await texFile.text(), auxFile ? await auxFile.text() : '', { source: texFile.name, title: texFile.name.replace(/\.tex$/i, '') });
   const doc = graphToDocument(graph, texFile.name, 'fixed-tex');
   if (currentProject) {
