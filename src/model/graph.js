@@ -16,11 +16,10 @@ import { compileGraph } from '../data/adapter.js';
 
 export const KIND_ORDER = { theorem: 0, proposition: 1, lemma: 2, bib: 3 };
 
-// 通过适配器统一规整：既支持论文 paper-graph.json（已编译格式），也支持通用
-// relation-graph schema（见 data/schema.js 与 docs/DATA-SCHEMA.md）。
-const raw = compileGraph(rawInput);
-
-export function buildModel() {
+export function buildModel(input = rawInput) {
+  // 通过适配器统一规整：既支持论文 paper-graph.json（已编译格式），也支持通用
+  // relation-graph schema（见 data/schema.js 与 docs/DATA-SCHEMA.md）。
+  const raw = compileGraph(input);
   const nodes = raw.nodes.map((n) => ({ ...n }));
   const edges = raw.edges.map((e) => ({ ...e }));
   const nodeById = new Map(nodes.map((n) => [n.id, n]));

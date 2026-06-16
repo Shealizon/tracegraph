@@ -36,6 +36,25 @@ export function buildSidebar(ctx, root) {
   head.innerHTML = `<div><div class="side-title">${escapeHtml(model.meta.title || '关系图')}</div><div class="side-sub">${model.meta.counts.statements} 节点 · ${model.meta.counts.edges} 关系${model.hasCycle ? ' · 含环' : ''}</div></div>`;
   root.appendChild(head);
 
+  const grpProject = group(root, '项目');
+  const projectName = el('div', 'project-side-name');
+  projectName.textContent = ctx.project?.name || model.meta.projectName || '当前项目';
+  grpProject.appendChild(projectName);
+  const projectBtns = el('div', 'project-side-actions');
+  const bLeading = btn('返回项目页', 'side-btn');
+  bLeading.addEventListener('click', () => ctx.goLeading && ctx.goLeading());
+  const bConfig = btn('项目配置', 'side-btn primary-btn');
+  bConfig.addEventListener('click', () => ctx.openProjectConfig && ctx.openProjectConfig());
+  const bImport = btn('导入文件', 'side-btn');
+  bImport.addEventListener('click', () => ctx.importFile && ctx.importFile());
+  const bExport = btn('导出项目', 'side-btn');
+  bExport.addEventListener('click', () => ctx.exportProject && ctx.exportProject());
+  projectBtns.appendChild(bLeading);
+  projectBtns.appendChild(bConfig);
+  projectBtns.appendChild(bImport);
+  projectBtns.appendChild(bExport);
+  grpProject.appendChild(projectBtns);
+
   // 搜索
   const grpSearch = group(root, '搜索');
   const input = el('input', 'side-search');
