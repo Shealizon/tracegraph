@@ -191,7 +191,7 @@ body {
   display: flex; align-items: center; justify-content: center; gap: 8px;
   width: 100%; text-align: center;
   background: transparent; color: var(--text);
-  border: 1px solid transparent; border-radius: 8px;
+  border: 1px solid var(--line-soft); border-radius: 8px;
   padding: 7px 9px; font-size: 12.5px; cursor: pointer;
   transition: background .15s, border-color .15s, opacity .15s;
 }
@@ -203,9 +203,13 @@ body {
 .side-segment {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  overflow: hidden;
 }
-.mode-radio { border-radius: 7px; }
+.mode-radio { border: 0; border-radius: 0; }
+.mode-radio + .mode-radio { border-left: 1px solid var(--line-soft); }
 .mode-radio.active { background: var(--bg-modal-solid); border-color: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent); }
 .trigger-btn { border-color: var(--line-soft); background: transparent; }
 .trigger-btn:hover { border-color: var(--accent-soft); }
@@ -213,7 +217,7 @@ body {
 .danger-btn:hover { border-color: #ef4444; background: color-mix(in srgb, #ef4444 10%, transparent); }
 .primary-btn { border-color: color-mix(in srgb, var(--accent) 72%, var(--line-soft)); }
 .primary-btn:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
-.multi-btn { justify-content: flex-start; border-color: transparent; background: transparent; }
+.multi-btn { justify-content: flex-start; background: transparent; }
 .multi-btn.active { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .multi-btn.off { opacity: .48; }
 .raise-btn { justify-content: center; text-align: center; }

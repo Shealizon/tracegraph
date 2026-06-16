@@ -14,11 +14,11 @@ export const MAX_H = Math.round(DEFAULT_W * A4);
 
 // 顶部按钮配置（SVG 图标 —— N3）
 const TOP_BUTTONS = [
-  { act: 'to-node', title: '切回节点', icon: 'circle' },
+  { act: 'hide', title: '隐藏此节点', icon: 'eyeOff', tone: 'danger' },
   { act: 'open-used', title: '展开使用本结论者', icon: 'arrowUpRight' },
   { act: 'open-deps', title: '展开本结论的依赖', icon: 'arrowDownLeft' },
-  { act: 'hide', title: '隐藏此节点', icon: 'eyeOff' },
   { act: 'details', title: '详情', icon: 'expand' },
+  { act: 'to-node', title: '切回节点', icon: 'circle' },
 ];
 
 // -----------------------------------------------------------------------------
@@ -30,7 +30,7 @@ export function buildModalShell(opts) {
   el.className = `modal type-${opts.type || ''}${opts.preview ? ' preview' : ''}`;
   el.style.width = `${CUR_W}px`;
   if (opts.color) el.style.setProperty('--modal-color', opts.color);
-  const btns = (opts.buttons || []).map((b) => `<button class="m-btn" data-act="${b.act}" title="${b.title}">${ICON[b.icon] || ''}</button>`).join('');
+  const btns = (opts.buttons || []).map((b) => `<button class="m-btn${b.tone === 'danger' ? ' m-btn-danger' : ''}" data-act="${b.act}" title="${b.title}">${ICON[b.icon] || ''}</button>`).join('');
   el.innerHTML = `
     <div class="modal-top">
       <span class="m-title">${opts.titleHTML || ''}</span>

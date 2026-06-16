@@ -57,6 +57,8 @@
 }
 .m-btn:hover { background: #33333c; color: var(--text); border-color: var(--accent-soft); }
 .m-btn svg { width: 14px; height: 14px; }
+.m-btn-danger { border-color: color-mix(in srgb, #ef4444 72%, var(--line-soft)); }
+.m-btn-danger:hover { border-color: #ef4444; background: color-mix(in srgb, #ef4444 12%, var(--bg-soft)); }
 
 /* 内容区 */
 .modal-body {
