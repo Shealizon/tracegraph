@@ -1,0 +1,284 @@
+{
+  "format": "relation-graph@1",
+  "meta": {
+    "title": "Chapter 5: The Uncertainty Principle — Wolff, Lectures on Harmonic Analysis",
+    "profile": "paper",
+    "bodyFormat": "latex"
+  },
+  "nodes": [
+    {
+      "id": "thm:plancherel",
+      "type": "theorem",
+      "number": "Plancherel",
+      "title": "Plancherel Theorem",
+      "sections": [],
+      "anchors": [
+        {
+          "id": "thm:plancherel",
+          "kind": "theorem",
+          "number": "Plancherel"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "thm:3.10",
+      "type": "theorem",
+      "number": "3.10",
+      "title": "",
+      "sections": [],
+      "anchors": [
+        {
+          "id": "thm:3.10",
+          "kind": "theorem",
+          "number": "3.10"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "prop:1.3",
+      "type": "proposition",
+      "number": "1.3",
+      "title": "",
+      "sections": [],
+      "anchors": [
+        {
+          "id": "prop:1.3",
+          "kind": "proposition",
+          "number": "1.3"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "thm:young",
+      "type": "theorem",
+      "number": "Young",
+      "title": "Young's Inequality",
+      "sections": [],
+      "anchors": [
+        {
+          "id": "thm:young",
+          "kind": "theorem",
+          "number": "Young"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "prop:5.1",
+      "type": "proposition",
+      "number": "5.1",
+      "title": "$L^2$ Bernstein Inequality",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Assume that $f \\in L^2$ and $\\hat{f}$ is supported in $D(0, R)$. Then $f$ is $C^\\infty$ and there is an estimate\n\n$$\\|D^{\\alpha}f\\|_{2}\\leq(2\\pi R)^{|\\alpha|}\\|f\\|_{2}. \\tag{55}$$"
+        },
+        {
+          "kind": "proof",
+          "body": "Essentially this is an immediate consequence of the Plancherel theorem. The Fourier inversion formula\n\n$$f(x)=\\int\\hat{f}(\\xi)e^{2\\pi i x\\cdot\\xi}d\\xi \\tag{56}$$\n\nis valid (in the naive sense). The support assumption implies $\\hat{f} \\in L^1$. Choose a sequence of Schwartz functions $\\psi_k$ which converges to $\\hat{f}$ both in $L^1$ and in $L^2$. Let $\\phi_k \\in \\mathcal{S}$ satisfy $\\widehat{\\phi}_k = \\psi_k$. The formula (56) is valid for $\\phi_k$. As $k \\to \\infty$, the left sides converge in $L^2$ to $f$ by Theorem 3.10 and the right sides converge uniformly to $\\int \\hat{f}(\\xi) e^{2\\pi i x \\cdot \\xi} d\\xi$, which proves (56) for $f$.\n\nProposition 1.3 applied to $\\hat{f}$ now implies that $f$ is $C^{\\infty}$ and that $D^{\\alpha}f$ is obtained by differentiation under the integral sign in (56). The estimate (55) holds since\n\n$$\\|D^{\\alpha}f\\|_{2}=\\|\\widehat{D^{\\alpha}f}\\|_{2}=\\|(2\\pi i\\xi)^{\\alpha}\\hat{f}\\|_{2}\\leq(2\\pi R)^{|\\alpha|}\\|\\hat{f}\\|_{2}=(2\\pi R)^{|\\alpha|}\\|f\\|_{2}.$$"
+        }
+      ],
+      "anchors": [
+        {
+          "id": "prop:5.1",
+          "kind": "proposition",
+          "number": "5.1"
+        },
+        {
+          "id": "eq:55",
+          "kind": "equation",
+          "number": "55"
+        },
+        {
+          "id": "eq:56",
+          "kind": "equation",
+          "number": "56"
+        }
+      ],
+      "refs": [
+        {
+          "target": "thm:plancherel",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "thm:3.10",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "prop:1.3",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "lem:5.2",
+      "type": "lemma",
+      "number": "5.2",
+      "title": "",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "There is a fixed Schwartz function $\\phi$ such that if $f \\in L^{1} + L^{2}$ and $\\widehat{f}$ is supported in $D(0, R)$, then\n\n$$f=\\phi^{R^{-1}}*f.$$"
+        },
+        {
+          "kind": "proof",
+          "body": "Take $\\phi \\in \\mathcal{S}$ so that $\\widehat{\\phi}$ is equal to 1 on $D(0,1)$. Thus $\\widehat{\\phi^{R^{-1}}}(\\xi) = \\widehat{\\phi}(R^{-1}\\xi)$ is equal to 1 on $D(0,R)$, so $\\widehat{(\\phi^{R^{-1}} * f - f)}$ vanishes identically. Hence $\\phi^{R^{-1}} * f = f$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "lem:5.2",
+          "kind": "lemma",
+          "number": "5.2"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "prop:5.3",
+      "type": "proposition",
+      "number": "5.3",
+      "title": "Bernstein Inequality on Disks",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Suppose that $f \\in L^{1} + L^{2}$ and $\\hat{f}$ is supported in $D(0, R)$. Then:\n\n1. For any $\\alpha$ and $p \\in [1, \\infty]$,\n\n$$\\|D^{\\alpha}f\\|_{p}\\leq(C R)^{|\\alpha|}\\|f\\|_{p}.$$\n\n2. For any $1 \\leq p \\leq q \\leq \\infty$,\n\n$$\\|f\\|_{q}\\leq C R^{n(\\frac{1}{p}-\\frac{1}{q})}\\|f\\|_{p}.$$"
+        },
+        {
+          "kind": "proof",
+          "body": "The function $\\psi = \\phi^{R^{-1}}$ satisfies\n\n$$\\|\\psi\\|_{r}=C R^{\\frac{n}{r^{\\prime}}} \\tag{57}$$\n\nfor any $r \\in [1, \\infty]$, where $C = \\|\\phi\\|_{r}$. Also, using the chain rule\n\n$$\\left\\|\\nabla\\psi\\right\\|_{1}=R\\|\\phi\\|_{1}. \\tag{58}$$\n\nWe know that $f = \\psi * f$. In the case of first derivatives, part 1 therefore follows from (57) and (24). The general case of 1. then follows by induction.\n\nFor part 2, let $r$ satisfy $\\frac{1}{q} = \\frac{1}{p} - \\frac{1}{r'}$. Apply Young's inequality:\n\n$$\\begin{align*}\n\\|f\\|_{q} &= \\|\\psi*f\\|_{q} \\\\\n&\\leq \\|\\psi\\|_{r}\\|f\\|_{p} \\\\\n&\\lesssim R^{\\frac{n}{r^{\\prime}}}\\|f\\|_{p} \\\\\n&= R^{n(\\frac{1}{p}-\\frac{1}{q})}\\|f\\|_{p}.\n\\end{align*}$$"
+        }
+      ],
+      "anchors": [
+        {
+          "id": "prop:5.3",
+          "kind": "proposition",
+          "number": "5.3"
+        },
+        {
+          "id": "eq:57",
+          "kind": "equation",
+          "number": "57"
+        },
+        {
+          "id": "eq:58",
+          "kind": "equation",
+          "number": "58"
+        }
+      ],
+      "refs": [
+        {
+          "target": "lem:5.2",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "thm:young",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "prop:5.4",
+      "type": "proposition",
+      "number": "5.4",
+      "title": "Bernstein Inequality on Ellipsoids",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Suppose that $f \\in L^{1} + L^{2}$ and $\\hat{f}$ is supported in an ellipsoid $E$. Then\n\n$$\\|f\\|_{q}\\lesssim|E|^{(\\frac{1}{p}-\\frac{1}{q})}\\|f\\|_{p}$$\n\nif $1 \\leq p \\leq q \\leq \\infty$."
+        },
+        {
+          "kind": "proof",
+          "body": "Let $k$ be the center of $E$. Let $T$ be a linear map taking the unit ball onto $E-k$. Let $S=T^{-t}$ (thus $T=S^{-t}$). Let $f_{1}(x)=e^{-2\\pi ik\\cdot x}f(x)$ and $g=f_{1}\\circ S$, so that\n\n$$\\begin{array}{rcl}\n\\hat{g}(\\xi) &=& |\\det S|^{-1}\\widehat{f_{1}}(S^{-t}(\\xi)) \\\\\n&=& |\\det S|^{-1}\\hat{f}(S^{-t}(\\xi+k)) \\\\\n&=& |\\det T|\\hat{f}(T(\\xi)+k).\n\\end{array}$$\n\nThus $\\hat{g}$ is supported in the unit ball, so by Proposition 5.3\n\n$$\\|g\\|_{q}\\lesssim\\|g\\|_{p}.$$\n\nOn the other hand,\n\n$$\\|g\\|_{q}=|\\det S|^{-\\frac{1}{q}}\\|f\\|_{q}=|\\det T|^{\\frac{1}{q}}\\|f\\|_{q}=|E|^{\\frac{1}{q}}\\|f\\|_{q}$$\n\nand likewise with $q$ replaced by $p$. So\n\n$$|E|^{\\frac{1}{q}}\\|f\\|_{q}\\lesssim|E|^{\\frac{1}{p}}\\|f\\|_{p}$$\n\nas claimed."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "prop:5.4",
+          "kind": "proposition",
+          "number": "5.4"
+        }
+      ],
+      "refs": [
+        {
+          "target": "prop:5.3",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "prop:5.5",
+      "type": "proposition",
+      "number": "5.5",
+      "title": "Schwartz Tail Estimate",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Suppose that $f \\in L^1 + L^2$ and $\\hat{f}$ is supported in an ellipsoid $E$. Then for any dual ellipsoid $E^*$ and any $z \\in E^*$,\n\n$$|f(z)|\\leq C_{N}\\frac{1}{|E^{*}|}\\int|f(x)|\\phi_{E^{*}}(x)dx. \\tag{60}$$"
+        },
+        {
+          "kind": "proof",
+          "body": "Step 1. Assume $E$ is the unit ball and $E^{*}$ is also the unit ball. Then $f = \\psi * f$ with a fixed Schwartz function $\\psi$:\n\n$$\\begin{align*}\n|f(z)| &\\leq \\int|f(x)|\\left|\\psi(z-x)\\right|dx \\\\\n&\\leq C_{N}\\int|f(x)|(1+|z-x|^{2})^{-N} \\\\\n&\\leq C_{N}\\int|f(x)|(1+|x|^{2})^{-N}.\n\\end{align*}$$\n\nThe last step uses $1+|z-x|^2 \\gtrsim 1+|x|^2$ uniformly when $|z|\\leq 1$. This proves (60) for $E=E^{*}=$ unit ball.\n\nStep 2. Suppose $E$ is centered at zero but $E$ and $E^{*}$ are otherwise arbitrary. Let $k$ and $T$ be as above and consider\n\n$$g(x)=f(T^{-1}x+k).$$\n\nIts Fourier transform is supported on $T^{-1}E$, and $T^{-1}$ maps $E$ onto the unit ball. Accordingly,\n\n$$|g(y)|\\leq\\int\\phi(x)|g(x)|dx$$\n\nif $y \\in D(0,1)$, so that\n\n$$f(T^{-1}z+k)\\leq\\int\\phi(x)|f(T^{-1}x+k)|dx=|\\det T|\\int\\phi_{E^{*}}(x)|f(x)|dx$$\n\nby changing variables. Since $|\\det T| = \\frac{1}{|E^*|}$, we get (60).\n\nStep 3. If $E$ isn't centered at zero, replace $f$ by $e^{-2\\pi ik\\cdot x}f(x)$ where $k$ is the center of $E$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "prop:5.5",
+          "kind": "proposition",
+          "number": "5.5"
+        },
+        {
+          "id": "eq:60",
+          "kind": "equation",
+          "number": "60"
+        }
+      ],
+      "refs": [
+        {
+          "target": "lem:5.2",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "cite:14",
+      "type": "bib",
+      "number": "14",
+      "title": "",
+      "sections": [],
+      "anchors": [
+        {
+          "id": "cite:14",
+          "kind": "bib",
+          "number": "14"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "cite:15",
+      "type": "bib",
+      "number": "15",
+      "title": "",
+      "sections": [],
+      "anchors": [
+        {
+          "id": "cite:15",
+          "kind": "bib",
+          "number": "15"
+        }
+      ],
+      "refs": []
+    }
+  ]
+}

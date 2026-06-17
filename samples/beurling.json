@@ -1,0 +1,194 @@
+{
+  "format": "relation-graph@1",
+  "meta": {
+    "title": "A uniqueness theorem of Beurling for Fourier transform pairs",
+    "profile": "paper",
+    "bodyFormat": "latex"
+  },
+  "nodes": [
+    {
+      "id": "thm:beurling",
+      "type": "theorem",
+      "number": "1",
+      "title": "Beurling's uniqueness theorem",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Let $f\\in L^1(\\mathbb{R})$ and assume that\n\\[\\iint|f(x)||\\hat{f}(y)|e^{|xy|}\\,dx\\,dy<\\infty\\]\nwhere the Fourier transform $\\hat{f}$ is defined by\n\\[\\hat{f}(y)=\\int e^{-ixy}f(x)\\,dx.\\]\nThen $f=0$."
+        },
+        {
+          "kind": "proof",
+          "body": "Set $M(y)=\\int|f(x)|e^{|xy|}\\,dx$, $\\tilde{M}(x)=\\int|\\hat{f}(y)|e^{|xy|}\\,dy$.\n\n(1) $\\int|\\hat{f}(y)|\\tilde{M}(y)\\,dy=\\int|f(x)|M(x)\\,dx=\\iint|f(x)||\\hat{f}(y)|e^{|xy|}\\,dx\\,dy<\\infty$.\n\nIf $f$ has compact support then $M$ grows exponentially unless $f=0$, forcing $f=0$ by analyticity. Same for $\\hat{f}$. If neither has compact support, $M$ and $\\tilde{M}$ grow faster than any exponential, so $f$ and $\\hat{f}$ are entire.\n\n(2) $F(z)=f(z)\\hat{f}(iz)$. $F$ is entire and bounded on the real and imaginary axes. If $\\lim M(x)e^{-cx^2/2}=0$ for all $c>0$, the Phragmén–Lindelöf theorem forces $F$ bounded, hence $f=0$. Otherwise $M(x)>e^{cx^2/2}$, $\\tilde{M}(y)>e^{\\tilde{c}y^2/2}$ for large $x,y$, giving $|f(z)|\\leq Ke^{|\\Im z|^2/4c}$, so $f$ is of order $2$ or $0$.\n\n(4) $\\int_0^\\infty|f(re^{i\\alpha/2})|^2\\,dr\\leq K'$ for $0<\\alpha<\\pi/2$. Letting $\\alpha\\to\\pi/2$ gives $\\int_0^\\infty|f(re^{i\\pi/4})|^2\\,dr\\leq K'$. Same for $\\hat{f}$, hence $|F(re^{i\\pi/4})|$ is bounded; Phragmén–Lindelöf gives $F$ constant, so $f(z)\\hat{f}(iz)=0$, implying $f=0$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "thm:beurling",
+          "kind": "theorem",
+          "number": "1"
+        }
+      ],
+      "refs": [
+        {
+          "target": "ref:beurling1989",
+          "relation": "cite",
+          "where": "statement"
+        }
+      ]
+    },
+    {
+      "id": "cor:conjugate",
+      "type": "theorem",
+      "number": "2",
+      "title": "Corollary on conjugate convex functions",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "If $\\varphi$ and $\\psi$ are conjugate convex functions then\n\\[\\int|f(x)|e^{\\varphi(x)}\\,dx<\\infty,\\quad\\int|\\hat{f}(y)|e^{\\psi(y)}\\,dy<\\infty\\implies f=0.\\]"
+        }
+      ],
+      "anchors": [
+        {
+          "id": "cor:conjugate",
+          "kind": "theorem",
+          "number": "2"
+        }
+      ],
+      "refs": [
+        {
+          "target": "thm:beurling",
+          "relation": "ref",
+          "where": "statement"
+        }
+      ]
+    },
+    {
+      "id": "thm:gelfand-shilov",
+      "type": "theorem",
+      "number": "3",
+      "title": "Gel'fand–Shilov space Fourier duality",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "For $1<p<\\infty$, let $Z_p$ be the space of entire functions $\\varphi$ such that for some $A,B,C$,\n\\[|\\varphi(z)|\\leq Ce^{A|\\Im z|^{p'}-B|\\Re z|^p},\\quad z\\in\\mathbb{C},\\]\nwhere $1/p+1/p'=1$. The Fourier transform maps $Z_p$ onto $Z_{p'}$.\n\nIf $\\varphi\\in Z_p$, then $|\\varphi(x)|\\leq Ce^{-B|x|^p}$, $|\\hat{\\varphi}(\\xi)|\\leq C'e^{-B'|\\xi|^{p'}}$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "thm:gelfand-shilov",
+          "kind": "theorem",
+          "number": "3"
+        }
+      ],
+      "refs": [
+        {
+          "target": "ref:gelfand1953",
+          "relation": "cite",
+          "where": "statement"
+        },
+        {
+          "target": "ref:gelfand1958",
+          "relation": "cite",
+          "where": "statement"
+        }
+      ]
+    },
+    {
+      "id": "thm:gs-beurling-bound",
+      "type": "theorem",
+      "number": "4",
+      "title": "Beurling bound for Gel'fand–Shilov spaces",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "If $\\varphi\\in Z_p$ with $|\\varphi(x)|\\leq Ce^{-B|x|^p}$ and $|\\hat{\\varphi}(\\xi)|\\leq C'e^{-B'|\\xi|^{p'}}$, then Beurling's theorem implies $(Bp)^{1/p}(B'p')^{1/p'}\\geq 1$ whenever $\\varphi\\not\\equiv 0$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "thm:gs-beurling-bound",
+          "kind": "theorem",
+          "number": "4"
+        }
+      ],
+      "refs": [
+        {
+          "target": "thm:beurling",
+          "relation": "ref",
+          "where": "statement"
+        }
+      ]
+    },
+    {
+      "id": "thm:gs-nontrivial",
+      "type": "theorem",
+      "number": "5",
+      "title": "Non-triviality of Z_p spaces",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "$Z_p$ is non-trivial when $2\\leq p<\\infty$. By Fourier duality, $Z_p$ is non-trivial for $1<p\\leq 2$ as well. For $2\\leq p\\leq 4$, an even subharmonic function $\\varphi_0$ with $\\varphi_0(z)=-\\Re z^p$ ($\\Re z\\geq 0$) yields analytic functions in $Z_p$. This extends to all $p\\geq 2$ by considering $z\\mapsto\\varphi(z^k)$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "thm:gs-nontrivial",
+          "kind": "theorem",
+          "number": "5"
+        }
+      ],
+      "refs": [
+        {
+          "target": "thm:gelfand-shilov",
+          "relation": "ref",
+          "where": "statement"
+        }
+      ]
+    },
+    {
+      "id": "ref:beurling1989",
+      "type": "bib",
+      "number": "[1]",
+      "title": "Beurling 1989",
+      "sections": [],
+      "anchors": [
+        {
+          "id": "ref:beurling1989",
+          "kind": "theorem",
+          "number": "[1]"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "ref:gelfand1953",
+      "type": "bib",
+      "number": "[2]",
+      "title": "Gel'fand–Shilov 1953",
+      "sections": [],
+      "anchors": [
+        {
+          "id": "ref:gelfand1953",
+          "kind": "theorem",
+          "number": "[2]"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "ref:gelfand1958",
+      "type": "bib",
+      "number": "[3]",
+      "title": "Gel'fand–Shilov 1958",
+      "sections": [],
+      "anchors": [
+        {
+          "id": "ref:gelfand1958",
+          "kind": "theorem",
+          "number": "[3]"
+        }
+      ],
+      "refs": []
+    }
+  ]
+}

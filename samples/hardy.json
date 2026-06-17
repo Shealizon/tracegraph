@@ -1,0 +1,828 @@
+{
+  "format": "relation-graph@1",
+  "meta": {
+    "title": "A Fully Verified Proof of Sharp One-Sided Hardy Uniqueness",
+    "profile": "paper",
+    "bodyFormat": "latex"
+  },
+  "nodes": [
+    {
+      "id": "thm:conditional",
+      "type": "theorem",
+      "number": "1",
+      "title": "Sharp one-sided uniqueness",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Let $T>0$, let $V\\in L^\\infty(\\R^n\\times[0,T];\\C)$, and let $u\\in C([0,T];L^2(\\R^n))$ satisfy, for every $0\\le s\\le t\\le T$,\n\\begin{equation}\\label{eq:duhamel}\nu(t)=e^{i(t-s)\\Delta}u(s)+i\\int_s^t e^{i(t-r)\\Delta}\\bigl(V(r)u(r)\\bigr)\\,dr\\quad\\text{in }L^2(\\R^n).\n\\end{equation}\nPut $x_{1,+}=\\max\\{x_1,0\\}$. Assume that there is $c\\in L^\\infty([0,T];\\C)$ such that\n\\begin{equation}\\label{eq:tail-mod-scalar}\n\\lim_{R\\to\\infty}\\int_0^T\\norm{V(\\cdot,t)-c(t)}_{L^\\infty(\\{x_1>R\\})}\\,dt=0,\n\\end{equation}\nand that, for some $c_0,c_1>0$,\n\\begin{equation}\\label{eq:endpoint-data}\ne^{c_0x_{1,+}^2}u(0),\\qquad e^{c_1x_{1,+}^2}u(T)\\in L^2(\\R^n).\n\\end{equation}\nIf $T^2c_0c_1>1/16$, then $u\\equiv0$ on $\\R^n\\times[0,T]$."
+        },
+        {
+          "kind": "proof",
+          "body": "Lemma~\\ref{lem:gauge} removes the scalar $c(t)$ without changing spatial decay. Lemma~\\ref{lem:appell} transforms to $[-1,1]$ with common exponent $\\mu=\\frac{T}{2}\\sqrt{c_0c_1}$. Condition $T^2c_0c_1>1/16$ is $\\mu>1/8$. Theorem~\\ref{thm:stationary} gives the propagated bound, Theorem~\\ref{thm:verified-iteration} gives $w(x,0)=0$ a.e. on $\\{x_1>0\\}$. Lemma~\\ref{lem:product-halfspace} applied on $[0,1]$ with $A=M$ and $B=a$ gives $w\\equiv0$ once $Ma>\\Gamma^2$. All transformations are invertible, hence $u\\equiv0$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "thm:conditional",
+          "kind": "theorem",
+          "number": "1"
+        }
+      ],
+      "refs": [
+        {
+          "target": "lem:gauge",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:appell",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "thm:stationary",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "thm:verified-iteration",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:product-halfspace",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "lem:gauge",
+      "type": "lemma",
+      "number": "2",
+      "title": "Gauge reduction",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Under the assumptions of Theorem~\\ref{thm:conditional}, define\n\\[\nC(t)=\\int_0^t c(r)\\,dr,\\qquad v(x,t)=e^{-iC(t)}u(x,t),\\qquad W(x,t)=V(x,t)-c(t).\n\\]\nThen $v\\in C([0,T];L^2)$ is a Duhamel solution of $\\partial_tv=i(\\Delta v+Wv)$, $W$ satisfies the tail-zero condition, and for every nonnegative measurable spatial weight $m(x)$, $mu(t)\\in L^2\\Longleftrightarrow mv(t)\\in L^2$."
+        },
+        {
+          "kind": "proof",
+          "body": "Since $c\\in L^\\infty$, $C$ is absolutely continuous. For a.e. $t$, $\\partial_t(e^{-iC}u)=-ic(t)e^{-iC}u+e^{-iC}\\partial_tu=i(\\Delta(e^{-iC}u)+(V-c)e^{-iC}u)$. The gauge factor is bounded above and below by $e^{\\pm T\\norm{\\operatorname{Im}c}_\\infty}$, so multiplication is invertible on every spatially weighted $L^2$ space."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "lem:gauge",
+          "kind": "theorem",
+          "number": "2"
+        }
+      ],
+      "refs": [
+        {
+          "target": "thm:conditional",
+          "relation": "ref",
+          "where": "statement"
+        }
+      ]
+    },
+    {
+      "id": "lem:appell",
+      "type": "lemma",
+      "number": "3",
+      "title": "One-sided Appell normalization",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Assume $c=0$ in the tail condition. There is an invertible composition of parabolic scaling, Appell transformation, time translation, and a second parabolic scaling that maps $u$ to a Duhamel solution $w$ on $\\R^n\\times[-1,1]$ such that $e^{\\mu x_{1,+}^2}w(-1),e^{\\mu x_{1,+}^2}w(1)\\in L^2(\\R^n)$, $\\mu=\\frac{T}{2}\\sqrt{c_0c_1}$. The transformed potential is bounded and has integrably vanishing right tail."
+        },
+        {
+          "kind": "proof",
+          "body": "First apply $U(y,s)=T^{n/4}u(T^{1/2}y,Ts)$ on $[0,1]$, then an Appell transform with $\\beta=(Tc_0)^{-1/2},\\alpha=(Tc_1)^{-1/2}$. Direct differentiation shows first-order terms cancel, preserving the Schr\\\"odinger equation. The weight identity $\\norm{e^{\\gamma x_{1,+}^2}\\widetilde U(\\tau)}_2=\\norm{e^{\\gamma\\rho(\\tau)^2y_{1,+}^2/(\\alpha\\beta)}U(s(\\tau))}_2$ holds exactly. Final scaling $t=2\\tau-1,z=\\sqrt2 x$ gives $\\mu=\\gamma/2=T\\sqrt{c_0c_1}/2$. Tail boundedness follows from positive bounds on $\\rho(\\tau)$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "lem:appell",
+          "kind": "theorem",
+          "number": "3"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "lem:commutator",
+      "type": "lemma",
+      "number": "4",
+      "title": "Verified weighted commutator identity",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Let $\\phi=\\phi(x_1,t)$ be real $C^4$ in $x_1$ and $C^2$ in $t$. For $f=e^\\phi u$, define $S=-2i\\phi_1\\partial_{x_1}-i\\phi_{11}+\\phi_t$, $A=i\\Delta+i\\phi_1^2$. Then $S$ is symmetric, $A$ is skew-symmetric on $C_c^\\infty(\\R^n)$, and\n\\begin{equation}\\label{eq:conjugated-operator}\ne^\\phi(\\partial_t-i\\Delta)e^{-\\phi}f=\\partial_tf-Sf-Af.\n\\end{equation}\nMoreover,\n\\begin{align}\\label{eq:commutator-form}\n\\langle(S_t+[S,A])f,f\\rangle={}&4\\int_{\\R^n}\\phi_{11}|\\partial_{x_1}f|^2\\,dx+4\\int_{\\R^n}\\phi_{11}\\phi_1^2|f|^2\\,dx\\notag\\\\\n&-\\int_{\\R^n}\\phi_{1111}|f|^2\\,dx+\\int_{\\R^n}\\phi_{tt}|f|^2\\,dx+4\\operatorname{Im}\\int_{\\R^n}\\phi_{1t}\\partial_{x_1}f\\,\\overline f\\,dx.\\notag\n\\end{align}\nThe transverse Laplacian contributes nothing to the commutator."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "lem:commutator",
+          "kind": "theorem",
+          "number": "4"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "lem:fourier-transport",
+      "type": "lemma",
+      "number": "5",
+      "title": "Fourier commutators and signed transport",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Use the Fourier transform on $\\R^n$. Let $P_\\pm$ be the orthogonal Fourier projections with symbols $\\one_{\\{\\pm\\xi_1>0\\}}$. Let $m\\in C_c^\\infty(\\R^n)$, $M_\\varepsilon$ have symbol $m(\\varepsilon\\xi)$, and put $Q_{\\varepsilon,\\pm}=M_\\varepsilon P_\\pm$. Suppose $a=a(x_1)$ is real bounded, $a'\\in C_c^\\infty(\\R)$. Then\n\\begin{align}\n\\norm{[Q_{\\varepsilon,\\pm},a]\\partial_{x_1}f}_2+\\norm{\\partial_{x_1}[Q_{\\varepsilon,\\pm},a]f}_2\\le C_m\\norm{\\widehat{a'}}_{L^1(\\R)}\\norm f_2.\\label{eq:fourier-commutator}\n\\end{align}\nIf $a\\ge0$, then $\\operatorname{Im}\\langle Q_{\\varepsilon,+}(a^2\\partial_{x_1}f),Q_{\\varepsilon,+}f\\rangle\\ge -C_a\\norm f_2^2$ and $\\operatorname{Im}\\langle Q_{\\varepsilon,-}(a^2\\partial_{x_1}f),Q_{\\varepsilon,-}f\\rangle\\le C_a\\norm f_2^2$. For real bounded $b$,\n\\begin{equation}\\label{eq:skew-transport}\n|\\operatorname{Re}\\langle Q_{\\varepsilon,\\pm}(b\\partial_{x_1}f),Q_{\\varepsilon,\\pm}f\\rangle|\\le C_m(\\norm{b'}_\\infty+\\norm{\\widehat{b'}}_1)\\norm f_2^2.\n\\end{equation}"
+        }
+      ],
+      "anchors": [
+        {
+          "id": "lem:fourier-transport",
+          "kind": "theorem",
+          "number": "5"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "lem:linear-exponential",
+      "type": "lemma",
+      "number": "6",
+      "title": "Fixed-slope linear exponential propagation",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Let $u\\in C([0,1];L^2(\\R^n))$ satisfy $i\\partial_tu+\\Delta u=Vu+H$ in the Duhamel sense, where $V\\in L^1([0,1];L^\\infty)$, $H\\in L^1([0,1];L^2)$. There exists $\\varepsilon_n>0$ such that if $\\norm V_{L^1_tL^\\infty_x}\\le\\varepsilon_n$ and for one fixed $\\beta>0$, $e^{\\beta x_1}u(0),e^{\\beta x_1}u(1),e^{\\beta x_1}H\\in L^2$ (resp. $L^1_tL^2_x$), then\n\\begin{equation}\\label{eq:linear-exponential-bound}\n\\sup_{0\\le t\\le1}\\norm{e^{\\beta x_1}u(t)}_2\\le C_n(\\norm{e^{\\beta x_1}u(0)}_2+\\norm{e^{\\beta x_1}u(1)}_2+\\norm{e^{\\beta x_1}H}_{L^1_tL^2_x}).\n\\end{equation}\nThe constant $C_n$ is independent of $\\beta$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "lem:linear-exponential",
+          "kind": "theorem",
+          "number": "6"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "lem:tail-exponential",
+      "type": "lemma",
+      "number": "7",
+      "title": "Right-tail exponential propagation",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Let $u\\in C([0,1];L^2(\\R^n))$ solve $i\\partial_tu+\\Delta u=Vu$ in the Duhamel sense, where $V\\in L^\\infty$ and $\\lim_{R\\to\\infty}\\int_0^1\\norm{V(\\cdot,t)}_{L^\\infty(\\{x_1>R\\})}\\,dt=0$. If $e^{\\beta x_1}u(0),e^{\\beta x_1}u(1)\\in L^2$, then $\\sup_{0\\le t\\le1}\\norm{e^{\\beta x_1}u(t)}_2<\\infty$."
+        },
+        {
+          "kind": "proof",
+          "body": "Choose $R$ so large that $V_{\\mathrm{tail}}=V\\one_{\\{x_1>R\\}}$ satisfies $\\norm{V_{\\mathrm{tail}}}_{L^1_tL^\\infty_x}\\le\\varepsilon_n$. Write $i\\partial_tu+\\Delta u=V_{\\mathrm{tail}}u+H_R$ with $H_R=V\\one_{\\{x_1\\le R\\}}u$. On the support, $e^{\\beta x_1}\\le e^{\\beta R}$. Lemma~\\ref{lem:linear-exponential} with $V_{\\mathrm{tail}}$ as small potential and $H_R$ as forcing proves the assertion."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "lem:tail-exponential",
+          "kind": "theorem",
+          "number": "7"
+        }
+      ],
+      "refs": [
+        {
+          "target": "lem:linear-exponential",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "lem:SA-logconv",
+      "type": "lemma",
+      "number": "8",
+      "title": "Verified S/A logarithmic convexity",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Let $J=[c,d]$, let $S(t)$ be symmetric and $A(t)$ skew-symmetric on a common dense domain in $L^2$, and let $f$ be smooth domain-valued. Put $H=\\norm f_2^2$, $D=\\langle Sf,f\\rangle$, $E=\\partial_tf-Sf-Af$. Assume $\\langle(S_t+[S,A])f,f\\rangle\\ge-\\kappa H$ for $\\kappa\\ge0$. For $\\varepsilon>0$, let $M_\\varepsilon$ solve $M_\\varepsilon''=-\\norm E_2^2/(H+\\varepsilon)$, $M_\\varepsilon(c)=M_\\varepsilon(d)=0$, and set $N_\\varepsilon=\\int_c^d|\\operatorname{Re}\\langle E,f\\rangle|/(H+\\varepsilon)\\,dt$. Then\n\\begin{equation}\\label{eq:abstract-logconv-output}\nH(t)+\\varepsilon\\le(H(c)+\\varepsilon)^{\\vartheta(t)}(H(d)+\\varepsilon)^{1-\\vartheta(t)}\\exp\\{\\kappa(t-c)(d-t)+M_\\varepsilon(t)+2N_\\varepsilon\\}.\n\\end{equation}\nIf $E=iVf$ with $V\\in L^\\infty$, then $0\\le M_\\varepsilon(t)\\le(d-c)^2\\norm V_\\infty^2/8$, $N_\\varepsilon\\le(d-c)\\norm V_\\infty$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "lem:SA-logconv",
+          "kind": "theorem",
+          "number": "8"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "lem:weighted-SA-logconv",
+      "type": "lemma",
+      "number": "9",
+      "title": "Weighted-time S/A logarithmic convexity",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Under the notation of Lemma~\\ref{lem:SA-logconv}, let $\\gamma\\in C^1([c,d])$ be positive and assume $\\langle(\\gamma S_t+\\gamma[S,A]+\\gamma'S)f,f\\rangle\\ge-\\psi(t)H(t)$ with $\\psi\\ge0$. Let $T,M_\\varepsilon$ be zero-boundary solutions $(\\gamma T')'=-\\psi$, $(\\gamma M_\\varepsilon')'=-\\gamma\\norm E_2^2/(H+\\varepsilon)$. Put $\\Theta(t)=\\int_t^d\\gamma^{-1}/\\int_c^d\\gamma^{-1}$. Then\n\\begin{equation}\\label{eq:weighted-SA-output}\nH(t)+\\varepsilon\\le(H(c)+\\varepsilon)^{\\Theta(t)}(H(d)+\\varepsilon)^{1-\\Theta(t)}\\exp\\{2T(t)+M_\\varepsilon(t)+2N_\\varepsilon\\}.\n\\end{equation}"
+        },
+        {
+          "kind": "proof",
+          "body": "From $H'=2D+2e$, $D'=\\langle(S_t+[S,A])f,f\\rangle+2\\norm{Sf}_2^2+2\\operatorname{Re}\\langle E,Sf\\rangle$, one computes $\\partial_t[\\gamma((\\log h)'-2e/h)]$. The commutator contribution is $\\frac{2}{h}\\langle(\\gamma S_t+\\gamma[S,A]+\\gamma'S)f,f\\rangle$. Completing squares gives $\\ge-2\\psi-\\gamma\\norm E_2^2/h$. With $G=\\log h-2T-M_\\varepsilon$, the function $\\gamma(G'-2e/h)$ is nondecreasing. Integration over $[c,t]\\times[t,d]$ after multiplying by $\\gamma^{-1}$ yields the log-convexity inequality."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "lem:weighted-SA-logconv",
+          "kind": "theorem",
+          "number": "9"
+        }
+      ],
+      "refs": [
+        {
+          "target": "lem:SA-logconv",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "lem:SA-logconv",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "lem:graph-closure",
+      "type": "lemma",
+      "number": "10",
+      "title": "Strict-loss weighted graph closure",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Let $J\\subset\\R$ be bounded open, $P=\\partial_t-i\\Delta-iV$ with $V\\in L^\\infty$, $u\\in C(J;L^2)$ satisfy $Pu=0$ in distributions. Let $\\Phi=\\Phi(x_1,t)\\ge0$ be smooth with $|\\partial_t\\Phi|+|\\partial_{x_1}\\Phi|\\le C_{J_0}(1+|x_1|)$, $c_{J_0}x_{1,+}-C_{J_0}\\le\\Phi\\le C_{J_0}(1+x_{1,+}^2)$ on every $J_0\\Subset J$. Assume $\\sup_{t\\in J}\\norm{e^\\Phi u(t)}_2<\\infty$. Then for every $0<\\delta<1$ and $J'\\Subset J$, there are $u_j\\in C_c^\\infty(\\R^n\\times J)$ such that $e^{(1-\\delta)\\Phi}(u_j-u)\\to0$ in $C(J';L^2)$ and $e^{(1-\\delta)\\Phi}Pu_j\\to0$ in $L^2(J'\\times\\R^n)$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "lem:graph-closure",
+          "kind": "theorem",
+          "number": "10"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "thm:stationary",
+      "type": "theorem",
+      "number": "11",
+      "title": "Verified stationary one-sided propagation",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Let $u\\in C([-1,1];L^2(\\R^n))$ satisfy $\\partial_tu=i(\\Delta u+Vu)$ in the Duhamel sense, where $V\\in L^\\infty$ has integrably vanishing right tail. Suppose $e^{\\mu x_{1,+}^2}u(-1),e^{\\mu x_{1,+}^2}u(1)\\in L^2$ for some $\\mu>0$. There is a smooth convex $q:\\R\\to[0,\\infty)$ with $q(r)=0\\ (r\\le0)$, $q(r)=r^2\\ (r\\ge1)$, such that for every $0<a<\\mu$,\n\\begin{equation}\\label{eq:verified-stationary-bound}\n\\sup_{-1\\le t\\le1}\\norm{e^{aq(x_1)}u(t)}_2<\\infty.\n\\end{equation}\nMoreover, for every compact $I\\Subset(-1,1)$, $\\int_I\\int_{\\{x_1>1\\}}e^{2ax_1^2}(|\\partial_{x_1}u|^2+x_1^2|u|^2)\\,dx\\,dt<\\infty$."
+        },
+        {
+          "kind": "proof",
+          "body": "Construct $q$ with $q''$ a smooth bump satisfying moment conditions $\\int_0^1 q''=2$, $\\int_0^1(1-s)q''(s)\\,ds=1$. Truncate curvature via $q_R''(r)=q''(r)\\eta(r/R)$, making $q_R$ convex affine on $[2R,\\infty)$. Lemma~\\ref{lem:tail-exponential} gives $\\sup_{[-1,1]}\\norm{e^{a_1q_R}u(t)}_2<\\infty$ for each $R$. Lemma~\\ref{lem:commutator} yields $\\langle(S_t+[S,A])f,f\\rangle\\ge-\\kappa_a\\norm f_2^2$ uniformly in $R$. Lemma~\\ref{lem:graph-closure} provides smooth approximants. Lemma~\\ref{lem:SA-logconv} gives interior log-convexity. Moving endpoints via strict weighted trace and Fatou's lemma proves the uniform bound. Keeping positive commutator terms gives the gradient estimate."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "thm:stationary",
+          "kind": "theorem",
+          "number": "11"
+        }
+      ],
+      "refs": [
+        {
+          "target": "lem:tail-exponential",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:commutator",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:graph-closure",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:SA-logconv",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "lem:algebraic-recursion",
+      "type": "lemma",
+      "number": "12",
+      "title": "Verified algebraic Gaussian recursion",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "For positive smooth $a$, put $c=a^{-1/2}$ and $F(a)=\\frac1a(a''-3(a')^2/(2a)+32a^3)$. Then $F(a)=\\frac2c(16c^{-3}-c'')$. Fix $\\mu>0$. Suppose $a_k=c_k^{-2}$ is positive even on $[-1,1]$, $a_k(\\pm1)=\\mu$, $a_k$ nonincreasing on $[0,1]$, $F(a_k)>0$. Let $b_k$ solve $b_k''=-2c_k(16c_k^{-3}-c_k''),\\ b_k(\\pm1)=0$. Then $b_k$ is even, strictly positive on $(-1,1)$, nonincreasing on $[0,1]$. If $1-a_kb_k>0$ and $a_{k+1}=a_k/(1-a_kb_k)$, $c_{k+1}=(c_k^2-b_k)^{1/2}$, then $a_{k+1}$ has all the same structural properties. Moreover,\n\\begin{equation}\\label{eq:verified-weighted-identity}\n\\frac1\\mu=c_{k+1}(0)^2+\\int_0^1(1-t)(32a_k(t)+2(c_k'(t))^2)\\,dt.\n\\end{equation}\nStarting with $a_1\\equiv\\mu$, if the iteration is infinite and $\\sup_ka_k(0)<\\infty$, then $\\mu\\le1/8$."
+        },
+        {
+          "kind": "proof",
+          "body": "Direct differentiation verifies $F(a)=\\frac2c(16c^{-3}-c'')$. Evenness of $b_k$ follows from the ODE; strict concavity ($b_k''<0$) gives positivity inside and $b_k'\\le0$ on $[0,1]$. Equality of the two forms of recursion follows from $c_{k+1}^2=c_k^2-b_k$. The ODE rewrite $b_k''=(c_k^2)''-(32c_k^{-2}+2(c_k')^2)$ gives $g_k''=32c_k^{-2}+2(c_k')^2$ for $g_k=c_{k+1}^2$, and integration yields the weighted identity. For infinite bounded iteration, Arzel\\`a--Ascoli gives $c_k\\to c$ in $C^1$, leading to ODE $c''=16c^{-3}$ with solution $c(t)^2=\\frac4R(1+R^2t^2)$, whence $\\mu=c(1)^{-2}=R/(4(1+R^2))\\le1/8$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "lem:algebraic-recursion",
+          "kind": "theorem",
+          "number": "12"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "lem:moving-gaussian",
+      "type": "lemma",
+      "number": "13",
+      "title": "Verified moving one-sided Gaussian completion",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "There is a smooth convex $Q:\\R\\to[0,\\infty)$ with $Q(y)=0\\ (y\\le0)$, $Q(y)=y^2-C_Q\\ (y\\ge1)$, $0\\le Q'(y)/y\\le2$, and $D_Q=4Q''(Q')^2-Q''''-16yQ'$ supported in $[0,1]$. Let $a,b$ be smooth real, $a>0$, $\\xi\\ge0$, put $y=\\sqrt a(x_1+b\\xi)$, $\\phi=Q(y)$, $\\gamma=a^{-1}$. For the operators $S,A$ of Lemma~\\ref{lem:commutator},\n\\begin{align}\\label{eq:moving-gaussian-completion}\n\\langle(\\gamma S_t+\\gamma[S,A]+\\gamma'S)f,f\\rangle={}&4\\int Q''(y)|-i\\partial_{x_1}f+\\frac{y_t}{2\\sqrt a}f|^2\\,dx\\notag\\\\\n&+\\int\\Bigl[aD_Q+\\frac{F(a)}{2a}yQ'+\\frac{b''\\xi}{\\sqrt a}Q'\\Bigr]|f|^2\\,dx.\n\\end{align}\nIf $F(a)>0$, then $\\langle(\\gamma S_t+\\gamma[S,A]+\\gamma'S)f,f\\rangle\\ge-(|b''|^2\\xi^2/F(a)+K_Qa)\\norm f_2^2$. Assuming additionally that $a,b$ are even, $a$ nonincreasing on $[0,1]$, $c=a^{-1/2}$, $b''=-2c(16c^{-3}-c'')$, $b(\\pm1)=0$, and $T$ solves $(a^{-1}T')'=-|b''|^2/F(a)$, then $0\\le T(t)\\le b(t)$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "lem:moving-gaussian",
+          "kind": "theorem",
+          "number": "13"
+        }
+      ],
+      "refs": [
+        {
+          "target": "lem:commutator",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "thm:stationary",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "prop:shifted-gaussian",
+      "type": "proposition",
+      "number": "14",
+      "title": "Verified shifted one-sided Gaussian estimate",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Let $u\\in C([-1,1];L^2(\\R^n))$ be a Duhamel solution of $\\partial_tu=i(\\Delta u+Vu)$, $V\\in L^\\infty$. Let $a,b\\in C^\\infty([-1,1])$ be even, $a>0$ nonincreasing on $[0,1]$, $a(\\pm1)=\\mu$, $b(\\pm1)=0$, $F(a)>0$. Suppose $\\sup_{[-1,1]}\\norm{e^{(a(t)-\\eta)x_{1,+}^2}u(t)}_2<\\infty$ for every $0<\\eta<\\min a$, and $E_\\mu=\\norm{e^{\\mu x_{1,+}^2}u(-1)}_2+\\norm{e^{\\mu x_{1,+}^2}u(1)}_2<\\infty$. Let $T$ be the zero-boundary solution $(a^{-1}T')'=-|b''|^2/F(a)$. Then for every $\\xi\\ge0$,\n\\begin{equation}\\label{eq:verified-shifted-estimate}\n\\norm{e^{a(t)(x_1+b(t)\\xi)_+^2}u(t)}_2^2\\le C_*e^{2T(t)\\xi^2},\\qquad -1\\le t\\le1,\n\\end{equation}\nwhere $C_*$ depends only on $E_\\mu$, $\\norm V_\\infty$, $Q$, and $\\int_0^1a$."
+        },
+        {
+          "kind": "proof",
+          "body": "For $0<\\lambda<1$ set $a_\\lambda=\\lambda a$, $\\phi_\\lambda=Q(\\sqrt{a_\\lambda}(x_1+b\\xi))$. The strict invariant supplies the stronger weighted norm. Lemma~\\ref{lem:graph-closure} provides compactly supported smooth approximants. Lemma~\\ref{lem:moving-gaussian} gives the weighted commutator lower bound. Define $T_\\lambda,R_\\lambda$ by zero-boundary ODEs; uniform bounds via Green functions: $R_\\lambda\\le\\frac{K_Q}{2}(\\int_0^1 a_\\lambda)^2$, potential error $\\le\\frac12\\norm V_\\infty^2$. Lemma~\\ref{lem:weighted-SA-logconv} yields the interior estimate. Endpoint passage uses two-scale phase gap and ordinary $L^2$-continuity. Let $\\lambda\\uparrow1$, apply Fatou, and absorb $B_Q=\\sup(y_+^2-Q)$ to obtain the claimed estimate."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "prop:shifted-gaussian",
+          "kind": "theorem",
+          "number": "14"
+        }
+      ],
+      "refs": [
+        {
+          "target": "lem:graph-closure",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:moving-gaussian",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:weighted-SA-logconv",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "thm:stationary",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "thm:verified-iteration",
+      "type": "theorem",
+      "number": "15",
+      "title": "Verified sharp one-sided iteration",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Let $q$ be the weight constructed in Theorem~\\ref{thm:stationary}. Let $u\\in C([-1,1];L^2(\\R^n))$ be a Duhamel solution of $\\partial_tu=i(\\Delta u+Vu)$, $V\\in L^\\infty$. If $\\mu>1/8$ and $\\sup_{[-1,1]}\\norm{e^{\\mu q(x_1)}u(t)}_2<\\infty$, then $u(x,0)=0$ for almost every $x\\in\\{x_1>0\\}$."
+        },
+        {
+          "kind": "proof",
+          "body": "From $|q(r)-r_+^2|<\\infty$, the hypothesis implies $\\sup\\norm{e^{\\mu x_{1,+}^2}u(t)}_2<\\infty$. Start recursion with $a_1\\equiv\\mu$, $b_k$ solving $b_k''=-2c_k(16c_k^{-3}-c_k'')$. Proposition~\\ref{prop:shifted-gaussian} and Lemma~\\ref{lem:moving-gaussian} give $\\norm{e^{a_k(t)(x_1+b_k(t)\\xi)_+^2}u(t)}_2^2\\le C_ke^{2b_k(t)\\xi^2}$. If $a_k(0)b_k(0)\\ge1$, the exponent at $t=0$ tends to $+\\infty$ as $\\xi\\to\\infty$, forcing $u(x,0)=0$ on $\\{x_1>0\\}$. Otherwise $1-a_kb_k>0$ and $a_{k+1}=a_k/(1-a_kb_k)$ is defined. The weighted identity bounds $\\int_0^1 a_k\\le1/(16\\mu)$, giving a uniform $C_*$. Integration over $\\xi$ with strict loss propagates the invariant to $k+1$. If recursion is infinite and $\\sup a_k(0)<\\infty$, Lemma~\\ref{lem:algebraic-recursion} gives $\\mu\\le1/8$, contradiction. Hence $a_k(0)\\to\\infty$, forcing $\\int_{\\{x_1>\\delta\\}}|u(x,0)|^2\\le C_*e^{-2a_k(0)\\delta^2}\\to0$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "thm:verified-iteration",
+          "kind": "theorem",
+          "number": "15"
+        }
+      ],
+      "refs": [
+        {
+          "target": "thm:stationary",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "lem:algebraic-recursion",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "prop:shifted-gaussian",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:moving-gaussian",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "lem:moving-quadratic-carleman",
+      "type": "lemma",
+      "number": "16",
+      "title": "Verified moving quadratic Carleman estimate",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Let $R>0$, $x_0\\in\\R$, $\\varphi\\in C^2([0,1];\\R)$, put $z(x,t)=(x_1-x_0)/R+\\varphi(t)$, $M_1=\\norm{\\varphi'}_\\infty$, $M_2=\\norm{\\varphi''}_\\infty$. If $g\\in C_c^\\infty(\\R^n\\times(0,1))$, $\\operatorname{supp}g\\subset\\{|z|\\ge1\\}$, and $\\alpha>0$, $\\alpha^2/R^4\\ge(M_2+3M_1^2)/4$, then\n\\begin{equation}\\label{eq:moving-quadratic-carleman}\n\\frac{\\alpha^{3/2}}{R^2}\\norm{e^{\\alpha z^2}g}_{L^2}\\le\\frac1{2\\sqrt2}\\norm{e^{\\alpha z^2}(i\\partial_t+\\Delta)g}_{L^2}.\n\\end{equation}"
+        },
+        {
+          "kind": "proof",
+          "body": "Set $f=e^{\\alpha z^2}g$. Conjugation gives $e^{\\alpha z^2}(i\\partial_t+\\Delta)g=S_\\alpha f-4\\alpha A_\\alpha f$ where $S_\\alpha=i\\partial_t+\\Delta+4\\alpha^2z^2/R^2$, $A_\\alpha=zR^{-1}\\partial_{x_1}+(2R^2)^{-1}+i\\varphi'z/2$. Both are self-adjoint/skew-adjoint. Expansion gives $\\norm{S_\\alpha f-4\\alpha A_\\alpha f}_2^2\\ge-4\\alpha\\langle[S_\\alpha,A_\\alpha]f,f\\rangle$. Computing the commutator yields $[S_\\alpha,A_\\alpha]=2R^{-2}\\partial_{x_1}^2-8\\alpha^2R^{-4}z^2-(\\varphi''z+(\\varphi')^2)/2+2i\\varphi'R^{-1}\\partial_{x_1}$. Using $\\langle\\partial_{x_1}^2f,f\\rangle=-\\norm{\\partial_{x_1}f}_2^2$ and Cauchy--Schwarz, the condition on $\\alpha^2/R^4$ absorbs all negative terms, leaving $\\ge8\\alpha^3R^{-4}\\norm f_2^2$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "lem:moving-quadratic-carleman",
+          "kind": "theorem",
+          "number": "16"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "thm:right-strip-elimination",
+      "type": "theorem",
+      "number": "17",
+      "title": "Verified quantitative right-strip elimination",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "There is a numerical constant $\\Lambda<\\infty$ with the following property. Let $u\\in C([0,1];L^2(\\R^n))$ be a Duhamel solution of $\\partial_tu=i(\\Delta u+Vu)$, $V\\in L^\\infty$. Assume $\\partial_{x_1}u$ is locally $L^2$ on $\\{x_1>1\\}\\times(0,1)$ and for some $\\sigma>\\Lambda$,\n\\begin{align}\\label{eq:right-strip-hypothesis}\nK_\\sigma^2:={}&\\sup_{0\\le t\\le1}\\int_{\\{x_1>1\\}}e^{2\\sigma x_1^2}|u(x,t)|^2\\,dx\\notag\\\\\n&+\\int_{1/32}^{31/32}\\int_{\\{x_1>1\\}}e^{2\\sigma x_1^2}(|u|^2+|\\partial_{x_1}u|^2)\\,dx\\,dt<\\infty.\n\\end{align}\nThen $u=0$ a.e. on $\\{x_1>2\\}\\times(3/8,5/8)$. The constant $\\Lambda$ is independent of $n,V,u,K_\\sigma$."
+        },
+        {
+          "kind": "proof",
+          "body": "Extend Lemma~\\ref{lem:moving-quadratic-carleman} to graph domain via Fourier in $x'$, mollification, and $J_\\nu=(1-\\nu\\Delta_{x'})^{-1}$. Fix cutoffs $\\rho,\\chi,\\eta$ and define $\\varphi_R$, $z_R$, $\\theta_R$, $\\eta_R$. Choose $\\kappa$ with $\\kappa^2\\ge(M_2+3M_1^2)/4$, set $\\alpha=\\kappa R^2$, $\\Lambda=3\\kappa$. Define $g_R=\\theta_R\\eta_R(z_R)u$. The Carleman left side is $\\ge c_0\\kappa^{3/2}RBe^{\\alpha(1+1/R)^2}$. The cutoff expansion gives potential, $\\theta_R'$, and $\\eta_R'$ errors. The exponential gap $\\alpha[(1+1/R)^2-(1+1/(2R))^2]=\\kappa R+3\\kappa/4$ absorbs the $\\eta_R$ error. This yields $\\delta(R)\\ge c_Be^{-6\\kappa R^2}$ contradicting the hypothesis bound $\\delta(R)\\le K_\\sigma^2e^{-2\\sigma(R-1)^2}$ when $\\sigma>3\\kappa$. Translation of the argument to $u_m(y,t)=u(y_1+m,y',t)$ covers all $x_1>2$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "thm:right-strip-elimination",
+          "kind": "theorem",
+          "number": "17"
+        }
+      ],
+      "refs": [
+        {
+          "target": "lem:moving-quadratic-carleman",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "lem:lateral-propagation",
+      "type": "lemma",
+      "number": "18",
+      "title": "Verified lateral propagation across a hyperplane",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Let $J\\subset\\R$ be open, $u\\in C(J;L^2(\\R^n))$, $V\\in L^\\infty$, and $(i\\partial_t+\\Delta)u=-Vu$ in distributions. Assume slab-local derivative condition $\\int_{J_0}\\int_{I\\times\\R^{n-1}}|\\partial_{x_1}u|^2<\\infty$, and $u=0$ a.e. on $\\{x_1>a\\}\\times J$. If $J'\\Subset J$ and $R>0$, then $u=0$ a.e. on $\\{x_1>a-R/2\\}\\times J'$."
+        },
+        {
+          "kind": "proof",
+          "body": "Choose $\\tau\\in C_c^\\infty(J)$, $\\varphi\\in C^\\infty(J)$ with $\\tau=1$ on $J''$, $\\varphi=6$ on $J''$, $\\varphi=4$ on $\\operatorname{supp}\\tau'$. Set $y=(x_1-a)/R$, $z=y+\\varphi(t)$, $g=\\chi(y)\\tau(t)u$. On the target region $\\{a-R/2<x_1<a\\}\\times J'$, one has $z\\ge11/2$. The Carleman estimate from Lemma~\\ref{lem:moving-quadratic-carleman} applies via the graph extension from Theorem~\\ref{thm:right-strip-elimination}. The cutoff errors are supported in regions with $2<z<5$, giving smaller exponential growth. Dividing by $e^{(121/4)\\alpha}$ and letting $\\alpha\\to\\infty$ forces vanishing on the target region."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "lem:lateral-propagation",
+          "kind": "theorem",
+          "number": "18"
+        }
+      ],
+      "refs": [
+        {
+          "target": "lem:moving-quadratic-carleman",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "thm:right-strip-elimination",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "thm:equal-rate-elimination",
+      "type": "theorem",
+      "number": "19",
+      "title": "Verified equal-rate full-space elimination",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "There is a numerical constant $\\Gamma=\\Lambda<\\infty$ such that the following holds in every dimension. Let $v\\in C([0,1];L^2(\\R^n))$ be a Duhamel solution of $\\partial_tv=i(\\Delta v+Vv)$, where $V\\in L^\\infty$ has integrably vanishing right tail. If $e^{\\gamma x_{1,+}^2}v(0),e^{\\gamma x_{1,+}^2}v(1)\\in L^2$, $\\gamma>\\Gamma$, then $v\\equiv0$."
+        },
+        {
+          "kind": "proof",
+          "body": "Choose $\\Lambda<\\sigma<\\gamma$. Rescale to $[-1,1]$ via $U(y,s)=2^{-n/4}v(y/\\sqrt2,(s+1)/2)$ giving endpoint exponent $\\gamma/2$. Theorem~\\ref{thm:stationary} with $a=\\sigma/2<\\gamma/2$ yields the hypothesis for Theorem~\\ref{thm:right-strip-elimination}, which gives $v=0$ on $\\{x_1>2\\}\\times(3/8,5/8)$. For local derivative regularity, apply Theorem~\\ref{thm:stationary} to translated copies $v_A(y,t)=v(y_1+A,y',t)$ with $\\sigma_A<\\gamma$ and use $\\sigma_Ay_{1,+}^2\\le\\gamma(y_1+A)_+^2+C_A$. Lemma~\\ref{lem:lateral-propagation} propagates vanishing leftward by $1/2$ at each step, covering all half-spaces. At $t=1/2$, monotone convergence gives $\\norm{v(1/2)}_2=0$. Gronwall's inequality forward and backward gives $v\\equiv0$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "thm:equal-rate-elimination",
+          "kind": "theorem",
+          "number": "19"
+        }
+      ],
+      "refs": [
+        {
+          "target": "thm:stationary",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "thm:right-strip-elimination",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:lateral-propagation",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "lem:product-halfspace",
+      "type": "lemma",
+      "number": "20",
+      "title": "Exact product-form reduction",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Let $s_0<s_1$, $L=s_1-s_0$, and let $v$ be a full-space Duhamel solution on $[s_0,s_1]$ whose bounded potential has integrably vanishing right tail. If $e^{Ax_{1,+}^2}v(s_0),e^{Bx_{1,+}^2}v(s_1)\\in L^2$ for $A,B>0$, then $L^2AB>\\Gamma^2\\Longrightarrow v\\equiv0$."
+        },
+        {
+          "kind": "proof",
+          "body": "Translate $s_0$ to $0$ and apply unitary parabolic scaling $U(y,\\tau)=L^{n/4}v(L^{1/2}y,s_0+L\\tau)$. Endpoint exponents become $LA,LB$. Put $\\beta=(LA)^{-1/2},\\alpha=(LB)^{-1/2}$ and apply the Appell transform from Lemma~\\ref{lem:appell}. The norm identity gives common endpoint exponent $\\gamma=(\\alpha\\beta)^{-1}=L\\sqrt{AB}$. The tail calculation from Lemma~\\ref{lem:appell} applies verbatim. Theorem~\\ref{thm:equal-rate-elimination} gives vanishing when $L\\sqrt{AB}>\\Gamma$, i.e. $L^2AB>\\Gamma^2$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "lem:product-halfspace",
+          "kind": "theorem",
+          "number": "20"
+        }
+      ],
+      "refs": [
+        {
+          "target": "lem:appell",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "thm:equal-rate-elimination",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "prop:endpoint",
+      "type": "proposition",
+      "number": "21",
+      "title": "Explicit endpoint counterexample",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "For every $n\\ge1$, the constant $1/16$ in the threshold cannot be replaced by a smaller constant under the hypotheses of Theorem~\\ref{thm:conditional}. Whenever $T^2c_0c_1=1/16$, there are a nonzero smooth solution and a smooth bounded complex potential satisfying the tail condition with $c=0$ and the endpoint conditions."
+        },
+        {
+          "kind": "proof",
+          "body": "Construct on $[-1,1]$: for $k>n/2$, $z=1+it$, $s=|x|^2$, define $u_k(x,t)=z^{2k-n/2}(1+s)^{-k}\\exp(-s/(4z))$ and $V_k(x,t)=\\frac1{1+s}(2k/z+2kn-4k(k+1)s/(1+s))$. Write $u_k=e^L$ and verify $-i\\partial_tL-\\Delta u_k/u_k=V_k$. Then $|V_k|\\le C/(1+|x|^2)$, so $V_k$ is bounded with integrably vanishing right tail. At $t=\\pm1$, $|u_k|\\le C(1+|x|^2)^{-k}e^{-|x|^2/8}$, so $e^{x_{1,+}^2/8}u_k(\\pm1)\\in L^2$. Interval length $2$ and exponents $1/8$ give $2^2(1/8)^2=1/16$. For arbitrary $T,c_0,c_1$ with $T^2c_0c_1=1/16$, apply the inverse of Lemma~\\ref{lem:appell}'s transformations."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "prop:endpoint",
+          "kind": "theorem",
+          "number": "21"
+        }
+      ],
+      "refs": [
+        {
+          "target": "thm:conditional",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "lem:appell",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "thm:audit",
+      "type": "theorem",
+      "number": "22",
+      "title": "Audit of the supplied proof",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "The supplied file does not by itself contain a self-contained proof of the unconditional conclusion in Theorem~\\ref{thm:conditional}. The independent arguments in the present file discharge every missing obligation and prove that conclusion."
+        },
+        {
+          "kind": "proof",
+          "body": "Gauge and Appell reductions are proved directly; Proposition~\\ref{prop:endpoint} verifies endpoint sharpness. Obligation (P): Lemmas~\\ref{lem:graph-closure},~\\ref{lem:fourier-transport},~\\ref{lem:linear-exponential},~\\ref{lem:tail-exponential},~\\ref{lem:SA-logconv}, Theorem~\\ref{thm:stationary} fully discharge the stationary propagation step. Obligation (I): Lemmas~\\ref{lem:algebraic-recursion},~\\ref{lem:commutator},~\\ref{lem:weighted-SA-logconv},~\\ref{lem:moving-gaussian}, Proposition~\\ref{prop:shifted-gaussian}, Theorem~\\ref{thm:verified-iteration} fully discharge the sharp iteration. Obligation (E): Lemma~\\ref{lem:product-halfspace}, Lemma~\\ref{lem:moving-quadratic-carleman}, Theorem~\\ref{thm:right-strip-elimination}, Lemma~\\ref{lem:lateral-propagation}, Theorem~\\ref{thm:equal-rate-elimination} fully discharge the elimination step. The independent algebraic recursion in Lemma~\\ref{lem:algebraic-recursion} and the original Carleman estimate in Lemma~\\ref{lem:moving-quadratic-carleman} correct formulas (8.7) and (5.17) of \\cite{EKPV2010} resp. \\cite{EKPV2012}."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "thm:audit",
+          "kind": "theorem",
+          "number": "22"
+        }
+      ],
+      "refs": [
+        {
+          "target": "thm:conditional",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "prop:endpoint",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:graph-closure",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:fourier-transport",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:linear-exponential",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:tail-exponential",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:SA-logconv",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "thm:stationary",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:algebraic-recursion",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:commutator",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:weighted-SA-logconv",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:moving-gaussian",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "prop:shifted-gaussian",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "thm:verified-iteration",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:product-halfspace",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:moving-quadratic-carleman",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "thm:right-strip-elimination",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "lem:lateral-propagation",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "thm:equal-rate-elimination",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "cite:EKPV2010",
+          "relation": "cite",
+          "where": "proof"
+        },
+        {
+          "target": "cite:EKPV2012",
+          "relation": "cite",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "cite:EKPV2010",
+      "type": "bib",
+      "number": "[1]",
+      "title": "",
+      "sections": [],
+      "anchors": [
+        {
+          "id": "cite:EKPV2010",
+          "kind": "theorem",
+          "number": "[1]"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "cite:EKPV2012",
+      "type": "bib",
+      "number": "[2]",
+      "title": "",
+      "sections": [],
+      "anchors": [
+        {
+          "id": "cite:EKPV2012",
+          "kind": "theorem",
+          "number": "[2]"
+        }
+      ],
+      "refs": []
+    }
+  ]
+}
