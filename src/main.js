@@ -266,21 +266,32 @@ function startMain(db, project) {
   };
 
   const state = initialState;
-  // 等首帧布局后再恢复，保证坐标可用（恢复期间不记录撤销）
+  // 渐进恢复已展开卡片（恢复期间不记录撤销）：
+  // 布局在构造时已预热稳定，首帧后即逐帧加入卡片——卡片几乎紧随节点出现，
+  // 多卡片分帧渲染避免一次性卡顿，配合 CSS 淡入消除"先节点、稍后突变出卡片"的跳变。
   ctx._restoring = true;
-  setTimeout(() => {
-    if (state.open.length) {
-      state.open.forEach((id, i) => {
+  const restoreOpen = () => {
+    const ids = state.open || [];
+    let i = 0;
+    const step = () => {
+      if (i < ids.length) {
+        const id = ids[i];
         const n = model.nodeById.get(id);
-        if (n) ctx.modals.openFromNode(n, { x: (i - (state.open.length - 1) / 2) * 460, y: 0 });
-      });
-      if (state.open.length === 1) graph.focusNode(state.open[0], 0.85);
-    }
-    if (state.mode && state.mode !== 'show-all' && ctx.setMode) ctx.setMode(state.mode);
-    if (state.focus) graph.focusNode(state.focus, 1.0);
-    ctx.writeHash && ctx.writeHash();
-    ctx._restoring = false;
-  }, 700);
+        if (n) ctx.modals.openFromNode(n, { x: (i - (ids.length - 1) / 2) * 460, y: 0 });
+        i += 1;
+        requestAnimationFrame(step); // 逐帧渐进添加
+        return;
+      }
+      if (ids.length === 1) graph.focusNode(ids[0], 0.85);
+      if (state.mode && state.mode !== 'show-all' && ctx.setMode) ctx.setMode(state.mode);
+      if (state.focus) graph.focusNode(state.focus, 1.0);
+      ctx.writeHash && ctx.writeHash();
+      ctx._restoring = false;
+    };
+    step();
+  };
+  // 等两帧（布局已稳定）再开始，避免与首帧渲染争用
+  requestAnimationFrame(() => requestAnimationFrame(restoreOpen));
 
   // ---- 结构操作撤销：Ctrl+Z / Cmd+Z（N7） ----
   window.addEventListener('keydown', (ev) => {

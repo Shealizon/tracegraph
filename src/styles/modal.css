@@ -16,6 +16,9 @@
   will-change: transform;
 }
 .modal { border-top: 3px solid var(--modal-color, transparent); }
+/* 卡片出现淡入：让恢复/展开卡片平滑出现，不突变（hover 预览除外，保持即时） */
+@keyframes modalIn { from { opacity: 0; } to { opacity: 1; } }
+.modal:not(.preview) { animation: modalIn .18s ease; }
 /* 渐进式清晰度：缩放停止后移除图层提升，让展开框按当前比例重新栅格化（文字/公式更清晰） */
 #app.render-sharp .modal { will-change: auto; }
 
