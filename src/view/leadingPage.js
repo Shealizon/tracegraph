@@ -23,7 +23,7 @@ export function renderLeadingPage({ db, projects, currentProjectId }) {
     <div class="leading-page">
       <header class="leading-topbar">
         <div class="leading-brand">
-          <h1>Paper Graph</h1>
+          <h1>Entail</h1>
           <span>${projects.length} 个项目</span>
         </div>
         <div data-leading-theme></div>

@@ -200,7 +200,7 @@ export class RefLayer {
   }
 
   _buildPreview(info, ownerNode) {
-    const pinBtn = [{ act: 'pin', title: '固定为并排 modal', icon: 'pin' }];
+    const pinBtn = [{ act: 'pin', title: '展开为并排卡片', icon: 'plus' }];
     if (info.cmd === 'cite' || (ownerNode && isLeafNode(this.ctx.model, ownerNode))) {
       const bib = ownerNode || this.ctx.model.nodeById.get(info.target);
       return buildModalShell({ type: bib?.type || 'source', color: bib ? typeColor(this.ctx.model, bib.type) : undefined, preview: true, buttons: pinBtn,
@@ -242,12 +242,19 @@ export class RefLayer {
     if (info.sourceNode && info.owner === info.sourceNode.id) {
       const inProof = isLabelInProof(this.ctx, ownerNode, info.target);
       this.ctx.modals.openFromNode(ownerNode, { expandProof: inProof, scrollLabel: info.target });
+      this._panToModalSoon(ownerNode.id);
       return;
     }
 
     const inProof = isLabelInProof(this.ctx, ownerNode, info.target);
     this.ctx.modals.openBeside(ownerNode, info.sourceNode || ownerNode, 'right', { expandProof: inProof, scrollLabel: info.target });
+    this._panToModalSoon(ownerNode.id);
     this.refreshRelations();
+  }
+
+  // 点击 ref 后平移视角，使对应 label 的展开框完整出现在屏幕内（N11）
+  _panToModalSoon(nodeId) {
+    requestAnimationFrame(() => requestAnimationFrame(() => this.ctx.graph.panToShowModal && this.ctx.graph.panToShowModal(nodeId)));
   }
 
   _addRelation(fromNode, fromLabel, toNode, refEl) {

@@ -77,6 +77,8 @@ export class ForceGraph {
       this._fitNodeText(el, n);
       el.addEventListener('click', (ev) => {
         if (el._dragged) { el._dragged = false; return; }
+        if (ev.altKey) return; // Alt 是全屏平移手势，不触发节点展开
+        if (ev.ctrlKey || ev.metaKey) { ev.stopPropagation(); self.ctx.modals && self.ctx.modals.togglePin(n); return; } // Ctrl+点击：pin/解锁节点
         ev.stopPropagation();
         self.onNodeActivate(n, el);
       });
@@ -181,7 +183,8 @@ export class ForceGraph {
     if (name === 'center') this.centerForce.strength(value);
     else if (name === 'charge') this.chargeForce.strength(() => -value);
     else if (name === 'link') this.linkForce.strength(value);
-    this.reheat(0.5);
+    // 仅轻微 reheat：在现有布局基础上就地微调，避免把整个图重新拉回原点（“重置到一个固定点”）
+    this.reheat(0.12);
   }
   getForce(name) { return this.forceParams[name]; }
 
@@ -197,7 +200,7 @@ export class ForceGraph {
 
       // modal 位移直接写 fx/fy（modal 恒为 pinned），保证稳定且能被排开
       const nudge = (m, ddx, ddy) => {
-        if (m._dragging) return; // 拖拽中不被力推走
+        if (m._dragging || m.pinned) return; // 拖拽中 / 已锁定：不被力推走
         if (m.fx == null) m.fx = m.x;
         if (m.fy == null) m.fy = m.y;
         m.fx += ddx; m.fy += ddy;
@@ -205,14 +208,15 @@ export class ForceGraph {
 
       // modal ↔ 圆：把圆推开，modal 仅轻微让位
       for (const m of modals) {
+        const mcx = m.x + m.mw / 2, mcy = m.y + m.mh / 2; // PR4：卡片左上角 → 中心
         // pinned modal 不受 d3 center force 影响，这里给同等质量的中心牵引。
-        if (!m._dragging) nudge(m, -m.x * this.forceParams.center * alpha * 1.2, -m.y * this.forceParams.center * alpha * 1.2);
+        if (!m._dragging) nudge(m, -mcx * this.forceParams.center * alpha * 1.2, -mcy * this.forceParams.center * alpha * 1.2);
         const hw = m.mw / 2 + PAD;
         const hh = m.mh / 2 + PAD;
         for (const o of nodes) {
           if (o === m || o.isModal || !this._nodeVisible(o)) continue; // 跳过被隐藏的圆（不占碰撞）
-          const dx = o.x - m.x;
-          const dy = o.y - m.y;
+          const dx = o.x - mcx;
+          const dy = o.y - mcy;
           const ox = hw + o.radius - Math.abs(dx);
           const oy = hh + o.radius - Math.abs(dy);
           if (ox > 0 && oy > 0) {
@@ -235,8 +239,8 @@ export class ForceGraph {
           const a = modals[i], b = modals[j];
           const minX = (a.mw + b.mw) / 2 + MPAD;
           const minY = (a.mh + b.mh) / 2 + MPAD;
-          const dx = b.x - a.x;
-          const dy = b.y - a.y;
+          const dx = (b.x + b.mw / 2) - (a.x + a.mw / 2); // PR4：用中心比较
+          const dy = (b.y + b.mh / 2) - (a.y + a.mh / 2);
           const ox = minX - Math.abs(dx);
           const oy = minY - Math.abs(dy);
           if (ox > 0 && oy > 0) {
@@ -269,6 +273,7 @@ export class ForceGraph {
       // 滚轮缩放由自定义处理（见下）；这里只管平移：节点 / modal / 详情页等上不触发平移
       .filter((ev) => {
         if (ev.type === 'wheel') return false; // 滚轮交给 _onWheel 处理（支持档位对齐 + 节点/短框上也可缩放）
+        if (ev.altKey) return true; // 按住 Alt：任意位置（节点 / 卡片内容 / 标题上）都触发全屏平移
         const t = ev.target;
         if (t.closest && (t.closest('.node') || t.closest('.modal') || t.closest('.details-page') || t.closest('.zoom-control') || t.closest('.sidebar-rail'))) return false;
         return true;
@@ -290,8 +295,8 @@ export class ForceGraph {
     const t = ev.target;
     // 缩放控件 / 折叠条 / 详情页：交给它们自己处理
     if (t.closest && (t.closest('.zoom-control') || t.closest('.sidebar-rail') || t.closest('.details-page'))) return;
-    // 可滚动的展开框内容：让其内部滚动（远景形态除外——此时滚轮用于缩放）
-    const body = !this.lodFar && t.closest && t.closest('.modal-body');
+    // 可滚动的展开框内容：让其内部滚动（远景形态除外；按住 Alt 时强制用于全屏缩放）
+    const body = !ev.altKey && !this.lodFar && t.closest && t.closest('.modal-body');
     if (body && body.scrollHeight > body.clientHeight + 1) {
       const atTop = body.scrollTop <= 0;
       const atBottom = body.scrollTop + body.clientHeight >= body.scrollHeight - 1;
@@ -305,7 +310,10 @@ export class ForceGraph {
     this._wheelAccum += Math.abs(ev.deltaY);
     if (this._wheelAccum < 25) return; // 阈值减半 → 滚轮缩放约 2x 速度
     this._wheelAccum = 0;
-    const next = this._nextSnap(this.transform.k, dir);
+    // 按住 Ctrl：一次滚动跨多档（更大百分比的快速缩放）
+    const steps = ev.ctrlKey ? 3 : 1;
+    let next = this.transform.k;
+    for (let i = 0; i < steps; i++) next = this._nextSnap(next, dir);
     if (Math.abs(next - this.transform.k) < 1e-4) return;
     const rect = this.stageEl.getBoundingClientRect();
     this._zoomToScale(next, ev.clientX - rect.left, ev.clientY - rect.top);
@@ -405,6 +413,7 @@ export class ForceGraph {
   _attachDrag(el, n) {
     let sx, sy, ox, oy, moved;
     const onDown = (ev) => {
+      if (ev.altKey) return; // Alt：让事件冒泡给舞台做全屏平移，不拖拽节点
       ev.stopPropagation();
       sx = ev.clientX; sy = ev.clientY; ox = n.x; oy = n.y; moved = false;
       n.fx = n.x; n.fy = n.y;
@@ -501,9 +510,8 @@ export class ForceGraph {
       const p = node._anchorResolver(labelId, kind);
       if (p) return p;
     }
-    const hw = (node.mw || 100) / 2;
-    const hh = (node.mh || 100) / 2;
-    return kind === 'refs' ? { x: node.x - hw, y: node.y } : { x: node.x + hw, y: node.y };
+    const w = node.mw || 100, h = node.mh || 100; // PR4：node.x/y 为左上角
+    return kind === 'refs' ? { x: node.x, y: node.y + h / 2 } : { x: node.x + w, y: node.y + h / 2 };
   }
 
   // ---- 边渲染 ----
@@ -527,6 +535,12 @@ export class ForceGraph {
     const dots = this.gAnchors.selectAll('circle').data(dotsData, (d) => `${d.from}|${d.fromLabel}|${d.to}|${d.end}`);
     dots.exit().remove();
     const dotEnt = dots.enter().append('circle').attr('class', (d) => `edge-dot edge-dot-${d.end}`).attr('r', 3.2);
+    // label 圆点（from 端）：点击查看所有引用该 label 的节点并展开（N10）
+    dotEnt.each(function (d) {
+      if (d.end !== 'from') return;
+      this.addEventListener('pointerdown', (e) => e.stopPropagation());
+      this.addEventListener('click', (e) => { e.stopPropagation(); self._onLabelDotClick(d, e); });
+    });
     this.edgeDotSel = dotEnt.merge(dots);
 
     this.edgeSel.attr('d', (l) => self._edgePath(l)).classed('hi', (l) => !!l._hi).classed('dimmed', (l) => !!l._dim);
@@ -591,6 +605,8 @@ export class ForceGraph {
     this.mode = mode;
     this.updateVisibility();
     this._tick();
+    // 切换视图后碰撞体积/可见集变化：从现有位置轻微 warm 适配，不做全局重排
+    this.reheat(0.2);
   }
 
   reheat(a = 0.5) { this.sim.alpha(a).restart(); }
@@ -603,6 +619,7 @@ export class ForceGraph {
   }
 
   highlightNeighbors(nodeId, on) {
+    this._hoverId = on ? nodeId : null;
     if (!on) {
       this.nodeEls.forEach((el) => el.classList.remove('dimmed'));
       this._dimModals(false);
@@ -610,17 +627,19 @@ export class ForceGraph {
       this._renderEdges();
       return;
     }
+    const alt = this._altHeld(); // 按住 Alt：保留关联高亮但不把无关元素变灰（PR2）
     const keep = new Set([nodeId]);
     for (const m of this.model.deps.get(nodeId) || []) keep.add(m);
     for (const m of this.model.usedBy.get(nodeId) || []) keep.add(m);
-    this.nodeEls.forEach((el, id) => el.classList.toggle('dimmed', !keep.has(id)));
-    this._dimModals(true, keep);
+    this.nodeEls.forEach((el, id) => el.classList.toggle('dimmed', !alt && !keep.has(id)));
+    this._dimModals(!alt, keep);
     this.links.forEach((l) => {
       l._hi = l.from === nodeId || l.to === nodeId;
-      l._dim = !(keep.has(l.from) && keep.has(l.to));
+      l._dim = alt ? false : !(keep.has(l.from) && keep.has(l.to));
     });
     this._renderEdges();
   }
+  _altHeld() { const a = this._appEl || (this._appEl = document.getElementById('app')); return !!a && a.classList.contains('alt-pan'); }
 
   // 关联高亮时一并处理展开框：无关 modal 变灰，关联 modal 保持原样
   _dimModals(on, keep) {
@@ -653,8 +672,81 @@ export class ForceGraph {
   focusNode(nodeId, scale = 1.0) {
     const n = this.model.nodeById.get(nodeId);
     if (!n) return;
-    const t = d3.zoomIdentity.translate(this.W / 2 - n.x * scale, this.H / 2 - n.y * scale).scale(scale);
+    // PR4：卡片以左上角定位，聚焦时取其中心
+    const px = n.isModal ? n.x + (n.mw || 0) / 2 : n.x;
+    const py = n.isModal ? n.y + (n.mh || 0) / 2 : n.y;
+    const t = d3.zoomIdentity.translate(this.W / 2 - px * scale, this.H / 2 - py * scale).scale(scale);
     d3.select(this.stageEl).transition().duration(550).call(this.zoom.transform, t);
+  }
+
+  // 仅平移（不改变缩放）使某展开框完整出现在视口可见区内（N11）
+  panToShowModal(nodeId) {
+    const rec = this.ctx && this.ctx.modals && this.ctx.modals.open.get(nodeId);
+    if (!rec) return;
+    const mr = rec.el.getBoundingClientRect();
+    const sr = this.stageEl.getBoundingClientRect();
+    const app = this._appEl || (this._appEl = document.getElementById('app'));
+    const sidebarW = app && !app.classList.contains('sidebar-collapsed') ? 280 : 0;
+    const pad = 28;
+    const viewL = sr.left + sidebarW + pad, viewR = sr.right - pad;
+    const viewT = sr.top + pad, viewB = sr.bottom - pad;
+    let dx = 0, dy = 0;
+    if (mr.left < viewL) dx = viewL - mr.left;
+    else if (mr.right > viewR) dx = Math.max(viewR - mr.right, viewL - mr.left);
+    if (mr.top < viewT) dy = viewT - mr.top;
+    else if (mr.bottom > viewB) dy = Math.max(viewB - mr.bottom, viewT - mr.top);
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+    const t = d3.zoomIdentity.translate(this.transform.x + dx, this.transform.y + dy).scale(this.transform.k);
+    d3.select(this.stageEl).transition().duration(420).call(this.zoom.transform, t);
+  }
+
+  // 点击 label 圆点：列出所有引用该 label 的节点，可逐个或一次性展开（N10）
+  _onLabelDotClick(d, ev) {
+    this._closeLabelMenu();
+    const targets = this.links
+      .filter((l) => l.from === d.from && l.fromLabel === d.fromLabel && this._edgeVisible(l))
+      .map((l) => this.model.nodeById.get(l.to))
+      .filter((n, i, arr) => n && arr.indexOf(n) === i);
+    if (!targets.length) return;
+    const ownerLab = (() => {
+      const owner = this.model.nodeById.get(d.from);
+      const lab = owner && owner.labels && owner.labels.find((l) => l.id === d.fromLabel);
+      return lab ? `${nodeTag(this.model, owner)}` : (owner ? nodeTag(this.model, owner) : d.fromLabel);
+    })();
+    const menu = document.createElement('div');
+    menu.className = 'label-dot-menu';
+    const open = (n) => { this.ctx.modals.openFromNode(n); if (!isLeafNode(this.model, n)) this.panToShowModal(n.id); };
+    const head = document.createElement('div');
+    head.className = 'ldm-head';
+    head.innerHTML = `<span>引用 ${escapeHtml(ownerLab)} 的 ${targets.length} 项</span>`;
+    const allBtn = document.createElement('button');
+    allBtn.className = 'ldm-all';
+    allBtn.textContent = '全部展开';
+    allBtn.addEventListener('click', () => { targets.forEach(open); this._closeLabelMenu(); });
+    head.appendChild(allBtn);
+    menu.appendChild(head);
+    for (const n of targets) {
+      const item = document.createElement('button');
+      item.className = 'ldm-item';
+      item.innerHTML = `<span class="ldm-tag" style="color:${typeColor(this.model, n.type)}">${escapeHtml(nodeTag(this.model, n))}</span><span class="ldm-title">${escapeHtml(n.title || n.id)}</span>`;
+      item.addEventListener('click', () => { open(n); this._closeLabelMenu(); });
+      menu.appendChild(item);
+    }
+    document.body.appendChild(menu);
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    let x = ev.clientX + 8, y = ev.clientY + 8;
+    if (x + mw > window.innerWidth - 8) x = window.innerWidth - mw - 8;
+    if (y + mh > window.innerHeight - 8) y = window.innerHeight - mh - 8;
+    menu.style.left = `${Math.max(8, x)}px`;
+    menu.style.top = `${Math.max(8, y)}px`;
+    this._labelMenu = menu;
+    const onDoc = (e) => { if (this._labelMenu && !this._labelMenu.contains(e.target)) this._closeLabelMenu(); };
+    this._labelMenuDoc = onDoc;
+    setTimeout(() => document.addEventListener('pointerdown', onDoc, true), 0);
+  }
+  _closeLabelMenu() {
+    if (this._labelMenu) { this._labelMenu.remove(); this._labelMenu = null; }
+    if (this._labelMenuDoc) { document.removeEventListener('pointerdown', this._labelMenuDoc, true); this._labelMenuDoc = null; }
   }
 }
 

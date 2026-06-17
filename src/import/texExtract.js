@@ -9,11 +9,13 @@ const THEOREM_ENVS = ['theorem', 'proposition', 'lemma'];
 const TYPE_LABEL = { theorem: 'Theorem', proposition: 'Proposition', lemma: 'Lemma' };
 
 export function extractFixedTexGraph(tex, auxText = '', opts = {}) {
+  const envs = opts.envs && opts.envs.length ? opts.envs : THEOREM_ENVS;
+  const typeLabels = opts.typeLabels || TYPE_LABEL;
   const aux = auxText ? parseAux(auxText) : { labels: new Map(), bib: new Map() };
   const docStart = tex.indexOf('\\begin{document}');
   const docEnd = tex.indexOf('\\end{document}');
   const doc = docStart >= 0 ? tex.slice(docStart, docEnd === -1 ? tex.length : docEnd) : tex;
-  const stmtBlocks = findEnvBlocks(doc, THEOREM_ENVS);
+  const stmtBlocks = findEnvBlocks(doc, envs);
   const proofBlocks = findEnvBlocks(doc, ['proof']);
   const nodes = [];
   const ownership = new Map();
@@ -31,7 +33,7 @@ export function extractFixedTexGraph(tex, auxText = '', opts = {}) {
     nodes.push({
       id: nodeId,
       type: sb.env,
-      typeLabel: TYPE_LABEL[sb.env] || sb.env,
+      typeLabel: typeLabels[sb.env] || cap(sb.env),
       number,
       title: head.title,
       statementBody: head.content.trim(),
@@ -214,3 +216,5 @@ function collectRefs(body) {
 function inferTitle(tex) {
   return tex.match(/\\title\{([^}]+)\}/)?.[1]?.trim() || '';
 }
+
+function cap(s) { s = String(s || ''); return s ? s[0].toUpperCase() + s.slice(1) : s; }

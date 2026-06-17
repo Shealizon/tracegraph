@@ -50,7 +50,7 @@ export function buildSidebar(ctx, root) {
   const searchBox = el('div', 'side-search-box');
   searchBox.innerHTML = `<span class="side-search-ico">${ICON.search}</span>`;
   const input = el('input', 'side-search');
-  input.placeholder = '编号 / 标题 / label';
+  input.placeholder = '搜索';
   searchBox.appendChild(input);
   grpSearch.appendChild(searchBox);
   const results = el('div', 'search-results');
@@ -61,7 +61,7 @@ export function buildSidebar(ctx, root) {
   const grpMode = group(root, '视图');
   const modeSet = el('div', 'segmented');
   const modeBtns = {};
-  for (const [key, label] of [['show-all', '显示全部节点'], ['show-modals-only', '仅显示展开框']]) {
+  for (const [key, label] of [['show-all', '显示全部节点'], ['show-modals-only', '仅显示卡片']]) {
     const b = el('button', 'seg');
     b.type = 'button';
     b.textContent = label;
@@ -80,22 +80,23 @@ export function buildSidebar(ctx, root) {
     ctx.refLayer.setRaiseEnabled(ctx.refsRaiseEnabled);
     ctx.writeHash && ctx.writeHash();
   });
-  raise.row.title = '聚焦某展开框时，把它的引用连线抬升高亮';
+  raise.row.title = '聚焦某卡片时，把它的引用连线抬升高亮';
   grpMode.appendChild(raise.row);
 
   const actions = el('div', 'side-actions');
-  actions.appendChild(btn('所有展开框折叠为节点', () => ctx.modals.closeAll(), 'collapse'));
+  actions.appendChild(btn('所有卡片折叠为节点', () => ctx.modals.closeAll(), 'collapse'));
   const actionRow = el('div', 'side-actions-row');
   actionRow.appendChild(btn('折叠所有证明', () => ctx.modals.collapseAllProofs(), 'chevronUp'));
-  actionRow.appendChild(btn('重新布局', () => graph.reheat(0.8), 'reload'));
+  actionRow.appendChild(btn('重新布局', () => (ctx.relayout ? ctx.relayout() : graph.reheat(0.8)), 'reload'));
   actions.appendChild(actionRow);
   grpMode.appendChild(actions);
 
   // ---- 筛选 ----
   const grpFilter = group(root, '筛选');
-  const types = model.meta.profileResolved?.types?.length
-    ? model.meta.profileResolved.types.map((t) => [t.id, t.label || t.id])
-    : [...new Set(model.nodes.map((n) => n.type))].map((t) => [t, t]);
+  // 按实际载入的数据给定筛选项（不再固定为某套定理类型）；标签优先取 profile 中文名
+  const profileLabel = new Map((model.meta.profileResolved?.types || []).map((t) => [t.id, t.label || t.id]));
+  const presentTypes = [...new Set(model.nodes.map((n) => n.type))];
+  const types = presentTypes.map((t) => [t, profileLabel.get(t) || t]);
   ctx.filterActive = ctx.filterActive || new Set(types.map((t) => t[0]));
   for (const [t, label] of types) {
     const tr = toggleRow(escapeHtml(label), ctx.filterActive.has(t), () => {
@@ -121,7 +122,7 @@ export function buildSidebar(ctx, root) {
   grpAdv.appendChild(slider('排斥力', 80, 1600, 20, graph.getForce('charge'), (v) => { graph.setForce('charge', v); ctx.writeHash && ctx.writeHash(); }));
   grpAdv.appendChild(slider('连线吸引', 0, 1, 0.02, graph.getForce('link'), (v) => { graph.setForce('link', v); ctx.writeHash && ctx.writeHash(); }));
   grpAdv.appendChild(subLabel('显示'));
-  grpAdv.appendChild(slider('展开框宽度', 280, 620, 10, ctx.modals.getWidth(), (v) => { ctx.modals.setWidth(v); ctx.writeHash && ctx.writeHash(); }, 'px'));
+  grpAdv.appendChild(slider('卡片宽度', 280, 620, 10, ctx.modals.getWidth(), (v) => { ctx.modals.setWidth(v); ctx.writeHash && ctx.writeHash(); }, 'px'));
 
   applyFilter(ctx);
   ctx.renderHidden();

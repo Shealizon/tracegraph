@@ -48,6 +48,8 @@
 .modal.type-proposition { --modal-color: var(--prop); }
 .modal.type-lemma { --modal-color: var(--lemma); }
 .modal.type-bib { --modal-color: var(--bib); }
+/* pin 光晕：锁定的卡片外圈套对应类型色光晕（PR1） */
+.modal.pinned { box-shadow: 0 0 0 2px color-mix(in srgb, var(--modal-color) 65%, transparent), 0 0 20px 3px color-mix(in srgb, var(--modal-color) 38%, transparent), var(--shadow-modal); }
 .modal.preview { box-shadow: 0 10px 40px rgba(0,0,0,.6); }
 .modal.preview { border-color: var(--modal-color, var(--border)); }
 .node-tip {
@@ -85,6 +87,7 @@
   transition: background .12s, color .12s, border-color .12s;
 }
 .m-btn:hover { background: var(--hover); color: var(--text); }
+.m-btn.is-active { color: var(--accent); background: var(--accent-bg); }
 .m-btn svg { width: 15px; height: 15px; }
 .m-btn-danger:hover { color: var(--danger); background: var(--danger-bg); }
 /* 内容操作组与「隐藏 / 切回」组之间留出间隔 */

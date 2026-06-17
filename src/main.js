@@ -14,7 +14,7 @@ import { isLeafNode } from './data/schema.js';
 import { renderLeadingPage } from './view/leadingPage.js';
 import { initProjectStore, saveProject, setCurrentProjectId } from './project/store.js';
 import { compileProject } from './project/projectAdapter.js';
-import { downloadProject, goLeading, importFixedTex, importStructuredJson, openProjectConfigDialog } from './project/projectConfig.js';
+import { downloadProject, goLeading, importFixedTex, importGenericTex, importStructuredJson, openProjectConfigDialog } from './project/projectConfig.js';
 
 init().catch((err) => {
   console.error(err);
@@ -110,11 +110,13 @@ function startMain(db, project) {
     openProjectConfig: () => openProjectConfigDialog({ db, project, onSaved: () => location.reload() }),
     exportProject: () => downloadProject(project),
     importFile: async () => {
-      const kind = prompt('导入类型：json / tex / pdf', 'json');
+      const kind = prompt('导入类型：json / tex（通用·自动识别）/ tex-fixed（固定格式）', 'json');
       if (!kind) return;
-      if (kind.toLowerCase() === 'json') await importStructuredJson(db, project);
-      else if (kind.toLowerCase() === 'tex') await importFixedTex(db, project);
-      else alert('PDF / 非固定格式导入暂未实现。后续需要 OCR、结构识别和 LLM 接入。');
+      const k = kind.toLowerCase().trim();
+      if (k === 'json') await importStructuredJson(db, project);
+      else if (k === 'tex-fixed' || k === 'fixed') await importFixedTex(db, project);
+      else if (k === 'tex' || k === 'generic') await importGenericTex(db, project);
+      else { alert('PDF 本地解析仍在开发中（将在浏览器内提取文字层并做结构识别）。当前可用 json / tex 导入。'); return; }
       location.reload();
     },
   };
@@ -143,10 +145,39 @@ function startMain(db, project) {
   ctx.setTheme = (t) => ctx.setThemeMode(t);
   ctx.applyTheme();
 
+  // ---- 结构操作撤销栈（N7）：展开/折叠卡片、隐藏/取消隐藏、pin、关闭全部、重新布局 ----
+  ctx.undoStack = [];
+  ctx._undoing = false;
+  ctx._restoring = false;
+  ctx.pushUndo = (entry) => {
+    if (ctx._undoing || ctx._restoring || !entry || !entry.undo) return;
+    ctx.undoStack.push(entry);
+    if (ctx.undoStack.length > 120) ctx.undoStack.shift();
+  };
+  ctx.undo = () => {
+    const entry = ctx.undoStack.pop();
+    if (!entry) return;
+    ctx._undoing = true;
+    try { entry.undo(); } catch (err) { console.warn('undo failed', err); }
+    finally { ctx._undoing = false; }
+  };
+  // 重新布局（可撤销）：先快照当前坐标，撤销时原样还原
+  ctx.relayout = () => {
+    const snap = model.nodes.map((n) => ({ id: n.id, x: n.x, y: n.y, fx: n.fx, fy: n.fy }));
+    ctx.pushUndo({ undo: () => {
+      for (const s of snap) { const n = model.nodeById.get(s.id); if (!n) continue; n.x = s.x; n.y = s.y; n.fx = s.fx; n.fy = s.fy; }
+      ctx.graph.sim.alpha(0);
+      ctx.graph._tick();
+      ctx.modals && ctx.modals._syncPositions && ctx.modals._syncPositions();
+    } });
+    ctx.graph.reheat(0.8);
+  };
+
   // ---- 隐藏节点管理（P8） ----
   ctx.hideNode = (id) => {
     const n = model.nodeById.get(id);
     if (!n) return;
+    ctx.pushUndo({ undo: () => ctx.unhideNode(id) });
     n._userHidden = true;
     ctx.hidden.add(id);
     if (ctx.modals && ctx.modals.isOpen(id)) ctx.modals.closeModal(id);
@@ -158,6 +189,7 @@ function startMain(db, project) {
   ctx.unhideNode = (id) => {
     const n = model.nodeById.get(id);
     if (!n) return;
+    ctx.pushUndo({ undo: () => ctx.hideNode(id) });
     n._userHidden = false;
     ctx.hidden.delete(id);
     ctx.graph.updateVisibility();
@@ -234,7 +266,8 @@ function startMain(db, project) {
   };
 
   const state = initialState;
-  // 等首帧布局后再恢复，保证坐标可用
+  // 等首帧布局后再恢复，保证坐标可用（恢复期间不记录撤销）
+  ctx._restoring = true;
   setTimeout(() => {
     if (state.open.length) {
       state.open.forEach((id, i) => {
@@ -246,7 +279,26 @@ function startMain(db, project) {
     if (state.mode && state.mode !== 'show-all' && ctx.setMode) ctx.setMode(state.mode);
     if (state.focus) graph.focusNode(state.focus, 1.0);
     ctx.writeHash && ctx.writeHash();
+    ctx._restoring = false;
   }, 700);
+
+  // ---- 结构操作撤销：Ctrl+Z / Cmd+Z（N7） ----
+  window.addEventListener('keydown', (ev) => {
+    if (!(ev.ctrlKey || ev.metaKey) || ev.shiftKey || ev.altKey) return;
+    if (ev.key !== 'z' && ev.key !== 'Z') return;
+    const t = ev.target;
+    const tag = (t && t.tagName) || '';
+    if (/^(INPUT|TEXTAREA)$/.test(tag) || (t && t.isContentEditable)) return;
+    ev.preventDefault();
+    ctx.undo();
+  });
+
+  // ---- 按住 Alt：全屏平移 / 强制缩放手势的光标反馈 + 悬停不变灰（PR2） ----
+  const appEl = document.getElementById('app');
+  const reEvalHover = () => { if (ctx.graph && ctx.graph._hoverId) ctx.graph.highlightNeighbors(ctx.graph._hoverId, true); };
+  window.addEventListener('keydown', (ev) => { if (ev.key === 'Alt') { appEl.classList.add('alt-pan'); reEvalHover(); } });
+  window.addEventListener('keyup', (ev) => { if (ev.key === 'Alt') { appEl.classList.remove('alt-pan'); reEvalHover(); } });
+  window.addEventListener('blur', () => { appEl.classList.remove('alt-pan'); reEvalHover(); });
 
   // ---- 公式预渲染（P10），带内存上限 ----
   const RENDER_CACHE_LIMIT = 80; // 缓存条目上限（statement/proof 各算一条）

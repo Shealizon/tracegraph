@@ -14,9 +14,10 @@ export const MAX_H = Math.round(DEFAULT_W * A4);
 
 // 顶部按钮配置：内容操作成组在前，破坏性「隐藏」与「切回节点」分到右侧（N3）
 const TOP_BUTTONS = [
-  { act: 'open-used', title: '展开使用本结论者', icon: 'arrowUpRight' },
-  { act: 'open-deps', title: '展开本结论的依赖', icon: 'arrowDownLeft' },
+  { act: 'open-used', title: '展开使用本结论者', icon: 'arrowUsed' },
+  { act: 'open-deps', title: '展开本结论的依赖', icon: 'arrowDeps' },
   { act: 'details', title: '详情', icon: 'expand' },
+  { act: 'pin', title: '锁定位置', icon: 'pin' },
   { act: 'hide', title: '隐藏此节点', icon: 'eyeOff', tone: 'danger', sep: true },
   { act: 'to-node', title: '切回节点', icon: 'circle' },
 ];
@@ -85,22 +86,49 @@ export class ModalManager {
   }
   getWidth() { return CUR_W; }
 
+  // 切换 pin（锁定位置）：节点 / 卡片 / LOD 卡片通用（PR1）。解锁时断开吸附关系。
+  togglePin(node) {
+    node.pinned = !node.pinned;
+    if (node.pinned) { node.fx = node.x; node.fy = node.y; }
+    else if (!node.isModal) { node.fx = null; node.fy = null; }
+    this._syncPinUI(node);
+    this._applyPinClass(node);
+    this.ctx.pushUndo && this.ctx.pushUndo({ undo: () => this.togglePin(node) });
+  }
+  // pin 按钮高亮态
+  _syncPinUI(node) {
+    const rec = this.open.get(node.id);
+    if (!rec) return;
+    const pb = rec.el.querySelector('[data-act="pin"]');
+    if (pb) { pb.classList.toggle('is-active', !!node.pinned); pb.title = node.pinned ? '已锁定位置（点击解锁）' : '锁定位置'; }
+  }
+  // pin 光晕：节点圆 + 卡片都套对应颜色光晕（PR1）
+  _applyPinClass(node) {
+    const circle = this.ctx.graph.nodeEls.get(node.id);
+    if (circle) circle.classList.toggle('pinned', !!node.pinned);
+    const rec = this.open.get(node.id);
+    if (rec) rec.el.classList.toggle('pinned', !!node.pinned);
+  }
+
   // 远景 LOD：把每个展开框高度在「自然高度」与「正方形(边长=宽度)」之间按 lod 插值，
   // 过渡区间随缩放连续动画；lod=1 时为正方形 LOD-modal。
   applyLod(lod) {
+    let changed = false;
     for (const rec of this.open.values()) {
       const side = rec.node.mw || CUR_W;
       const natural = rec._naturalH || rec.node.mh || rec.el.offsetHeight || maxH();
-      if (lod <= 0.001) {
-        rec.el.style.height = '';
-        rec.node.mh = natural;
-      } else {
-        const h = Math.round(natural + (side - natural) * lod);
-        rec.el.style.height = `${h}px`;
-        rec.node.mh = h;
-      }
+      const next = lod <= 0.001 ? natural : Math.round(natural + (side - natural) * lod);
+      if (next !== rec.node.mh) changed = true;
+      rec.el.style.height = lod <= 0.001 ? '' : `${next}px`;
+      rec.node.mh = next;
     }
     this._syncPositions();
+    // 卡片高度随缩放（LOD）变化 → 让力学按新尺寸即时更新碰撞/排斥体积，
+    // 否则卡片要等到拖拽才会重新分开。保持 sim 轻微 warm，过渡停止后自然冷却。
+    if (changed && this.open.size) {
+      const g = this.ctx.graph;
+      g.reheat(Math.max(g.sim.alpha(), 0.2));
+    }
   }
 
   openFromNode(node, opts = {}) {
@@ -118,7 +146,10 @@ export class ModalManager {
     node.isModal = true;
     node.mw = CUR_W;
     node.mh = rec.el.offsetHeight || maxH();
-    const spot = this._findFreeSpot(node, opts);
+    // PR4：卡片以「左上角」作为定位锚点。入参 opts.x/y 语义为中心 → 转为左上角存储。
+    const cx = opts.x != null ? opts.x : node.x;
+    const cy = opts.y != null ? opts.y : node.y;
+    const spot = this._avoidOverlap(cx - node.mw / 2, cy - node.mh / 2, node);
     node.x = node.fx = spot.x;
     node.y = node.fy = spot.y;
     node._anchorResolver = (labelId, kind) => this._anchorWorld(node, rec, labelId, kind);
@@ -127,12 +158,28 @@ export class ModalManager {
     if (circle) circle.classList.add('is-modal-origin');
 
     this.ctx.graph.updateVisibility();
-    this.ctx.graph.reheat(0.6);
+    // 仅轻微 warm：保留现有布局，只让新卡片与邻近元素就地适应，不做全局重排
+    this.ctx.graph.reheat(0.2);
     this._syncPositions();
     this.ctx.refLayer.refreshRelations();
     this._applyOpenOptions(rec, opts);
     this.ctx.writeHash && this.ctx.writeHash();
+    // 结构操作撤销：新展开一个卡片 → 撤销即把它折回节点（N7）
+    if (!this.ctx._undoing && !this.ctx._restoring) {
+      if (this.ctx._batch) this.ctx._batch.push(node.id);
+      else this.ctx.pushUndo && this.ctx.pushUndo({ undo: () => this.closeModal(node.id) });
+    }
     return rec;
+  }
+
+  // 折回节点（带撤销）：撤销时在原位重新展开，并恢复证明展开/锁定状态（N7）
+  _collapseWithUndo(node, rec) {
+    const snap = { x: node.x + (node.mw || 0) / 2, y: node.y + (node.mh || 0) / 2, collapsed: rec.collapsed, pinned: node.pinned };
+    this.ctx.pushUndo && this.ctx.pushUndo({ undo: () => {
+      const r = this.openFromNode(node, { x: snap.x, y: snap.y });
+      if (r) { node.pinned = snap.pinned; node.fx = node.x; node.fy = node.y; if (!snap.collapsed && r.expandProof) r.expandProof(); }
+    } });
+    this.closeModal(node.id);
   }
 
   _findFreeSpot(node, opts) {
@@ -163,42 +210,61 @@ export class ModalManager {
       return rec;
     }
     const dir = side === 'left' ? -1 : 1;
-    const x = (originNode.x || 0) + dir * (CUR_W + 70);
-    const y = (originNode.y || 0);
+    // origin 若已是卡片，其 x/y 为左上角 → 换算到中心再并排（PR4）
+    const ocx = (originNode.x || 0) + (originNode.isModal ? (originNode.mw || CUR_W) / 2 : 0);
+    const ocy = (originNode.y || 0) + (originNode.isModal ? (originNode.mh || 0) / 2 : 0);
+    const x = ocx + dir * (CUR_W + 70);
+    const y = ocy;
     return this.openFromNode(node, { ...opts, x, y });
   }
 
   closeModal(nodeId) {
     const rec = this.open.get(nodeId);
     if (!rec) return;
+    const node = rec.node;
     rec.el.remove();
     this.open.delete(nodeId);
-    const node = rec.node;
     node.isModal = false;
+    // PR4：左上角 → 中心，让退化后的圆回到卡片中心处
+    if (node.mw && node.mh) { node.x = node.x + node.mw / 2; node.y = node.y + node.mh / 2; }
     node.mw = node.mh = 0;
     node._anchorResolver = null;
-    if (!node.pinned) { node.fx = null; node.fy = null; }
+    if (node.pinned) { node.fx = node.x; node.fy = node.y; }
+    else { node.fx = null; node.fy = null; }
     const circle = this.ctx.graph.nodeEls.get(nodeId);
     if (circle) circle.classList.remove('is-modal-origin');
     this.ctx.graph.updateVisibility();
     this.ctx.refLayer.refreshRelations();
-    this.ctx.graph.reheat(0.4);
+    // 折回节点也只轻微 warm：保留其余元素位置，仅让腾出的空间被邻近元素就地填补
+    this.ctx.graph.reheat(0.15);
     this.ctx.graph._tick();
     this.ctx.writeHash && this.ctx.writeHash();
   }
 
   closeAll() {
+    const snap = [...this.open.values()].map((r) => ({ id: r.node.id, x: r.node.x + (r.node.mw || 0) / 2, y: r.node.y + (r.node.mh || 0) / 2, collapsed: r.collapsed, pinned: r.node.pinned }));
     for (const id of [...this.open.keys()]) this.closeModal(id);
     this.ctx.refLayer.clear();
+    if (snap.length && this.ctx.pushUndo && !this.ctx._undoing) {
+      this.ctx.pushUndo({ undo: () => snap.forEach((s) => {
+        const n = this.ctx.model.nodeById.get(s.id);
+        if (!n) return;
+        const r = this.openFromNode(n, { x: s.x, y: s.y });
+        if (r) { n.pinned = s.pinned; n.fx = n.x; n.fy = n.y; if (!s.collapsed && r.expandProof) r.expandProof(); }
+      }) });
+    }
   }
 
-  // 折叠所有已展开框的证明（仅作用于含证明的 modal）
+  // 折叠所有已展开卡片的证明（仅作用于含证明的 modal）
   collapseAllProofs() {
-    let changed = 0;
+    const expanded = [];
     for (const rec of this.open.values()) {
-      if (rec.hasProof && !rec.collapsed) { rec.setProofCollapsed(true); changed++; }
+      if (rec.hasProof && !rec.collapsed) { expanded.push(rec.node.id); rec.setProofCollapsed(true); }
     }
-    return changed;
+    if (expanded.length && this.ctx.pushUndo && !this.ctx._undoing) {
+      this.ctx.pushUndo({ undo: () => expanded.forEach((id) => { const r = this.open.get(id); if (r && r.expandProof) r.expandProof(); }) });
+    }
+    return expanded.length;
   }
 
   onModeChange() {
@@ -268,7 +334,13 @@ export class ModalManager {
       });
     };
 
-    el.querySelector('[data-act="to-node"]').addEventListener('click', () => this.closeModal(node.id));
+    // 锁定位置（pin）：锁定后不再被力学推动；可解锁（N13 / PR1）
+    const pinBtn = el.querySelector('[data-act="pin"]');
+    this._syncPinUI(node);
+    this._applyPinClass(node);
+    pinBtn.addEventListener('click', () => this.togglePin(node));
+
+    el.querySelector('[data-act="to-node"]').addEventListener('click', () => this._collapseWithUndo(node, rec));
     el.querySelector('[data-act="details"]').addEventListener('click', () => this.ctx.openDetails(node.id));
     el.querySelector('[data-act="open-used"]').addEventListener('click', () => this._openRelated(node, 'used'));
     el.querySelector('[data-act="open-deps"]').addEventListener('click', () => this._openRelated(node, 'deps'));
@@ -276,15 +348,16 @@ export class ModalManager {
 
     if (foot) foot.addEventListener('click', () => rec.setProofCollapsed(!rec.collapsed));
 
-    // 远景 LOD-modal：双击退化为节点（等价“切回节点”）
+    // 远景 LOD-modal：双击退化为节点（等价”切回节点”）
     el.addEventListener('dblclick', (ev) => {
       if (!this.ctx.graph.lodFar) return;
       ev.preventDefault();
       ev.stopPropagation();
-      this.closeModal(node.id);
+      this._collapseWithUndo(node, rec);
     });
 
     body.addEventListener('wheel', (ev) => {
+      if (ev.altKey) return; // Alt：让滚轮冒泡到舞台用于全屏缩放（即使卡片有滚动条）
       if (this.ctx.graph && this.ctx.graph.lodFar) return; // 远景形态：让滚轮冒泡用于缩放，不滚动正文
       if (body.scrollHeight > body.clientHeight + 1) ev.stopPropagation();
     }, { passive: true });
@@ -313,21 +386,27 @@ export class ModalManager {
   _openRelated(node, dir) {
     const set = dir === 'used' ? this.ctx.model.usedBy.get(node.id) : this.ctx.model.deps.get(node.id);
     const list = [...(set || [])].filter((id) => { const t = this.ctx.model.nodeById.get(id); return t && !isLeafNode(this.ctx.model, t) && !this.open.has(id); });
+    const scx = node.x + (node.mw || 0) / 2, scy = node.y + (node.mh || 0) / 2; // 源卡片中心（PR4）
+    const batch = this.ctx._batch = [];
     list.forEach((id, i) => {
       const tgt = this.ctx.model.nodeById.get(id);
       const ang = (i / Math.max(1, list.length)) * Math.PI * 2;
       const rad = 380 + Math.floor(i / 6) * 120;
-      this.openFromNode(tgt, { x: node.x + Math.cos(ang) * rad, y: node.y + Math.sin(ang) * rad });
+      this.openFromNode(tgt, { x: scx + Math.cos(ang) * rad, y: scy + Math.sin(ang) * rad });
     });
+    this.ctx._batch = null;
+    // 一次展开一组 → 合并为单次撤销（N7）
+    if (batch.length && this.ctx.pushUndo && !this.ctx._undoing) {
+      this.ctx.pushUndo({ undo: () => batch.forEach((id) => this.closeModal(id)) });
+    }
     this.ctx.refLayer.refreshRelations();
   }
 
   _syncPositions() {
     for (const rec of this.open.values()) {
       const n = rec.node;
-      const w = rec.el.offsetWidth || CUR_W;
-      const h = rec.el.offsetHeight || maxH();
-      rec.el.style.transform = `translate(${n.x - w / 2}px, ${n.y - h / 2}px)`;
+      // PR4：n.x/n.y 即卡片左上角世界坐标
+      rec.el.style.transform = `translate(${n.x}px, ${n.y}px)`;
     }
     this.ctx.refLayer && this.ctx.refLayer.updateRelations();
   }
@@ -335,11 +414,12 @@ export class ModalManager {
   _anchorWorld(node, rec, labelId, kind) {
     const w = rec.el.offsetWidth || CUR_W;
     const h = rec.el.offsetHeight || maxH();
-    const left = node.x - w / 2;
-    const top = node.y - h / 2;
+    // PR4：node.x/node.y 为左上角；中心 = +w/2,+h/2
+    const left = node.x, top = node.y, right = node.x + w, bottom = node.y + h;
+    const cxw = node.x + w / 2, cyw = node.y + h / 2;
     // 远景 LOD-modal：锚点落在边界、规则与 node 一致（label 顶部 / 公式两侧，refs 底部）
     if (this.ctx.graph.lodFar) {
-      if (kind === 'refs') return { x: node.x, y: node.y + h / 2 };
+      if (kind === 'refs') return { x: cxw, y: bottom };
       const labels = node.labels || [];
       const lab = labels.find((l) => l.id === labelId);
       if (lab && lab.id !== node.id && lab.kind === 'equation') {
@@ -349,21 +429,23 @@ export class ModalManager {
         const sideIndex = Math.floor(i / 2);
         const countSide = Math.ceil(eqs.length / 2);
         const span = h * 0.6;
-        const y = node.y - span / 2 + (countSide <= 1 ? span / 2 : (sideIndex / (countSide - 1)) * span);
-        return { x: node.x + side * (w / 2), y };
+        const y = cyw - span / 2 + (countSide <= 1 ? span / 2 : (sideIndex / (countSide - 1)) * span);
+        return { x: side < 0 ? left : right, y };
       }
-      return { x: node.x, y: node.y - h / 2 };
+      return { x: cxw, y: top };
     }
-    if (kind === 'refs') return { x: left, y: node.y };
-    if (labelId === node.id) return { x: node.x, y: top };
-    return { x: left + w, y: node.y };
+    if (kind === 'refs') return { x: left, y: cyw };
+    if (labelId === node.id) return { x: cxw, y: top };
+    return { x: right, y: cyw };
   }
 
   // ---- 拖拽：近景仅顶栏；远景（大号节点形态）整卡可拖 ----
   _attachModalDrag(el, node) {
     let sx, sy, ox, oy;
     const onDown = (ev) => {
+      if (ev.altKey) return; // Alt：让事件冒泡给舞台做全屏平移，不拖拽卡片
       if (ev.target.closest('.m-btn')) return;
+      if (ev.ctrlKey || ev.metaKey) { ev.preventDefault(); ev.stopPropagation(); this.togglePin(node); return; } // Ctrl+点击：pin/解锁
       const far = this.ctx.graph && this.ctx.graph.lodFar;
       if (!far && !ev.target.closest('.modal-top')) return; // 近景：只有顶栏可拖（让正文可选中/滚动）
       ev.preventDefault();

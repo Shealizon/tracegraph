@@ -1,6 +1,7 @@
 import { graphToDocument, normalizeProject, uniqueId } from './projectAdapter.js';
 import { isProjectPayload, saveProject } from './store.js';
 import { extractFixedTexGraph } from '../import/texExtract.js';
+import { extractGenericTexGraph } from '../import/texGeneric.js';
 import { ICON } from '../ui/icons.js';
 
 export function projectMainUrl(projectId) {
@@ -74,8 +75,37 @@ export async function importFixedTex(db, currentProject = null) {
   });
 }
 
+// 通用 TeX（自动识别）：无需固定格式，自动发现定理类环境，全部本地解析
+export async function importGenericTex(db, currentProject = null) {
+  const texFile = await pickFile('.tex,.txt,text/x-tex,text/plain');
+  if (!texFile) return null;
+  const auxFile = confirm('可选：选择对应的 .aux 文件以沿用论文中的编号？（取消则本地自动编号）') ? await pickFile('.aux,text/plain') : null;
+  const graph = extractGenericTexGraph(await texFile.text(), auxFile ? await auxFile.text() : '', { source: texFile.name, title: texFile.name.replace(/\.(tex|txt)$/i, '') });
+  const doc = graphToDocument(graph, texFile.name, 'generic-tex');
+  if (currentProject) {
+    const project = normalizeProject({
+      ...currentProject,
+      documents: [...currentProject.documents, doc],
+      config: {
+        ...currentProject.config,
+        enabledDocumentIds: [...new Set([...(currentProject.config.enabledDocumentIds || []), doc.id])],
+      },
+    });
+    return saveProject(db, project);
+  }
+  const now = new Date().toISOString();
+  return saveProject(db, {
+    id: uniqueId('project'),
+    name: doc.name,
+    createdAt: now,
+    updatedAt: now,
+    config: { enabledDocumentIds: [doc.id], disabledNodeIds: [], disabledRelationKeys: [], viewState: {} },
+    documents: [doc],
+  });
+}
+
 export function showTodoImport() {
-  alert('PDF / 非固定格式导入暂未实现。后续需要 OCR、结构识别和 LLM 接入。');
+  alert('PDF 本地解析仍在开发中：将在浏览器内提取文字层并做结构识别，无需服务端。\n当前可先用「通用 TeX（自动识别）」导入 .tex / .txt。');
 }
 
 export function openProjectConfigDialog({ db, project, onSaved }) {
@@ -164,10 +194,11 @@ export function openProjectConfigDialog({ db, project, onSaved }) {
     updateCounts();
   }));
 
-  // 添加文件菜单（JSON / TeX / PDF 即将支持）
+  // 添加文件菜单（JSON / 固定 TeX / 通用 TeX 自动识别 / PDF 开发中）
   attachAddFileMenu($('[data-add]'), {
     onJson: async () => { await importStructuredJson(db, project); close(); onSaved && onSaved(); },
     onTex: async () => { await importFixedTex(db, project); close(); onSaved && onSaved(); },
+    onGeneric: async () => { await importGenericTex(db, project); close(); onSaved && onSaved(); },
   });
 
   $('[data-close]').addEventListener('click', close);
@@ -194,7 +225,7 @@ export function openProjectConfigDialog({ db, project, onSaved }) {
 }
 
 // 文件区「+ 添加文件」下拉菜单
-function attachAddFileMenu(anchor, { onJson, onTex }) {
+function attachAddFileMenu(anchor, { onJson, onTex, onGeneric }) {
   let menu = null;
   const close = () => { if (menu) { menu.remove(); menu = null; document.removeEventListener('click', onDoc, true); } };
   const onDoc = (ev) => { if (menu && !menu.contains(ev.target) && ev.target !== anchor) close(); };
@@ -205,10 +236,12 @@ function attachAddFileMenu(anchor, { onJson, onTex }) {
     menu.className = 'side-menu';
     menu.innerHTML = `
       <button class="side-menu-item" data-json>结构化 JSON</button>
+      <button class="side-menu-item" data-generic>通用 TeX<span class="cfg-soon">自动识别</span></button>
       <button class="side-menu-item" data-tex>固定 TeX</button>
-      <button class="side-menu-item" data-pdf disabled>PDF<span class="cfg-soon">即将支持</span></button>`;
+      <button class="side-menu-item" data-pdf disabled>PDF<span class="cfg-soon">开发中</span></button>`;
     menu.querySelector('[data-json]').addEventListener('click', () => { close(); onJson(); });
     menu.querySelector('[data-tex]').addEventListener('click', () => { close(); onTex(); });
+    menu.querySelector('[data-generic]').addEventListener('click', () => { close(); onGeneric && onGeneric(); });
     const r = anchor.getBoundingClientRect();
     menu.style.top = `${r.bottom + 6}px`;
     menu.style.left = `${Math.max(8, r.right - 168)}px`;

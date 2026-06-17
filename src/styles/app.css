@@ -3,15 +3,15 @@
    ========================================================================== */
 :root,
 :root[data-theme="dark"] {
-  --bg: #1b1b1f;
-  --bg-soft: #232329;
-  --bg-panel: rgba(34, 34, 40, 0.55);
-  --bg-modal: #2a2a31;
-  --bg-modal-solid: #2a2a31;
-  --line: #3a3a44;
-  --line-soft: #2f2f37;
-  --text: #d6d6dd;
-  --text-dim: #9a9aa6;
+  --bg: #26262b;
+  --bg-soft: #2f2f35;
+  --bg-panel: rgba(46, 46, 54, 0.55);
+  --bg-modal: #313139;
+  --bg-modal-solid: #313139;
+  --line: #44444f;
+  --line-soft: #393940;
+  --text: #dadae0;
+  --text-dim: #9d9daa;
   --accent: #7c9cff;
   --accent-soft: #4a5680;
   --thm: #ff9e64;
@@ -23,8 +23,8 @@
   --ref: #7c9cff;
   --ref-eq: #5bb1c9;
   --ref-cite: #c0884f;
-  --node-bg-a: #34343d;
-  --node-bg-b: #26262d;
+  --node-bg-a: #3d3d47;
+  --node-bg-b: #2f2f37;
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
   --scroll: rgba(160, 160, 180, 0.28);
   --radius: 12px;
@@ -33,7 +33,7 @@
 
   /* —— 统一设计令牌（重构）—— */
   /* 玻璃面板：侧栏 / 卡片 / 弹窗共用同一质感，消除 leading↔main 割裂 */
-  --glass-bg: rgba(30, 30, 36, 0.62);
+  --glass-bg: rgba(44, 44, 52, 0.62);
   --glass-blur: 16px;
   --glass-line: color-mix(in srgb, var(--line) 70%, transparent);
   --hover: color-mix(in srgb, var(--bg-soft) 70%, transparent);
@@ -231,6 +231,14 @@ body {
 
 #app { position: relative; height: 100vh; width: 100vw; }
 
+/* 按住 Alt：全屏平移手势 —— 任意位置（节点 / 卡片 / 正文）都显示抓手光标 */
+#app.alt-pan #stage,
+#app.alt-pan .node,
+#app.alt-pan .modal,
+#app.alt-pan .modal * { cursor: grab !important; }
+#app.alt-pan #stage.panning,
+#app.alt-pan #stage:active { cursor: grabbing !important; }
+
 /* ---- 侧栏（透明底板） ---- */
 #sidebar {
   position: fixed;
@@ -278,6 +286,28 @@ body {
 }
 .side-menu-item:hover { background: var(--hover); }
 .side-menu-item svg { width: 15px; height: 15px; color: var(--text-dim); flex: 0 0 auto; }
+
+/* label 圆点：引用列表浮层（N10） */
+.label-dot-menu {
+  position: fixed; z-index: 320; min-width: 200px; max-width: 320px; max-height: 60vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  background: var(--bg-modal-solid); border: 1px solid var(--line); border-radius: var(--r);
+  box-shadow: var(--shadow-pop);
+}
+.label-dot-menu .ldm-head {
+  display: flex; align-items: center; gap: 8px; padding: 5px 7px 7px;
+  font-size: 11.5px; color: var(--text-dim); border-bottom: 1px solid var(--line-soft); margin-bottom: 4px;
+}
+.label-dot-menu .ldm-head > span { flex: 1 1 auto; min-width: 0; }
+.label-dot-menu .ldm-all { flex: 0 0 auto; font-size: 11px; color: var(--accent); background: transparent; border: 0; cursor: pointer; padding: 0; }
+.label-dot-menu .ldm-all:hover { text-decoration: underline; }
+.label-dot-menu .ldm-item {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  background: transparent; border: 0; border-radius: var(--r-sm); cursor: pointer; text-align: left; width: 100%;
+}
+.label-dot-menu .ldm-item:hover { background: var(--hover); }
+.label-dot-menu .ldm-tag { flex: 0 0 auto; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.label-dot-menu .ldm-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text); }
 
 .side-title { font-size: 13px; font-weight: 600; color: var(--text); margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side-sub { font-size: 11px; color: var(--text-dim); margin-top: 1px; }
@@ -491,6 +521,9 @@ body {
 .node.is-modal-origin { border-style: dashed; opacity: .5; }
 .node.search-hit { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 55%, transparent); }
 .node.node-hidden { display: none !important; }
+/* pin 光晕：锁定的节点外圈套对应类型色光晕（PR1） */
+.node.pinned { box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-color) 60%, transparent), 0 0 16px 2px color-mix(in srgb, var(--node-color) 45%, transparent); }
+.node.pinned:hover { box-shadow: 0 0 0 4px color-mix(in srgb, var(--node-color) 70%, transparent), 0 0 18px 3px color-mix(in srgb, var(--node-color) 50%, transparent); }
 
 /* ---- SVG 边与锚点 ---- */
 .edge-path { fill: none; stroke: var(--edge); stroke-width: 1.05; opacity: .38; transition: stroke .15s, stroke-width .15s, opacity .15s; }
@@ -505,7 +538,8 @@ body {
   stroke-width: 1.5;
   opacity: .58;
 }
-.edge-dot-from { fill: var(--edge); stroke: var(--edge); }
+.edge-dot-from { fill: var(--edge); stroke: var(--edge); pointer-events: all; cursor: pointer; }
+.edge-dot-from:hover { stroke: var(--accent); fill: var(--accent); opacity: 1; }
 .edge-dot-to { fill: var(--bg); stroke: var(--edge); }
 .edge-dot.hi { stroke: var(--edge-hi); opacity: .72; }
 .edge-dot-from.hi { fill: var(--edge-hi); }
