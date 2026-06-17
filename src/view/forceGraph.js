@@ -18,7 +18,7 @@ import * as d3 from 'd3';
 import { isLeafNode, nodeTag, typeColor } from '../data/schema.js';
 
 export class ForceGraph {
-  constructor(model, { stageEl, svgEl, nodesEl, overlayEl, onNodeActivate, onAnchorEnter, onAnchorLeave }) {
+  constructor(model, { stageEl, svgEl, nodesEl, overlayEl, onNodeActivate, onAnchorEnter, onAnchorLeave, storageKey }) {
     this.model = model;
     this.stageEl = stageEl;
     this.svg = d3.select(svgEl);
@@ -27,6 +27,7 @@ export class ForceGraph {
     this.onNodeActivate = onNodeActivate || (() => {});
     this.onAnchorEnter = onAnchorEnter || (() => {});
     this.onAnchorLeave = onAnchorLeave || (() => {});
+    this.storageKey = storageKey || null;
 
     this.nodes = model.nodes;
     this.links = model.edges.map((e) => ({ ...e, source: e.from, target: e.to }));
@@ -36,8 +37,12 @@ export class ForceGraph {
     this._initSvg();
     this._initNodes();
     this._initSim();
+    this._prewarm();
     this._initZoom();
     window.addEventListener('resize', () => this._resize());
+    // 退出/切后台时记录稳定位置，下次加载据此初始化，避免大幅度抖动
+    window.addEventListener('pagehide', () => this._savePositions());
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this._savePositions(); });
     this._resize();
   }
 
@@ -58,6 +63,8 @@ export class ForceGraph {
   _initNodes() {
     const self = this;
     this.nodeEls = new Map();
+    const saved = this._loadPositions();
+    this._hasSaved = !!(saved && Object.keys(saved).length);
     for (const n of this.nodes) {
       const el = document.createElement('div');
       el.className = `node type-${cssSafe(n.type)}`;
@@ -76,9 +83,30 @@ export class ForceGraph {
       this._attachDrag(el, n);
       this.nodesEl.appendChild(el);
       this.nodeEls.set(n.id, el);
-      n.x = (Math.random() - 0.5) * 600;
-      n.y = (Math.random() - 0.5) * 600;
+      const p = saved && saved[n.id];
+      if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) { n.x = p.x; n.y = p.y; }
+      else { n.x = (Math.random() - 0.5) * 600; n.y = (Math.random() - 0.5) * 600; }
     }
+  }
+
+  // 预热模拟：在首帧前静默 tick，让布局预先稳定，避免加载时大幅度位移
+  _prewarm() {
+    const n = this._hasSaved ? 40 : 160;
+    for (let i = 0; i < n; i++) this.sim.tick();
+    this.sim.alpha(0); // 冷却，等待用户交互再 reheat
+  }
+
+  _loadPositions() {
+    if (!this.storageKey) return null;
+    try { return JSON.parse(localStorage.getItem(this.storageKey) || 'null'); } catch { return null; }
+  }
+  _savePositions() {
+    if (!this.storageKey) return;
+    const map = {};
+    for (const n of this.nodes) {
+      if (Number.isFinite(n.x) && Number.isFinite(n.y)) map[n.id] = { x: Math.round(n.x), y: Math.round(n.y) };
+    }
+    try { localStorage.setItem(this.storageKey, JSON.stringify(map)); } catch { /* 容量/隐私模式忽略 */ }
   }
 
   // 按半径自适应节点内文字大小：编号上、名称下；圆太小则隐藏名称
@@ -130,16 +158,21 @@ export class ForceGraph {
     this.chargeForce = d3.forceManyBody().strength(() => -this.forceParams.charge);
     this.centerForce = d3.forceCenter(0, 0).strength(this.forceParams.center);
 
+    // 只有“可见的圆节点”才占据碰撞体积；modal 与被隐藏节点（含“仅显示展开框”）半径为 0
+    this._collideRadius = (d) => (this._nodeVisible(d) ? d.radius + 22 : 0);
+    this.collideForce = d3.forceCollide().radius(this._collideRadius).strength(0.85).iterations(2);
+
     this.sim = d3
       .forceSimulation(this.nodes)
       .force('link', this.linkForce)
       .force('charge', this.chargeForce)
       .force('center', this.centerForce)
-      .force('collide', d3.forceCollide().radius((d) => (d.isModal ? 0 : d.radius + 22)).strength(0.85).iterations(2))
+      .force('collide', this.collideForce)
       .force('rect', this._forceRect())
       .velocityDecay(0.42)
       .alphaDecay(0.028)
-      .on('tick', () => this._tick());
+      .on('tick', () => this._tick())
+      .on('end', () => this._savePositions());
   }
 
   // 调节力参数（N4）：name ∈ center|charge|link
@@ -177,7 +210,7 @@ export class ForceGraph {
         const hw = m.mw / 2 + PAD;
         const hh = m.mh / 2 + PAD;
         for (const o of nodes) {
-          if (o === m || o.isModal) continue;
+          if (o === m || o.isModal || !this._nodeVisible(o)) continue; // 跳过被隐藏的圆（不占碰撞）
           const dx = o.x - m.x;
           const dy = o.y - m.y;
           const ox = hw + o.radius - Math.abs(dx);
@@ -257,8 +290,8 @@ export class ForceGraph {
     const t = ev.target;
     // 缩放控件 / 折叠条 / 详情页：交给它们自己处理
     if (t.closest && (t.closest('.zoom-control') || t.closest('.sidebar-rail') || t.closest('.details-page'))) return;
-    // 可滚动的展开框内容：让其内部滚动（modal 模块已对可滚动 body 阻断冒泡；这里再兜底一次）
-    const body = t.closest && t.closest('.modal-body');
+    // 可滚动的展开框内容：让其内部滚动（远景形态除外——此时滚轮用于缩放）
+    const body = !this.lodFar && t.closest && t.closest('.modal-body');
     if (body && body.scrollHeight > body.clientHeight + 1) {
       const atTop = body.scrollTop <= 0;
       const atBottom = body.scrollTop + body.clientHeight >= body.scrollHeight - 1;
@@ -270,7 +303,7 @@ export class ForceGraph {
     const dir = ev.deltaY < 0 ? 1 : -1;
     if (dir !== this._wheelDir) { this._wheelAccum = 0; this._wheelDir = dir; }
     this._wheelAccum += Math.abs(ev.deltaY);
-    if (this._wheelAccum < 50) return;
+    if (this._wheelAccum < 25) return; // 阈值减半 → 滚轮缩放约 2x 速度
     this._wheelAccum = 0;
     const next = this._nextSnap(this.transform.k, dir);
     if (Math.abs(next - this.transform.k) < 1e-4) return;
@@ -304,7 +337,27 @@ export class ForceGraph {
     this.overlayEl.style.transform = css;
     this._notifyOverlay && this._notifyOverlay();
     this._notifyZoom && this._notifyZoom(t.k);
+    this._updateLod(t.k);
     this._scheduleSharp();
+  }
+
+  // 远景细节分级（LOD）：随缩放连续把节点淡化为实心圆点、展开框淡化为“大号节点”卡片
+  _updateLod(k) {
+    const HI = 0.45, LO = 0.35; // 45% 开始变化，35% 完全变化为远景形态
+    const lod = Math.max(0, Math.min(1, (HI - k) / (HI - LO)));
+    this.nodesEl.style.setProperty('--lod', lod.toFixed(3));
+    this.overlayEl.style.setProperty('--lod', lod.toFixed(3));
+    if (lod !== this._lod) {
+      this._lod = lod;
+      if (this.ctx && this.ctx.modals) this.ctx.modals.applyLod(lod); // 展开框高度随 lod 在自然高↔正方形间插值
+    }
+    // 进入/退出“远景形态”（完全变化点 35% 进入，带迟滞到 40% 退出，避免边界抖动）
+    const far = this.lodFar ? k < 0.40 : k < 0.35;
+    if (far !== this.lodFar) {
+      this.lodFar = far;
+      const app = this._appEl || (this._appEl = document.getElementById('app'));
+      if (app) app.classList.toggle('lod-far', far);
+    }
   }
 
   // 渐进式清晰度：缩放过程中保留 will-change（GPU 合成，流畅但位图放大略糊），
@@ -400,8 +453,14 @@ export class ForceGraph {
       const el = this.nodeEls.get(n.id);
       if (el) el.classList.toggle('node-hidden', !this._nodeVisible(n));
     }
+    this.refreshCollision();
     this._renderEdges();
     this.ctx && this.ctx.refLayer && this.ctx.refLayer.refreshRelations();
+  }
+
+  // 按当前可见性重算碰撞半径（modal 化 / 隐藏 / 仅显示展开框 都会改变占位）
+  refreshCollision() {
+    if (this.collideForce) this.collideForce.radius(this._collideRadius);
   }
 
   // ---- 每帧更新 ----
@@ -546,6 +605,7 @@ export class ForceGraph {
   highlightNeighbors(nodeId, on) {
     if (!on) {
       this.nodeEls.forEach((el) => el.classList.remove('dimmed'));
+      this._dimModals(false);
       this.links.forEach((l) => { l._hi = false; l._dim = false; });
       this._renderEdges();
       return;
@@ -554,11 +614,20 @@ export class ForceGraph {
     for (const m of this.model.deps.get(nodeId) || []) keep.add(m);
     for (const m of this.model.usedBy.get(nodeId) || []) keep.add(m);
     this.nodeEls.forEach((el, id) => el.classList.toggle('dimmed', !keep.has(id)));
+    this._dimModals(true, keep);
     this.links.forEach((l) => {
       l._hi = l.from === nodeId || l.to === nodeId;
       l._dim = !(keep.has(l.from) && keep.has(l.to));
     });
     this._renderEdges();
+  }
+
+  // 关联高亮时一并处理展开框：无关 modal 变灰，关联 modal 保持原样
+  _dimModals(on, keep) {
+    if (!this.ctx || !this.ctx.modals) return;
+    for (const rec of this.ctx.modals.open.values()) {
+      rec.el.classList.toggle('rel-dim', !!on && !!keep && !keep.has(rec.node.id));
+    }
   }
 
   highlightCone(coneSet, rootId) {

@@ -261,7 +261,8 @@ body {
 .side-tools .segmented { width: 100%; }
 .side-sublabel { font-size: 10.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; margin: 6px 0 2px; }
 .side-actions { display: flex; flex-direction: column; gap: 6px; }
-.side-actions .btn { justify-content: flex-start; }
+.side-actions-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.side-actions .btn { justify-content: center; }
 
 /* 溢出菜单 */
 .side-menu {
@@ -422,6 +423,15 @@ body {
   will-change: transform;
 }
 .node:hover { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent); }
+
+/* 远景 LOD：随 --lod(0→1) 把节点渐变为实心圆点（颜色取边框色），文字淡出 */
+.node::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: var(--node-color, var(--text));
+  opacity: var(--lod, 0); pointer-events: none;
+  transition: opacity .12s linear;
+}
+.node .node-main { transition: opacity .12s linear; opacity: calc(1 - var(--lod, 0)); }
 .node .node-main,
 .node .node-num,
 .node .node-title {
@@ -456,7 +466,8 @@ body {
 }
 .node .node-title {
   color: var(--text);
-  opacity: .9;
+  opacity: calc(.9 * (1 - var(--lod, 0)));
+  transition: opacity .12s linear;
   line-height: 1.18;
   font-weight: 500;
   overflow: hidden;

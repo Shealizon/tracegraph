@@ -45,7 +45,9 @@ export class RefLayer {
 
   // ---------- node hover 信息卡 ----------
   showNodePreview(anchorEl, node) {
-    if (!node || node.isModal) return;
+    // 普通节点 hover 显示；展开框仅在远景形态（只剩编号）时也显示具体信息
+    if (!node) return;
+    if (node.isModal && !(this.ctx.graph && this.ctx.graph.lodFar)) return;
     this._closeNodePreview();
     const shell = document.createElement('div');
     shell.className = `node-tip type-${node.type || ''}`;
@@ -363,6 +365,8 @@ export class RefLayer {
 
   _labelPoint(nodeId, labelId, stageRect) {
     const rec = this.ctx.modals.open.get(nodeId);
+    // 远景 LOD-modal：锚点落在边界（顶部），与 node 一致
+    if (rec && this.ctx.graph.lodFar) return this._modalEdgePoint(rec.el, stageRect, 'top');
     if (rec) return this._anchorPointInModal(rec.el, labelId, nodeId, stageRect, 'source');
     const node = this.ctx.model.nodeById.get(nodeId);
     if (!node) return null;
@@ -373,12 +377,21 @@ export class RefLayer {
 
   _refsPoint(nodeId, stageRect) {
     const rec = this.ctx.modals.open.get(nodeId);
+    if (rec && this.ctx.graph.lodFar) return this._modalEdgePoint(rec.el, stageRect, 'bottom');
     if (rec) return this._elemPointClamped(rec.el.querySelector('.modal-top'), rec.el, stageRect, 'target');
     const node = this.ctx.model.nodeById.get(nodeId);
     if (!node) return null;
     const a = this.ctx.graph.refsPos(node);
     const p = this.ctx.graph.worldToScreen(a.x, a.y);
     return { x: p.x, y: p.y };
+  }
+
+  // 远景：取展开框边框中点（顶/底）作为锚点
+  _modalEdgePoint(modalEl, stageRect, edge) {
+    const r = modalEl.getBoundingClientRect();
+    const x = r.left + r.width / 2 - stageRect.left;
+    const y = (edge === 'top' ? r.top : r.bottom) - stageRect.top;
+    return { x, y };
   }
 
   _placePreview(shell, anchorEl, gap) {

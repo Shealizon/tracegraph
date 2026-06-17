@@ -170,6 +170,7 @@ function startMain(db, project) {
     svgEl,
     nodesEl,
     overlayEl,
+    storageKey: `hg-pos-${project.id}`,
     onNodeActivate: (n) => ctx.modals.openFromNode(n),
   });
   ctx.graph = graph;

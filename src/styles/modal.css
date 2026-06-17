@@ -6,6 +6,7 @@
 .modal {
   position: absolute; left: 0; top: 0;
   width: 380px;
+  container-type: inline-size; /* 让远景“大号节点”字号按展开框宽度等比缩放 */
   background: var(--bg-modal);
   border: 1.5px solid var(--line);
   border-radius: var(--radius);
@@ -17,6 +18,32 @@
 .modal { border-top: 3px solid var(--modal-color, transparent); }
 /* 渐进式清晰度：缩放停止后移除图层提升，让展开框按当前比例重新栅格化（文字/公式更清晰） */
 #app.render-sharp .modal { will-change: auto; }
+
+/* 远景 LOD：展开框尺寸不变，原内容随 --lod 连续淡出，叠加“大号节点”正面（编号+标题大字居中） */
+.modal-top, .modal-body, .modal-foot { transition: opacity .12s linear; }
+#app .modal-top, #app .modal-body, #app .modal-foot { opacity: calc(1 - var(--lod, 0)); }
+#app.lod-far .modal { cursor: grab; }
+#app.lod-far .modal.dragging { cursor: grabbing; }
+#app.lod-far .modal-top, #app.lod-far .modal-body, #app.lod-far .modal-foot { pointer-events: none; }
+.modal { transition: height .12s ease; }
+.modal.dragging { transition: none; }
+/* 关联高亮：无关展开框变灰 */
+.modal.rel-dim { opacity: .25; transition: opacity .15s ease, height .12s ease; }
+
+/* 远景形态：展开框尺寸不变，居中显示「类型 + 编号」（如 THEOREM 1），具体信息靠 hover 提示 */
+.modal-nodeface {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1.5cqw; padding: 8%; overflow: hidden; text-align: center;
+  opacity: var(--lod, 0); pointer-events: none;
+  transition: opacity .12s linear;
+}
+.modal-nodeface .mnf-type {
+  font-size: clamp(13px, 6cqw, 36px); font-weight: 600; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--text-dim);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.modal-nodeface .mnf-num { font-size: clamp(48px, 34cqw, 200px); font-weight: 700; line-height: 1; color: var(--modal-color, var(--text)); }
 .modal.type-theorem { --modal-color: var(--thm); }
 .modal.type-proposition { --modal-color: var(--prop); }
 .modal.type-lemma { --modal-color: var(--lemma); }

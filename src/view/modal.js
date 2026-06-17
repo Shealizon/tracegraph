@@ -72,13 +72,36 @@ export class ModalManager {
     for (const rec of this.open.values()) {
       rec.el.style.width = `${CUR_W}px`;
       rec.node.mw = CUR_W;
+      // 临时清掉显式高度以测量自然高度，再据当前 LOD 还原
+      const savedH = rec.el.style.height;
+      rec.el.style.height = '';
       applyHeightCap(rec.el);
-      rec.node.mh = Math.min(rec.el.offsetHeight, maxH());
+      rec._naturalH = Math.min(rec.el.offsetHeight, maxH());
+      rec.el.style.height = savedH;
+      rec.node.mh = rec._naturalH;
     }
-    this._syncPositions();
+    this.applyLod(this.ctx.graph._lod || 0); // 远景下重算正方形边长 + 同步位置
     this.ctx.graph.reheat(0.3);
   }
   getWidth() { return CUR_W; }
+
+  // 远景 LOD：把每个展开框高度在「自然高度」与「正方形(边长=宽度)」之间按 lod 插值，
+  // 过渡区间随缩放连续动画；lod=1 时为正方形 LOD-modal。
+  applyLod(lod) {
+    for (const rec of this.open.values()) {
+      const side = rec.node.mw || CUR_W;
+      const natural = rec._naturalH || rec.node.mh || rec.el.offsetHeight || maxH();
+      if (lod <= 0.001) {
+        rec.el.style.height = '';
+        rec.node.mh = natural;
+      } else {
+        const h = Math.round(natural + (side - natural) * lod);
+        rec.el.style.height = `${h}px`;
+        rec.node.mh = h;
+      }
+    }
+    this._syncPositions();
+  }
 
   openFromNode(node, opts = {}) {
     if (isLeafNode(this.ctx.model, node)) { this.ctx.openDetails(node.id); return; }
@@ -201,12 +224,19 @@ export class ModalManager {
       collapsed: true, // 默认折叠证明（N1）
     });
     el.dataset.id = node.id;
+    // 远景 LOD：尺寸不变，叠加“大号节点”式正面（类型/编号/标题，上下结构大字体），随 --lod 淡入
+    const face = document.createElement('div');
+    face.className = 'modal-nodeface';
+    face.innerHTML = `<div class="mnf-type">${escapeHtml(node.typeLabel || node.type || '')}</div><div class="mnf-num">${escapeHtml(String(node.number ?? nodeTag(ctx.model, node)))}</div>`;
+    el.appendChild(face);
     const body = el.querySelector('.modal-body');
     this.overlayEl.appendChild(el);
 
     requestAnimationFrame(() => {
       applyHeightCap(el);
       node.mh = Math.min(el.offsetHeight, maxH());
+      rec._naturalH = node.mh;
+      if (this.ctx.graph._lod) this.applyLod(this.ctx.graph._lod); // 远景时新开框直接成正方形
       this._syncPositions();
     });
 
@@ -224,6 +254,7 @@ export class ModalManager {
       requestAnimationFrame(() => {
         applyHeightCap(el);
         node.mh = Math.min(el.offsetHeight, maxH());
+        rec._naturalH = node.mh;
         this._syncPositions();
         this.ctx.graph.reheat(0.25);
       });
@@ -245,7 +276,16 @@ export class ModalManager {
 
     if (foot) foot.addEventListener('click', () => rec.setProofCollapsed(!rec.collapsed));
 
+    // 远景 LOD-modal：双击退化为节点（等价“切回节点”）
+    el.addEventListener('dblclick', (ev) => {
+      if (!this.ctx.graph.lodFar) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      this.closeModal(node.id);
+    });
+
     body.addEventListener('wheel', (ev) => {
+      if (this.ctx.graph && this.ctx.graph.lodFar) return; // 远景形态：让滚轮冒泡用于缩放，不滚动正文
       if (body.scrollHeight > body.clientHeight + 1) ev.stopPropagation();
     }, { passive: true });
 
@@ -254,10 +294,12 @@ export class ModalManager {
     el.addEventListener('mouseenter', () => {
       this.ctx.graph.highlightNeighbors(node.id, true);
       this.ctx.refLayer.highlightModal(node.id, true);
+      if (this.ctx.graph.lodFar) this.ctx.refLayer.showNodePreview(el, node); // 远景：hover 显示具体信息
     });
     el.addEventListener('mouseleave', () => {
       this.ctx.graph.highlightNeighbors(node.id, false);
       this.ctx.refLayer.highlightModal(node.id, false);
+      this.ctx.refLayer.scheduleNodePreviewClose();
     });
     return rec;
   }
@@ -295,17 +337,35 @@ export class ModalManager {
     const h = rec.el.offsetHeight || maxH();
     const left = node.x - w / 2;
     const top = node.y - h / 2;
+    // 远景 LOD-modal：锚点落在边界、规则与 node 一致（label 顶部 / 公式两侧，refs 底部）
+    if (this.ctx.graph.lodFar) {
+      if (kind === 'refs') return { x: node.x, y: node.y + h / 2 };
+      const labels = node.labels || [];
+      const lab = labels.find((l) => l.id === labelId);
+      if (lab && lab.id !== node.id && lab.kind === 'equation') {
+        const eqs = labels.filter((l) => l.kind === 'equation');
+        const i = Math.max(0, eqs.findIndex((l) => l.id === lab.id));
+        const side = i % 2 === 0 ? -1 : 1;
+        const sideIndex = Math.floor(i / 2);
+        const countSide = Math.ceil(eqs.length / 2);
+        const span = h * 0.6;
+        const y = node.y - span / 2 + (countSide <= 1 ? span / 2 : (sideIndex / (countSide - 1)) * span);
+        return { x: node.x + side * (w / 2), y };
+      }
+      return { x: node.x, y: node.y - h / 2 };
+    }
     if (kind === 'refs') return { x: left, y: node.y };
     if (labelId === node.id) return { x: node.x, y: top };
     return { x: left + w, y: node.y };
   }
 
-  // ---- 顶部拖拽 ----
+  // ---- 拖拽：近景仅顶栏；远景（大号节点形态）整卡可拖 ----
   _attachModalDrag(el, node) {
-    const top = el.querySelector('.modal-top');
     let sx, sy, ox, oy;
     const onDown = (ev) => {
       if (ev.target.closest('.m-btn')) return;
+      const far = this.ctx.graph && this.ctx.graph.lodFar;
+      if (!far && !ev.target.closest('.modal-top')) return; // 近景：只有顶栏可拖（让正文可选中/滚动）
       ev.preventDefault();
       ev.stopPropagation();
       sx = ev.clientX; sy = ev.clientY; ox = node.x; oy = node.y;
@@ -333,7 +393,7 @@ export class ModalManager {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
     };
-    top.addEventListener('pointerdown', onDown);
+    el.addEventListener('pointerdown', onDown);
   }
 
   _pulse(nodeId) {
