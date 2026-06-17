@@ -203,6 +203,7 @@ function startMain(db, project) {
     nodesEl,
     overlayEl,
     storageKey: `hg-pos-${project.id}`,
+    initialTransform: initialState.zoom, // 首帧即用保存的视角，避免先默认缩放再跳转
     onNodeActivate: (n) => ctx.modals.openFromNode(n),
   });
   ctx.graph = graph;

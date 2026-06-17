@@ -18,7 +18,7 @@ import * as d3 from 'd3';
 import { isLeafNode, nodeTag, typeColor } from '../data/schema.js';
 
 export class ForceGraph {
-  constructor(model, { stageEl, svgEl, nodesEl, overlayEl, onNodeActivate, onAnchorEnter, onAnchorLeave, storageKey }) {
+  constructor(model, { stageEl, svgEl, nodesEl, overlayEl, onNodeActivate, onAnchorEnter, onAnchorLeave, storageKey, initialTransform }) {
     this.model = model;
     this.stageEl = stageEl;
     this.svg = d3.select(svgEl);
@@ -28,6 +28,7 @@ export class ForceGraph {
     this.onAnchorEnter = onAnchorEnter || (() => {});
     this.onAnchorLeave = onAnchorLeave || (() => {});
     this.storageKey = storageKey || null;
+    this._initialTransform = initialTransform || null; // deep-link 保存的初始视角（避免先 0.82 再跳）
 
     this.nodes = model.nodes;
     this.links = model.edges.map((e) => ({ ...e, source: e.from, target: e.to }));
@@ -404,9 +405,12 @@ export class ForceGraph {
     this.H = r.height;
     // SVG 使用与 HTML 层一致的左上原点坐标系；缩放/平移统一交给 zoom transform。
     this.svg.attr('viewBox', `0 0 ${this.W} ${this.H}`).attr('width', this.W).attr('height', this.H);
-    // 初次：把世界原点 (0,0) 放到舞台中心
+    // 初次：有 deep-link 保存的视角则直接用它（首帧即就位，不先 0.82 再跳）；否则世界原点居中
     if (!this._centered) {
-      this.transform = d3.zoomIdentity.translate(this.W / 2, this.H / 2).scale(0.82);
+      const it = this._initialTransform;
+      this.transform = (it && Number.isFinite(it.k))
+        ? d3.zoomIdentity.translate(it.x || 0, it.y || 0).scale(it.k)
+        : d3.zoomIdentity.translate(this.W / 2, this.H / 2).scale(0.82);
       d3.select(this.stageEl).call(this.zoom.transform, this.transform);
       this._centered = true;
     } else {
