@@ -324,13 +324,16 @@ export class RefLayer {
   }
 
   updateRelations() {
-    this.relSvg.innerHTML = '';
-    this.raisedSvg.innerHTML = '';
     const rect = this.stageEl.getBoundingClientRect();
+    this._fr = { rects: new Map(), q: new Map() }; // 每帧缓存 DOM 测量/查询，消除重复重排
     for (const svg of [this.relSvg, this.raisedSvg]) {
       svg.setAttribute('width', rect.width);
       svg.setAttribute('height', rect.height);
     }
+    const NS = 'http://www.w3.org/2000/svg';
+    if (!this._relPool) this._relPool = [];
+    const pool = this._relPool;
+    let idx = 0;
 
     for (const r of this.relations) {
       const p1 = this._labelPoint(r.fromNode, r.fromLabel, rect);
@@ -342,32 +345,52 @@ export class RefLayer {
       const dimmed = this.activeNode && !active;
       const raised = this.ctx.refsRaiseEnabled && this.raisedRefs.has(relationKey(r.fromNode, r.fromLabel, r.toNode));
       const svg = raised ? this.raisedSvg : this.relSvg;
-
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      // 复用元素池：避免每个力学 tick 全量 createElementNS / innerHTML 重建（性能热点）
+      let g = pool[idx];
+      if (!g) {
+        g = { path: document.createElementNS(NS, 'path'), c1: document.createElementNS(NS, 'circle'), poly: document.createElementNS(NS, 'polygon'), c2: document.createElementNS(NS, 'circle') };
+        g.c1.setAttribute('r', '3.5'); g.c2.setAttribute('r', '3.5');
+        pool[idx] = g;
+      }
       const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
       const dx = p2.x - p1.x, dy = p2.y - p1.y;
-      const n = Math.hypot(dx, dy) || 1;
-      const cx = mx - (dy / n) * 22, cy = my + (dx / n) * 22;
-      path.setAttribute('d', `M${p1.x},${p1.y} Q${cx},${cy} ${p2.x},${p2.y}`);
-      path.setAttribute('class', `rel-path${active || raised ? ' hi' : ''}${raised ? ' raised' : ''}${dimmed ? ' dimmed' : ''}`);
-      svg.appendChild(path);
-
-      const c1 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      c1.setAttribute('class', `rel-dot rel-dot-from${active || raised ? ' hi' : ''}${raised ? ' raised' : ''}${dimmed ? ' dimmed' : ''}`);
-      c1.setAttribute('cx', p1.x); c1.setAttribute('cy', p1.y); c1.setAttribute('r', '3.5');
-      svg.appendChild(c1);
-
-      const ang = Math.atan2(p2.y - cy, p2.x - cx);
-      const s = 8;
-      const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-      poly.setAttribute('class', `rel-arrow${active || raised ? ' hi' : ''}${raised ? ' raised' : ''}${dimmed ? ' dimmed' : ''}`);
-      poly.setAttribute('points', `${p2.x},${p2.y} ${p2.x - Math.cos(ang - 0.4) * s},${p2.y - Math.sin(ang - 0.4) * s} ${p2.x - Math.cos(ang + 0.4) * s},${p2.y - Math.sin(ang + 0.4) * s}`);
-      svg.appendChild(poly);
-      const c2 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      c2.setAttribute('class', `rel-dot rel-dot-to${active || raised ? ' hi' : ''}${raised ? ' raised' : ''}${dimmed ? ' dimmed' : ''}`);
-      c2.setAttribute('cx', p2.x); c2.setAttribute('cy', p2.y); c2.setAttribute('r', '3.5');
-      svg.appendChild(c2);
+      const nn = Math.hypot(dx, dy) || 1;
+      const cx = mx - (dy / nn) * 22, cy = my + (dx / nn) * 22;
+      const hi = `${active || raised ? ' hi' : ''}${raised ? ' raised' : ''}${dimmed ? ' dimmed' : ''}`;
+      g.path.setAttribute('d', `M${p1.x},${p1.y} Q${cx},${cy} ${p2.x},${p2.y}`);
+      g.path.setAttribute('class', `rel-path${hi}`);
+      g.c1.setAttribute('class', `rel-dot rel-dot-from${hi}`); g.c1.setAttribute('cx', p1.x); g.c1.setAttribute('cy', p1.y);
+      const ang = Math.atan2(p2.y - cy, p2.x - cx); const s = 8;
+      g.poly.setAttribute('class', `rel-arrow${hi}`);
+      g.poly.setAttribute('points', `${p2.x},${p2.y} ${p2.x - Math.cos(ang - 0.4) * s},${p2.y - Math.sin(ang - 0.4) * s} ${p2.x - Math.cos(ang + 0.4) * s},${p2.y - Math.sin(ang + 0.4) * s}`);
+      g.c2.setAttribute('class', `rel-dot rel-dot-to${hi}`); g.c2.setAttribute('cx', p2.x); g.c2.setAttribute('cy', p2.y);
+      if (g.path.parentNode !== svg) { svg.appendChild(g.path); svg.appendChild(g.c1); svg.appendChild(g.poly); svg.appendChild(g.c2); }
+      if (g._hidden) { g.path.style.display = g.c1.style.display = g.poly.style.display = g.c2.style.display = ''; g._hidden = false; }
+      idx += 1;
     }
+    for (let j = idx; j < pool.length; j += 1) {
+      const g = pool[j];
+      if (!g._hidden) { g.path.style.display = g.c1.style.display = g.poly.style.display = g.c2.style.display = 'none'; g._hidden = true; }
+    }
+    this._fr = null;
+  }
+
+  // 每帧缓存：同一元素的 getBoundingClientRect / querySelector 只算一次（消除重复重排/查询）
+  _grc(el) {
+    if (!el) return null;
+    if (!this._fr) return el.getBoundingClientRect();
+    let r = this._fr.rects.get(el);
+    if (!r) { r = el.getBoundingClientRect(); this._fr.rects.set(el, r); }
+    return r;
+  }
+  _q(el, sel) {
+    if (!el) return null;
+    if (!this._fr) return el.querySelector(sel);
+    let m = this._fr.q.get(el);
+    if (!m) { m = new Map(); this._fr.q.set(el, m); }
+    let r = m.get(sel);
+    if (r === undefined) { r = el.querySelector(sel); m.set(sel, r); }
+    return r;
   }
 
   _labelPoint(nodeId, labelId, stageRect) {
@@ -385,7 +408,7 @@ export class RefLayer {
   _refsPoint(nodeId, stageRect) {
     const rec = this.ctx.modals.open.get(nodeId);
     if (rec && this.ctx.graph.lodFar) return this._modalEdgePoint(rec.el, stageRect, 'bottom');
-    if (rec) return this._elemPointClamped(rec.el.querySelector('.modal-top'), rec.el, stageRect, 'target');
+    if (rec) return this._elemPointClamped(this._q(rec.el, '.modal-top'), rec.el, stageRect, 'target');
     const node = this.ctx.model.nodeById.get(nodeId);
     if (!node) return null;
     const a = this.ctx.graph.refsPos(node);
@@ -395,7 +418,7 @@ export class RefLayer {
 
   // 远景：取展开框边框中点（顶/底）作为锚点
   _modalEdgePoint(modalEl, stageRect, edge) {
-    const r = modalEl.getBoundingClientRect();
+    const r = this._grc(modalEl);
     const x = r.left + r.width / 2 - stageRect.left;
     const y = (edge === 'top' ? r.top : r.bottom) - stageRect.top;
     return { x, y };
@@ -416,9 +439,9 @@ export class RefLayer {
   _anchorPointInModal(modalEl, labelId, nodeId, stageRect, role) {
     let target = null;
     if (labelId === nodeId) {
-      target = modalEl.querySelector('.m-num') || modalEl.querySelector('.modal-top');
+      target = this._q(modalEl, '.m-num') || this._q(modalEl, '.modal-top');
     } else {
-      target = modalEl.querySelector(`[data-label="${cssEscape(labelId)}"]`);
+      target = this._q(modalEl, `[data-label="${cssEscape(labelId)}"]`);
     }
     return this._elemPointClamped(target, modalEl, stageRect, role, labelId === nodeId ? 'top-center' : 'right');
   }
@@ -427,9 +450,9 @@ export class RefLayer {
   // 投影到 modal 边框对应竖直位置（P4）
   _elemPointClamped(el, modalEl, stageRect, role, fallback = 'auto') {
     if (!modalEl) return null;
-    const mr = modalEl.getBoundingClientRect();
-    const body = modalEl.querySelector('.modal-body');
-    const br = body ? body.getBoundingClientRect() : mr;
+    const mr = this._grc(modalEl);
+    const body = this._q(modalEl, '.modal-body');
+    const br = body ? this._grc(body) : mr;
 
     if (!el) {
       const topHalf = !body || body.scrollTop < (body.scrollHeight - body.clientHeight) / 2;
@@ -438,7 +461,7 @@ export class RefLayer {
       return { x: x - stageRect.left, y: y - stageRect.top };
     }
 
-    const er = el.getBoundingClientRect();
+    const er = this._grc(el);
 
     let cy = er.top + er.height / 2;
     let visible = true;
