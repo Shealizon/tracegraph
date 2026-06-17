@@ -11,10 +11,10 @@ export const ICON = {
   arrowUpRight: S('<line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/>'),
   // 展开"依赖"（向左下箭头）
   arrowDownLeft: S('<line x1="17" y1="7" x2="7" y2="17"/><polyline points="17 17 7 17 7 7"/>'),
-  // 展开"使用本结论者"：箭头 → 头部一个空心圆点（指向外部使用者）
-  arrowUsed: S('<line x1="3" y1="12" x2="12" y2="12"/><polyline points="8 8.2 12.4 12 8 15.8"/><circle cx="18" cy="12" r="2.6"/>'),
-  // 展开"本结论的依赖"：尾部一个实心圆点（从本结论出发指向所依赖者）
-  arrowDeps: S('<line x1="9" y1="12" x2="18" y2="12"/><polyline points="14 8.2 18.4 12 14 15.8"/><circle cx="5" cy="12" r="2.6" fill="currentColor" stroke="none"/>'),
+  // 展开"使用本结论者"：左侧实心圆点 + 右侧左箭头指向圆点（被引用 ← 使用者）
+  arrowUsed: S('<circle cx="5" cy="12" r="2.6" fill="currentColor" stroke="none"/><line x1="21" y1="12" x2="9" y2="12"/><polyline points="13 8 9 12 13 16"/>'),
+  // 展开"本结论的依赖"：左侧空心圆点 + 右侧右箭头背向圆点（本结论 → 所依赖）
+  arrowDeps: S('<circle cx="5" cy="12" r="2.6"/><line x1="9" y1="12" x2="21" y2="12"/><polyline points="17 8 21 12 17 16"/>'),
   // 隐藏（眼睛划线）
   eyeOff: S('<path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M6.61 6.61A18.5 18.5 0 0 0 2 12s3 8 10 8a9.12 9.12 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/>'),
   // 详情（全屏展开）
