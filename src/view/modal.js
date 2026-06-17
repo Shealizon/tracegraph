@@ -94,6 +94,7 @@ export class ModalManager {
     this._syncPinUI(node);
     this._applyPinClass(node);
     this.ctx.pushUndo && this.ctx.pushUndo({ undo: () => this.togglePin(node) });
+    this.ctx.writeHash && this.ctx.writeHash();
   }
   // pin 按钮高亮态
   _syncPinUI(node) {

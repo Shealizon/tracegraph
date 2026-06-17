@@ -283,7 +283,7 @@ export class ForceGraph {
         this.transform = ev.transform;
         this._applyTransform();
       })
-      .on('end', () => this.stageEl.classList.remove('panning'));
+      .on('end', () => { this.stageEl.classList.remove('panning'); this.ctx && this.ctx.writeHash && this.ctx.writeHash(); });
     d3.select(this.stageEl).call(this.zoom).on('dblclick.zoom', null);
 
     // 自定义滚轮缩放：以光标为中心、对齐到档位
@@ -391,6 +391,11 @@ export class ForceGraph {
     const w = this.screenToWorld(cx, cy);
     const t = d3.zoomIdentity.translate(cx - w.x * next, cy - w.y * next).scale(next);
     d3.select(this.stageEl).transition().duration(120).call(this.zoom.transform, t);
+  }
+  // 即时设置完整视角变换（用于 deep-link 恢复，无动画）
+  setTransform(k, x, y) {
+    const t = d3.zoomIdentity.translate(x || 0, y || 0).scale(clamp(k, 0.18, 2.6));
+    d3.select(this.stageEl).call(this.zoom.transform, t);
   }
 
   _resize() {

@@ -260,6 +260,11 @@ function startMain(db, project) {
     params.set('refs', ctx.refsRaiseEnabled ? '1' : '0');
     params.set('theme', ctx.themeMode);
     params.set('sidebar', ctx.sidebarCollapsed ? '0' : '1');
+    // 缩放/平移视角
+    if (ctx.graph) { const t = ctx.graph.transform; params.set('zoom', [fmtNumber(t.k), Math.round(t.x), Math.round(t.y)].join(',')); }
+    // 已锁定（pin）的卡片 / 节点
+    const pins = model.nodes.filter((n) => n.pinned).map((n) => n.id);
+    if (pins.length) params.set('pin', pins.join(','));
     const str = params.toString();
     history.replaceState(null, '', `${location.pathname}?screen=main&project=${encodeURIComponent(project.id)}${str ? `#${str}` : ''}`);
     scheduleProjectStateSave();
@@ -282,9 +287,16 @@ function startMain(db, project) {
         requestAnimationFrame(step); // 逐帧渐进添加
         return;
       }
-      if (ids.length === 1) graph.focusNode(ids[0], 0.85);
+      // 恢复 pin（卡片/节点锁定 + 光晕）
+      for (const id of (state.pin || [])) { const n = model.nodeById.get(id); if (n && !n.pinned) ctx.modals.togglePin(n); }
       if (state.mode && state.mode !== 'show-all' && ctx.setMode) ctx.setMode(state.mode);
-      if (state.focus) graph.focusNode(state.focus, 1.0);
+      // 恢复视角：有保存的缩放/平移则精确还原；否则沿用自动聚焦
+      if (state.zoom && Number.isFinite(state.zoom.k)) {
+        graph.setTransform(state.zoom.k, state.zoom.x, state.zoom.y);
+      } else {
+        if (ids.length === 1) graph.focusNode(ids[0], 0.85);
+        if (state.focus) graph.focusNode(state.focus, 1.0);
+      }
       ctx.writeHash && ctx.writeHash();
       ctx._restoring = false;
     };
@@ -367,6 +379,7 @@ function startMain(db, project) {
 function readHash() {
   const h = new URLSearchParams(location.hash.slice(1));
   const forceParts = (h.get('force') || '').split(',').map((v) => Number(v));
+  const zoomParts = (h.get('zoom') || '').split(',').map((v) => Number(v));
   return {
     open: parseList(h.get('open')),
     mode: h.get('mode') || 'show-all',
@@ -378,6 +391,8 @@ function readHash() {
     refsRaiseEnabled: h.has('refs') ? h.get('refs') !== '0' : null,
     themeMode: h.get('theme') || '',
     sidebarCollapsed: h.has('sidebar') ? h.get('sidebar') === '0' : null,
+    zoom: h.has('zoom') ? { k: zoomParts[0], x: zoomParts[1], y: zoomParts[2] } : null,
+    pin: parseList(h.get('pin')),
   };
 }
 
