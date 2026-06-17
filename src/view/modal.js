@@ -413,8 +413,9 @@ export class ModalManager {
   }
 
   _anchorWorld(node, rec, labelId, kind) {
-    const w = rec.el.offsetWidth || CUR_W;
-    const h = rec.el.offsetHeight || maxH();
+    // 用缓存尺寸 node.mw/mh，避免每次读 offsetWidth/offsetHeight 触发强制重排（性能热点）
+    const w = node.mw || rec.el.offsetWidth || CUR_W;
+    const h = node.mh || rec.el.offsetHeight || maxH();
     // PR4：node.x/node.y 为左上角；中心 = +w/2,+h/2
     const left = node.x, top = node.y, right = node.x + w, bottom = node.y + h;
     const cxw = node.x + w / 2, cyw = node.y + h / 2;
