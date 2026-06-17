@@ -15,6 +15,8 @@
   will-change: transform;
 }
 .modal { border-top: 3px solid var(--modal-color, transparent); }
+/* 渐进式清晰度：缩放停止后移除图层提升，让展开框按当前比例重新栅格化（文字/公式更清晰） */
+#app.render-sharp .modal { will-change: auto; }
 .modal.type-theorem { --modal-color: var(--thm); }
 .modal.type-proposition { --modal-color: var(--prop); }
 .modal.type-lemma { --modal-color: var(--lemma); }
@@ -49,16 +51,17 @@
 .modal-top .m-num { font-weight: 700; }
 .modal .m-num { color: var(--modal-color, var(--text)); }
 .m-btn {
-  flex: 0 0 auto; width: 24px; height: 24px; border-radius: 6px;
+  flex: 0 0 auto; width: 26px; height: 26px; border-radius: var(--r-sm);
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--bg-soft); border: 1px solid var(--line-soft);
+  background: transparent; border: 1px solid transparent;
   color: var(--text-dim); cursor: pointer; font-size: 13px; line-height: 1;
   transition: background .12s, color .12s, border-color .12s;
 }
-.m-btn:hover { background: #33333c; color: var(--text); border-color: var(--accent-soft); }
-.m-btn svg { width: 14px; height: 14px; }
-.m-btn-danger { border-color: color-mix(in srgb, #ef4444 72%, var(--line-soft)); }
-.m-btn-danger:hover { border-color: #ef4444; background: color-mix(in srgb, #ef4444 12%, var(--bg-soft)); }
+.m-btn:hover { background: var(--hover); color: var(--text); }
+.m-btn svg { width: 15px; height: 15px; }
+.m-btn-danger:hover { color: var(--danger); background: var(--danger-bg); }
+/* 内容操作组与「隐藏 / 切回」组之间留出间隔 */
+.m-sep { margin-left: 8px; }
 
 /* 内容区 */
 .modal-body {
@@ -152,7 +155,8 @@
 .details-head .d-close { margin-left: auto; }
 .details-cols { display: flex; gap: 0; flex: 1; overflow: hidden; }
 .details-main { flex: 1 1 auto; overflow-y: auto; padding: 24px 36px; font-family: var(--serif); font-size: 15.5px; line-height: 1.6; max-width: 920px; margin: 0 auto; }
-.details-side { flex: 0 0 300px; border-left: 1px solid var(--line); padding: 20px; overflow-y: auto; background: var(--bg-panel); }
+.details-side { flex: 0 0 300px; border-left: 1px solid var(--line); padding: 20px; overflow-y: auto; background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); }
+.details-side .ref-line .tag { color: var(--accent); }
 .details-side h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-dim); margin: 16px 0 8px; }
 .details-side .ref-line { display: block; padding: 6px 8px; border-radius: 6px; font-size: 13px; cursor: pointer; color: var(--text); }
 .details-side .ref-line:hover { background: var(--bg-soft); }

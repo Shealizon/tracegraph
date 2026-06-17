@@ -12,12 +12,12 @@ const maxH = () => Math.round(CUR_W * A4);
 export const MODAL_W = DEFAULT_W;
 export const MAX_H = Math.round(DEFAULT_W * A4);
 
-// 顶部按钮配置（SVG 图标 —— N3）
+// 顶部按钮配置：内容操作成组在前，破坏性「隐藏」与「切回节点」分到右侧（N3）
 const TOP_BUTTONS = [
-  { act: 'hide', title: '隐藏此节点', icon: 'eyeOff', tone: 'danger' },
   { act: 'open-used', title: '展开使用本结论者', icon: 'arrowUpRight' },
   { act: 'open-deps', title: '展开本结论的依赖', icon: 'arrowDownLeft' },
   { act: 'details', title: '详情', icon: 'expand' },
+  { act: 'hide', title: '隐藏此节点', icon: 'eyeOff', tone: 'danger', sep: true },
   { act: 'to-node', title: '切回节点', icon: 'circle' },
 ];
 
@@ -30,7 +30,7 @@ export function buildModalShell(opts) {
   el.className = `modal type-${opts.type || ''}${opts.preview ? ' preview' : ''}`;
   el.style.width = `${CUR_W}px`;
   if (opts.color) el.style.setProperty('--modal-color', opts.color);
-  const btns = (opts.buttons || []).map((b) => `<button class="m-btn${b.tone === 'danger' ? ' m-btn-danger' : ''}" data-act="${b.act}" title="${b.title}">${ICON[b.icon] || ''}</button>`).join('');
+  const btns = (opts.buttons || []).map((b) => `<button class="m-btn${b.tone === 'danger' ? ' m-btn-danger' : ''}${b.sep ? ' m-sep' : ''}" data-act="${b.act}" title="${b.title}">${ICON[b.icon] || ''}</button>`).join('');
   el.innerHTML = `
     <div class="modal-top">
       <span class="m-title">${opts.titleHTML || ''}</span>
@@ -169,6 +169,15 @@ export class ModalManager {
     this.ctx.refLayer.clear();
   }
 
+  // 折叠所有已展开框的证明（仅作用于含证明的 modal）
+  collapseAllProofs() {
+    let changed = 0;
+    for (const rec of this.open.values()) {
+      if (rec.hasProof && !rec.collapsed) { rec.setProofCollapsed(true); changed++; }
+    }
+    return changed;
+  }
+
   onModeChange() {
     this._syncPositions();
     this.ctx.refLayer.refreshRelations();
@@ -201,14 +210,25 @@ export class ModalManager {
       this._syncPositions();
     });
 
-    const rec = { el, node, collapsed: true };
-    rec.expandProof = () => {
-      if (!foot || !rec.collapsed) return;
-      rec.collapsed = false;
-      body.classList.remove('collapsed');
-      foot.innerHTML = `${ICON.chevronUp}<span>折叠${escapeHtml(proofLabel)}</span>`;
-      requestAnimationFrame(() => { applyHeightCap(el); node.mh = Math.min(el.offsetHeight, maxH()); this._syncPositions(); });
+    // proof 折叠条：向下三角=可展开，向上三角=可收起（N1）
+    const foot = el.querySelector('.modal-foot');
+    const rec = { el, node, collapsed: true, hasProof: !!foot };
+    // 统一的证明折叠/展开：更新高度后 reheat，使碰撞体积立即生效（不必等拖拽）
+    rec.setProofCollapsed = (collapsed) => {
+      if (!foot || rec.collapsed === collapsed) return;
+      rec.collapsed = collapsed;
+      body.classList.toggle('collapsed', collapsed);
+      foot.innerHTML = collapsed
+        ? `${ICON.chevronDown}<span>展开${escapeHtml(proofLabel)}</span>`
+        : `${ICON.chevronUp}<span>折叠${escapeHtml(proofLabel)}</span>`;
+      requestAnimationFrame(() => {
+        applyHeightCap(el);
+        node.mh = Math.min(el.offsetHeight, maxH());
+        this._syncPositions();
+        this.ctx.graph.reheat(0.25);
+      });
     };
+    rec.expandProof = () => rec.setProofCollapsed(false);
     rec.scrollToLabel = (labelId) => {
       if (!labelId) return;
       requestAnimationFrame(() => {
@@ -223,14 +243,7 @@ export class ModalManager {
     el.querySelector('[data-act="open-deps"]').addEventListener('click', () => this._openRelated(node, 'deps'));
     el.querySelector('[data-act="hide"]').addEventListener('click', () => this.ctx.hideNode(node.id));
 
-    // proof 折叠条：向下三角=可展开，向上三角=可收起（N1）
-    const foot = el.querySelector('.modal-foot');
-    if (foot) foot.addEventListener('click', () => {
-      rec.collapsed = !rec.collapsed;
-      body.classList.toggle('collapsed', rec.collapsed);
-      foot.innerHTML = rec.collapsed ? `${ICON.chevronDown}<span>展开${escapeHtml(proofLabel)}</span>` : `${ICON.chevronUp}<span>折叠${escapeHtml(proofLabel)}</span>`;
-      requestAnimationFrame(() => { applyHeightCap(el); node.mh = Math.min(el.offsetHeight, maxH()); this._syncPositions(); });
-    });
+    if (foot) foot.addEventListener('click', () => rec.setProofCollapsed(!rec.collapsed));
 
     body.addEventListener('wheel', (ev) => {
       if (body.scrollHeight > body.clientHeight + 1) ev.stopPropagation();
@@ -297,6 +310,7 @@ export class ModalManager {
       ev.stopPropagation();
       sx = ev.clientX; sy = ev.clientY; ox = node.x; oy = node.y;
       el.classList.add('dragging');
+      el.style.willChange = 'transform'; // 拖拽期间强制图层提升，保证流畅（覆盖 render-sharp）
       node._dragging = true;
       node.fx = node.x; node.fy = node.y;
       this.ctx.graph.sim.alphaTarget(0.05).restart();
@@ -312,6 +326,7 @@ export class ModalManager {
     };
     const onUp = () => {
       el.classList.remove('dragging');
+      el.style.willChange = ''; // 还原，使其在缩放停止后可重新栅格化变清晰
       node._dragging = false;
       this.ctx.graph.sim.alphaTarget(0);
       node.fx = node.x; node.fy = node.y;

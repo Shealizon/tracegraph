@@ -22,23 +22,29 @@ export function renderLeadingPage({ db, projects, currentProjectId }) {
   root.innerHTML = `
     <div class="leading-page">
       <header class="leading-topbar">
-        <div>
+        <div class="leading-brand">
           <h1>Paper Graph</h1>
-          <span>${projects.length} 个本地项目</span>
+          <span>${projects.length} 个项目</span>
         </div>
         <div data-leading-theme></div>
       </header>
       <section class="leading-panel">
         <div class="project-cards">
           ${projects.map((project) => projectCard(project, project.id === current?.id)).join('')}
-          <article class="project-card project-card-create" data-create>
+          <button class="project-card project-card-create" data-create>
             <div class="create-plus">${ICON.plus}</div>
             <div>新建项目</div>
-          </article>
+          </button>
         </div>
       </section>
     </div>`;
   root.querySelector('[data-leading-theme]').appendChild(buildLeadingThemeSwitch());
+
+  // 整卡可点击打开（操作按钮内部已 stopPropagation）
+  root.querySelectorAll('[data-card]').forEach((card) => card.addEventListener('click', () => {
+    setCurrentProjectId(card.dataset.card);
+    location.href = projectMainUrl(card.dataset.card);
+  }));
 
   const refresh = async (selectId = null) => {
     const nextProjects = await listProjects(db);
@@ -61,19 +67,23 @@ export function renderLeadingPage({ db, projects, currentProjectId }) {
     openProjectConfigDialog({ db, project: saved, onSaved: (p) => refresh(p?.id || saved.id) });
   });
 
-  root.querySelectorAll('[data-open]').forEach((btn) => btn.addEventListener('click', () => {
+  root.querySelectorAll('[data-open]').forEach((btn) => btn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
     setCurrentProjectId(btn.dataset.open);
     location.href = projectMainUrl(btn.dataset.open);
   }));
-  root.querySelectorAll('[data-config]').forEach((btn) => btn.addEventListener('click', () => {
+  root.querySelectorAll('[data-config]').forEach((btn) => btn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
     const project = projects.find((p) => p.id === btn.dataset.config);
     if (project) openProjectConfigDialog({ db, project, onSaved: (p) => refresh(p?.id || project.id) });
   }));
-  root.querySelectorAll('[data-export]').forEach((btn) => btn.addEventListener('click', () => {
+  root.querySelectorAll('[data-export]').forEach((btn) => btn.addEventListener('click', (ev) => {
+    ev.stopPropagation();
     const project = projects.find((p) => p.id === btn.dataset.export);
     if (project) downloadProject(project);
   }));
-  root.querySelectorAll('[data-delete]').forEach((btn) => btn.addEventListener('click', async () => {
+  root.querySelectorAll('[data-delete]').forEach((btn) => btn.addEventListener('click', async (ev) => {
+    ev.stopPropagation();
     closeDeletePopovers(root);
     if (projects.length <= 1) { showDeletePopover(btn, '至少保留一个项目。'); return; }
     const project = projects.find((p) => p.id === btn.dataset.delete);
@@ -87,39 +97,55 @@ export function renderLeadingPage({ db, projects, currentProjectId }) {
 
 function projectCard(project, active) {
   const docs = project.documents || [];
-  const enabledCount = project.config?.enabledDocumentIds?.length || docs.length;
+  const enabled = new Set(project.config?.enabledDocumentIds || docs.map((d) => d.id));
+  let nodes = 0, rels = 0;
+  for (const d of docs) if (enabled.has(d.id)) { nodes += (d.graph?.nodes || []).length; rels += (d.graph?.edges || []).length; }
+  const updated = formatDate(project.updatedAt);
   return `
-    <article class="project-card${active ? ' active' : ''}">
+    <article class="project-card${active ? ' active' : ''}" data-card="${escapeAttr(project.id)}" role="button" tabindex="0" title="打开项目">
       <div class="project-card-top">
         <h3>${escapeHtml(project.name)}</h3>
-        ${active ? '<span>当前</span>' : ''}
+        ${active ? '<span class="pc-badge">当前</span>' : ''}
       </div>
-      <p>${docs.length} 个文件 · 启用 ${enabledCount} 个</p>
+      <p class="project-card-meta">${nodes} 节点 · ${rels} 关系 · ${docs.length} 文件</p>
       <div class="project-card-docs">${docs.slice(0, 4).map((d) => `<span>${escapeHtml(d.name)}</span>`).join('')}${docs.length > 4 ? '<span>...</span>' : ''}</div>
-      <div class="project-card-actions">
-        <button class="round-icon-btn" title="打开" data-open="${escapeAttr(project.id)}">${ICON.play}</button>
-        <button class="round-icon-btn" title="配置" data-config="${escapeAttr(project.id)}">${ICON.settings}</button>
-        <button class="round-icon-btn" title="导出" data-export="${escapeAttr(project.id)}">${ICON.download}</button>
-        <button class="round-icon-btn danger" title="删除" data-delete="${escapeAttr(project.id)}">${ICON.trash}</button>
+      <div class="project-card-foot">
+        <span class="pc-updated">${updated ? `更新于 ${updated}` : ''}</span>
+        <div class="project-card-actions">
+          <button class="icon-btn" title="打开" data-open="${escapeAttr(project.id)}">${ICON.play}</button>
+          <button class="icon-btn" title="配置" data-config="${escapeAttr(project.id)}">${ICON.settings}</button>
+          <button class="icon-btn" title="导出" data-export="${escapeAttr(project.id)}">${ICON.download}</button>
+          <button class="icon-btn icon-btn--danger" title="删除" data-delete="${escapeAttr(project.id)}">${ICON.trash}</button>
+        </div>
       </div>
     </article>`;
 }
 
+function formatDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  if (sameDay) return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function buildLeadingThemeSwitch() {
   const wrap = document.createElement('div');
-  wrap.className = 'theme-switch';
+  wrap.className = 'segmented';
+  wrap.setAttribute('role', 'radiogroup');
   const mode = localStorage.getItem('hg-theme-mode') || localStorage.getItem('hg-theme') || 'system';
   const sync = () => {
     const nextMode = localStorage.getItem('hg-theme-mode') || 'system';
-    const idx = Math.max(0, THEME_MODES.findIndex((m) => m.mode === nextMode));
-    wrap.style.setProperty('--theme-idx', String(idx));
     wrap.querySelectorAll('[data-theme-mode]').forEach((b) => b.classList.toggle('active', b.dataset.themeMode === nextMode));
   };
   for (const item of THEME_MODES) {
     const b = document.createElement('button');
-    b.className = 'theme-seg';
+    b.className = 'seg';
     b.type = 'button';
     b.title = item.title;
+    b.setAttribute('aria-label', item.title);
     b.dataset.themeMode = item.mode;
     b.innerHTML = ICON[item.icon] || '';
     b.addEventListener('click', () => {
@@ -129,9 +155,6 @@ function buildLeadingThemeSwitch() {
     });
     wrap.appendChild(b);
   }
-  const thumb = document.createElement('span');
-  thumb.className = 'theme-thumb';
-  wrap.appendChild(thumb);
   localStorage.setItem('hg-theme-mode', mode);
   sync();
   return wrap;

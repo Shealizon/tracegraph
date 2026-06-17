@@ -1,5 +1,5 @@
 // =============================================================================
-// ui/sidebar.js  —  侧栏（精简）
+// ui/sidebar.js  —  侧栏（统一控件 · 可折叠分区）
 // =============================================================================
 import { ICON } from './icons.js';
 import { nodeTag, typeColor } from '../data/schema.js';
@@ -16,7 +16,6 @@ export function buildSidebar(ctx, root) {
   root.innerHTML = '';
   const { model, graph } = ctx;
   const app = document.getElementById('app');
-  app.querySelector('.sidebar-settings')?.remove();
   const rail = ensureCollapseRail(app);
   const collapsed = ctx.sidebarCollapsed ?? (localStorage.getItem('hg-sidebar-collapsed') === '1');
   const setCollapsed = (on) => {
@@ -29,33 +28,43 @@ export function buildSidebar(ctx, root) {
   rail.onclick = () => setCollapsed(!app.classList.contains('sidebar-collapsed'));
   setCollapsed(collapsed);
 
+  // ---- 头部：返回首页 · 项目名 · 溢出菜单 ----
   const head = el('div', 'side-head');
-  head.innerHTML = `<div><div class="side-title">${escapeHtml(model.meta.title || '关系图')}</div><div class="side-sub">${model.meta.counts.statements} 节点 · ${model.meta.counts.edges} 关系${model.hasCycle ? ' · 含环' : ''}</div></div>`;
+  const homeBtn = iconBtn('返回项目首页', 'home', () => ctx.goLeading && ctx.goLeading());
+  const titleWrap = el('div', 'side-head-text');
+  titleWrap.innerHTML = `<div class="side-title">${escapeHtml(model.meta.title || '关系图')}</div><div class="side-sub">${model.meta.counts.statements} 节点 · ${model.meta.counts.edges} 关系${model.hasCycle ? ' · 含环' : ''}</div>`;
+  const moreBtn = iconBtn('更多操作', 'more', null);
+  head.appendChild(homeBtn);
+  head.appendChild(titleWrap);
+  head.appendChild(moreBtn);
   root.appendChild(head);
+  attachOverflowMenu(ctx, moreBtn);
 
-  const tools = el('div', 'side-toolbar side-quickbar');
-  tools.appendChild(buildThemeSwitch(ctx));
-  tools.appendChild(iconBtn('主页', 'home', () => ctx.goLeading && ctx.goLeading()));
-  tools.appendChild(iconBtn('项目配置', 'settings', () => ctx.openProjectConfig && ctx.openProjectConfig()));
-  tools.appendChild(iconBtn('导入文件', 'upload', () => ctx.importFile && ctx.importFile()));
-  tools.appendChild(iconBtn('导出项目', 'download', () => ctx.exportProject && ctx.exportProject()));
-  root.appendChild(tools);
+  // 主题分段开关（单独成行）
+  const themeRow = el('div', 'side-tools');
+  themeRow.appendChild(buildThemeSwitch(ctx));
+  root.appendChild(themeRow);
 
-  // 搜索
+  // ---- 搜索 ----
   const grpSearch = group(root, '搜索');
+  const searchBox = el('div', 'side-search-box');
+  searchBox.innerHTML = `<span class="side-search-ico">${ICON.search}</span>`;
   const input = el('input', 'side-search');
   input.placeholder = '编号 / 标题 / label';
-  grpSearch.appendChild(input);
+  searchBox.appendChild(input);
+  grpSearch.appendChild(searchBox);
   const results = el('div', 'search-results');
   grpSearch.appendChild(results);
   input.addEventListener('input', () => renderSearch(ctx, input.value, results));
 
-  // 视图
+  // ---- 视图 ----
   const grpMode = group(root, '视图');
-  const modeSet = el('div', 'side-segment');
+  const modeSet = el('div', 'segmented');
   const modeBtns = {};
   for (const [key, label] of [['show-all', '显示全部节点'], ['show-modals-only', '仅显示展开框']]) {
-    const b = btn(label, 'side-btn mode-radio');
+    const b = el('button', 'seg');
+    b.type = 'button';
+    b.textContent = label;
     b.classList.toggle('active', ctx.mode === key);
     b.addEventListener('click', () => ctx.setMode(key));
     modeBtns[key] = b;
@@ -63,73 +72,95 @@ export function buildSidebar(ctx, root) {
   }
   grpMode.appendChild(modeSet);
   ctx.syncModeButtons = () => Object.entries(modeBtns).forEach(([k, e]) => e.classList.toggle('active', k === ctx.mode));
-  const bRaise = btn('聚焦内容参考线追踪', 'side-btn multi-btn raise-btn');
-  const syncRaise = () => {
-    bRaise.classList.toggle('active', ctx.refsRaiseEnabled);
-    bRaise.classList.toggle('off', !ctx.refsRaiseEnabled);
-  };
-  bRaise.addEventListener('click', () => {
+
+  const raise = toggleRow('引用连线高亮', ctx.refsRaiseEnabled, () => {
     ctx.refsRaiseEnabled = !ctx.refsRaiseEnabled;
     localStorage.setItem('hg-refs-raise', ctx.refsRaiseEnabled ? '1' : '0');
-    syncRaise();
+    raise.set(ctx.refsRaiseEnabled);
     ctx.refLayer.setRaiseEnabled(ctx.refsRaiseEnabled);
     ctx.writeHash && ctx.writeHash();
   });
-  syncRaise();
-  grpMode.appendChild(bRaise);
-  const bClose = btn('折叠所有展开框', 'side-btn trigger-btn danger-btn');
-  bClose.addEventListener('click', () => ctx.modals.closeAll());
-  grpMode.appendChild(bClose);
-  const bReheat = btn('重新布局', 'side-btn trigger-btn primary-btn');
-  bReheat.addEventListener('click', () => graph.reheat(0.8));
-  grpMode.appendChild(bReheat);
+  raise.row.title = '聚焦某展开框时，把它的引用连线抬升高亮';
+  grpMode.appendChild(raise.row);
 
-  // 过滤
+  const actions = el('div', 'side-actions');
+  actions.appendChild(btn('所有展开框折叠为节点', () => ctx.modals.closeAll(), 'collapse'));
+  actions.appendChild(btn('折叠所有证明', () => ctx.modals.collapseAllProofs(), 'chevronUp'));
+  actions.appendChild(btn('重新布局', () => graph.reheat(0.8), 'reload'));
+  grpMode.appendChild(actions);
+
+  // ---- 筛选 ----
   const grpFilter = group(root, '筛选');
   const types = model.meta.profileResolved?.types?.length
     ? model.meta.profileResolved.types.map((t) => [t.id, t.label || t.id])
     : [...new Set(model.nodes.map((n) => n.type))].map((t) => [t, t]);
   ctx.filterActive = ctx.filterActive || new Set(types.map((t) => t[0]));
   for (const [t, label] of types) {
-    const b = btn(`<span class="dot" style="background:${typeColor(model, t)}"></span>${escapeHtml(label)}`, 'side-btn multi-btn');
-    b.classList.toggle('active', ctx.filterActive.has(t));
-    b.classList.toggle('off', !ctx.filterActive.has(t));
-    b.addEventListener('click', () => {
+    const tr = toggleRow(escapeHtml(label), ctx.filterActive.has(t), () => {
       if (ctx.filterActive.has(t)) ctx.filterActive.delete(t); else ctx.filterActive.add(t);
-      b.classList.toggle('active', ctx.filterActive.has(t));
-      b.classList.toggle('off', !ctx.filterActive.has(t));
+      tr.set(ctx.filterActive.has(t));
       applyFilter(ctx);
       ctx.writeHash && ctx.writeHash();
-    });
-    grpFilter.appendChild(b);
+    }, typeColor(model, t));
+    grpFilter.appendChild(tr.row);
   }
 
-  // 力参数（N4）
-  const grpForce = group(root, '力度');
-  grpForce.appendChild(slider('向心力', 0, 0.6, 0.005, graph.getForce('center'), (v) => { graph.setForce('center', v); ctx.writeHash && ctx.writeHash(); }));
-  grpForce.appendChild(slider('排斥力', 80, 1600, 20, graph.getForce('charge'), (v) => { graph.setForce('charge', v); ctx.writeHash && ctx.writeHash(); }));
-  grpForce.appendChild(slider('链接吸引', 0, 1, 0.02, graph.getForce('link'), (v) => { graph.setForce('link', v); ctx.writeHash && ctx.writeHash(); }));
-
-  // 显示（N7）：modal 宽度
-  const grpShow = group(root, '显示');
-  grpShow.appendChild(slider('Modal 宽度', 280, 620, 10, ctx.modals.getWidth(), (v) => { ctx.modals.setWidth(v); ctx.writeHash && ctx.writeHash(); }, 'px'));
-
-  // 隐藏的节点
-  const grpHidden = group(root, '已隐藏');
+  // ---- 已隐藏（仅在有内容时展开） ----
+  const hasHidden = (ctx.hidden && ctx.hidden.size > 0);
+  const grpHidden = section(root, '已隐藏', 'hidden', !hasHidden);
   const hiddenList = el('div', 'hidden-list');
   grpHidden.appendChild(hiddenList);
   ctx.renderHidden = () => renderHidden(ctx, hiddenList);
+
+  // ---- 高级（默认折叠）：布局力度 + 显示 ----
+  const grpAdv = section(root, '高级', 'advanced', true);
+  grpAdv.appendChild(subLabel('布局力度'));
+  grpAdv.appendChild(slider('聚拢力', 0, 0.6, 0.005, graph.getForce('center'), (v) => { graph.setForce('center', v); ctx.writeHash && ctx.writeHash(); }));
+  grpAdv.appendChild(slider('排斥力', 80, 1600, 20, graph.getForce('charge'), (v) => { graph.setForce('charge', v); ctx.writeHash && ctx.writeHash(); }));
+  grpAdv.appendChild(slider('连线吸引', 0, 1, 0.02, graph.getForce('link'), (v) => { graph.setForce('link', v); ctx.writeHash && ctx.writeHash(); }));
+  grpAdv.appendChild(subLabel('显示'));
+  grpAdv.appendChild(slider('展开框宽度', 280, 620, 10, ctx.modals.getWidth(), (v) => { ctx.modals.setWidth(v); ctx.writeHash && ctx.writeHash(); }, 'px'));
+
   applyFilter(ctx);
   ctx.renderHidden();
 }
 
+// ---- 溢出菜单：项目配置 / 导入文件 / 导出项目 ----
+function attachOverflowMenu(ctx, anchor) {
+  let menu = null;
+  const close = () => { if (menu) { menu.remove(); menu = null; document.removeEventListener('click', onDoc, true); } };
+  const onDoc = (ev) => { if (menu && !menu.contains(ev.target) && ev.target !== anchor) close(); };
+  const items = [
+    { label: '项目配置', icon: 'settings', run: () => ctx.openProjectConfig && ctx.openProjectConfig() },
+    { label: '导入文件', icon: 'upload', run: () => ctx.importFile && ctx.importFile() },
+    { label: '导出项目', icon: 'download', run: () => ctx.exportProject && ctx.exportProject() },
+  ];
+  anchor.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    if (menu) { close(); return; }
+    menu = el('div', 'side-menu');
+    for (const it of items) {
+      const mi = el('button', 'side-menu-item');
+      mi.type = 'button';
+      mi.innerHTML = `${ICON[it.icon] || ''}<span>${it.label}</span>`;
+      mi.addEventListener('click', () => { close(); it.run(); });
+      menu.appendChild(mi);
+    }
+    const r = anchor.getBoundingClientRect();
+    menu.style.top = `${r.bottom + 6}px`;
+    menu.style.left = `${Math.max(8, r.right - 168)}px`;
+    document.body.appendChild(menu);
+    setTimeout(() => document.addEventListener('click', onDoc, true), 0);
+  });
+}
+
 // 三态主题分段开关：深色 / 跟随系统 / 浅色
 function buildThemeSwitch(ctx) {
-  const wrap = el('div', 'theme-switch');
+  const wrap = el('div', 'segmented theme-seg-group');
   wrap.setAttribute('role', 'radiogroup');
   const btns = {};
   for (const { mode, icon, title } of THEME_MODES) {
-    const b = el('button', 'theme-seg');
+    const b = el('button', 'seg');
     b.type = 'button';
     b.title = title;
     b.setAttribute('aria-label', title);
@@ -138,11 +169,7 @@ function buildThemeSwitch(ctx) {
     btns[mode] = b;
     wrap.appendChild(b);
   }
-  const thumb = el('span', 'theme-thumb');
-  wrap.appendChild(thumb);
   ctx.syncThemeButtons = () => {
-    const idx = Math.max(0, THEME_MODES.findIndex((m) => m.mode === ctx.themeMode));
-    wrap.style.setProperty('--theme-idx', String(idx));
     for (const { mode } of THEME_MODES) btns[mode].classList.toggle('active', mode === ctx.themeMode);
   };
   ctx.syncThemeButtons();
@@ -155,6 +182,8 @@ export function buildZoomControl(ctx, stageEl) {
   panel = el('div', 'zoom-control');
   const top = el('div', 'zoom-top');
   const val = el('span', 'zoom-val');
+  val.title = '点击恢复 100%';
+  val.addEventListener('click', () => ctx.graph.setZoomScale(1));
   const input = document.createElement('input');
   input.type = 'range';
   input.min = '18';
@@ -163,7 +192,7 @@ export function buildZoomControl(ctx, stageEl) {
   input.className = 'slider zoom-slider';
   const lock = el('button', 'zoom-lock');
   lock.innerHTML = LOCK;
-  lock.title = '锁定滚轮缩放';
+  lock.title = '锁定滚轮缩放（防止误触）';
   let locked = false;
   const sync = (k) => {
     const pct = Math.round(k * 100);
@@ -192,7 +221,6 @@ function ensureCollapseRail(app) {
     b = el('button', 'sidebar-rail');
     app.appendChild(b);
   }
-  // 始终重置内容，确保折叠/展开箭头图标存在（命中旧的无图标节点时也会补上）
   b.innerHTML = `<span class="rail-ico">${CHEVRON}</span>`;
   return b;
 }
@@ -213,7 +241,7 @@ function renderHidden(ctx, container) {
     if (!n) continue;
     const item = el('div', 'hidden-item');
     const tag = nodeTag(ctx.model, n);
-    item.innerHTML = `<span>${tag} · ${escapeHtml(n.title || n.id)}</span><span class="x">↺</span>`;
+    item.innerHTML = `<span class="hidden-item-label">${tag} · ${escapeHtml(n.title || n.id)}</span><span class="x">↺</span>`;
     item.title = '取消隐藏';
     item.addEventListener('click', () => ctx.unhideNode(id));
     container.appendChild(item);
@@ -242,6 +270,18 @@ function renderSearch(ctx, q, container) {
   }
 }
 
+// ---- 控件工厂 ----
+function toggleRow(labelHtml, on, onClick, dotColor = null) {
+  const row = el('button', 'toggle-row');
+  row.type = 'button';
+  const dot = dotColor ? `<span class="tr-dot" style="background:${dotColor}"></span>` : '';
+  row.innerHTML = `${dot}<span class="tr-label">${labelHtml}</span><span class="tr-check">${ICON.check}</span>`;
+  const set = (v) => { row.classList.toggle('on', v); row.classList.toggle('off', !v); };
+  set(on);
+  row.addEventListener('click', onClick);
+  return { row, set };
+}
+
 function slider(label, min, max, step, value, onInput, unit = '') {
   const wrap = el('div', 'slider-row');
   const head = el('div', 'slider-head');
@@ -257,9 +297,38 @@ function slider(label, min, max, step, value, onInput, unit = '') {
   wrap.appendChild(head); wrap.appendChild(input);
   return wrap;
 }
-function group(root, label) { const g = el('div', 'side-group'); const l = el('div', 'side-label'); l.textContent = label; g.appendChild(l); root.appendChild(g); return g; }
-function btn(html, cls = 'side-btn') { const b = el('button', cls); b.innerHTML = html; return b; }
-function iconBtn(title, icon, onClick) { const b = el('button', 'round-icon-btn'); b.type = 'button'; b.title = title; b.setAttribute('aria-label', title); b.innerHTML = ICON[icon] || ''; b.addEventListener('click', onClick); return b; }
+
+// 普通分组（不可折叠）
+function group(root, label) {
+  const g = el('div', 'side-group');
+  const l = el('div', 'side-label'); l.textContent = label;
+  g.appendChild(l);
+  root.appendChild(g);
+  return g;
+}
+
+// 可折叠分区，状态持久化；返回 body 容器
+function section(root, label, key, defaultCollapsed) {
+  const g = el('div', 'side-group disclosure');
+  const stored = localStorage.getItem(`hg-sec-${key}`);
+  const collapsed = stored != null ? stored === '1' : !!defaultCollapsed;
+  g.classList.toggle('collapsed', collapsed);
+  const head = el('button', 'disc-head');
+  head.type = 'button';
+  head.innerHTML = `<span class="disc-caret">${ICON.chevronDown}</span><span>${escapeHtml(label)}</span>`;
+  head.addEventListener('click', () => {
+    const now = g.classList.toggle('collapsed');
+    localStorage.setItem(`hg-sec-${key}`, now ? '1' : '0');
+  });
+  const body = el('div', 'disc-body');
+  g.appendChild(head);
+  g.appendChild(body);
+  root.appendChild(g);
+  return body;
+}
+
+function subLabel(text) { const d = el('div', 'side-sublabel'); d.textContent = text; return d; }
+function btn(text, onClick, icon) { const b = el('button', 'btn btn--sm btn--block'); b.type = 'button'; b.innerHTML = `${icon && ICON[icon] ? ICON[icon] : ''}<span>${escapeHtml(text)}</span>`; b.addEventListener('click', onClick); return b; }
+function iconBtn(title, icon, onClick) { const b = el('button', 'icon-btn'); b.type = 'button'; b.title = title; b.setAttribute('aria-label', title); b.innerHTML = ICON[icon] || ''; if (onClick) b.addEventListener('click', onClick); return b; }
 function el(tag, cls) { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
-function add(root, html) { const d = document.createElement('div'); d.innerHTML = html; while (d.firstChild) root.appendChild(d.firstChild); }
 function escapeHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }

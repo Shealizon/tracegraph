@@ -135,10 +135,10 @@ export class ForceGraph {
       .force('link', this.linkForce)
       .force('charge', this.chargeForce)
       .force('center', this.centerForce)
-      .force('collide', d3.forceCollide().radius((d) => (d.isModal ? 0 : d.radius + 22)).strength(0.95))
+      .force('collide', d3.forceCollide().radius((d) => (d.isModal ? 0 : d.radius + 22)).strength(0.85).iterations(2))
       .force('rect', this._forceRect())
-      .velocityDecay(0.32)
-      .alphaDecay(0.025)
+      .velocityDecay(0.42)
+      .alphaDecay(0.028)
       .on('tick', () => this._tick());
   }
 
@@ -173,7 +173,7 @@ export class ForceGraph {
       // modal ↔ 圆：把圆推开，modal 仅轻微让位
       for (const m of modals) {
         // pinned modal 不受 d3 center force 影响，这里给同等质量的中心牵引。
-        if (!m._dragging) nudge(m, -m.x * this.forceParams.center * alpha * 1.8, -m.y * this.forceParams.center * alpha * 1.8);
+        if (!m._dragging) nudge(m, -m.x * this.forceParams.center * alpha * 1.2, -m.y * this.forceParams.center * alpha * 1.2);
         const hw = m.mw / 2 + PAD;
         const hh = m.mh / 2 + PAD;
         for (const o of nodes) {
@@ -185,12 +185,12 @@ export class ForceGraph {
           if (ox > 0 && oy > 0) {
             if (ox < oy) {
               const push = (dx >= 0 ? 1 : -1) * ox;
-              o.vx += push * 0.20;
-              nudge(m, -push * 0.20, 0);
+              o.vx += push * 0.16;
+              nudge(m, -push * 0.10, 0);
             } else {
               const push = (dy >= 0 ? 1 : -1) * oy;
-              o.vy += push * 0.20;
-              nudge(m, 0, -push * 0.20);
+              o.vy += push * 0.16;
+              nudge(m, 0, -push * 0.10);
             }
           }
         }
@@ -225,13 +225,18 @@ export class ForceGraph {
 
   // ---- zoom ----
   _initZoom() {
+    // 滚轮缩放档位（%）：50/75/100/125/150/175/200 等 25% 对齐，并向两端延伸
+    this.SNAP = [18, 25, 33, 50, 75, 100, 125, 150, 175, 200, 230, 260].map((v) => v / 100);
+    this._wheelAccum = 0;
+    this._wheelDir = 0;
+
     this.zoom = d3
       .zoom()
       .scaleExtent([0.18, 2.6])
-      // 在节点圆 / modal / 详情页上不触发平移缩放（让 modal 内滚动正常 —— P11）
+      // 滚轮缩放由自定义处理（见下）；这里只管平移：节点 / modal / 详情页等上不触发平移
       .filter((ev) => {
+        if (ev.type === 'wheel') return false; // 滚轮交给 _onWheel 处理（支持档位对齐 + 节点/短框上也可缩放）
         const t = ev.target;
-        if (this.zoomLocked && ev.type === 'wheel') return false;
         if (t.closest && (t.closest('.node') || t.closest('.modal') || t.closest('.details-page') || t.closest('.zoom-control') || t.closest('.sidebar-rail'))) return false;
         return true;
       })
@@ -242,6 +247,53 @@ export class ForceGraph {
       })
       .on('end', () => this.stageEl.classList.remove('panning'));
     d3.select(this.stageEl).call(this.zoom).on('dblclick.zoom', null);
+
+    // 自定义滚轮缩放：以光标为中心、对齐到档位
+    this.stageEl.addEventListener('wheel', (ev) => this._onWheel(ev), { passive: false });
+  }
+
+  _onWheel(ev) {
+    if (this.zoomLocked) return;
+    const t = ev.target;
+    // 缩放控件 / 折叠条 / 详情页：交给它们自己处理
+    if (t.closest && (t.closest('.zoom-control') || t.closest('.sidebar-rail') || t.closest('.details-page'))) return;
+    // 可滚动的展开框内容：让其内部滚动（modal 模块已对可滚动 body 阻断冒泡；这里再兜底一次）
+    const body = t.closest && t.closest('.modal-body');
+    if (body && body.scrollHeight > body.clientHeight + 1) {
+      const atTop = body.scrollTop <= 0;
+      const atBottom = body.scrollTop + body.clientHeight >= body.scrollHeight - 1;
+      const goingUp = ev.deltaY < 0;
+      if (!((goingUp && atTop) || (!goingUp && atBottom))) return; // 还能滚就让它滚
+    }
+    ev.preventDefault();
+    // 累积滚动量，达到阈值步进一档（兼容鼠标滚轮与触控板）
+    const dir = ev.deltaY < 0 ? 1 : -1;
+    if (dir !== this._wheelDir) { this._wheelAccum = 0; this._wheelDir = dir; }
+    this._wheelAccum += Math.abs(ev.deltaY);
+    if (this._wheelAccum < 50) return;
+    this._wheelAccum = 0;
+    const next = this._nextSnap(this.transform.k, dir);
+    if (Math.abs(next - this.transform.k) < 1e-4) return;
+    const rect = this.stageEl.getBoundingClientRect();
+    this._zoomToScale(next, ev.clientX - rect.left, ev.clientY - rect.top);
+  }
+
+  _nextSnap(k, dir) {
+    const eps = 1e-3;
+    if (dir > 0) {
+      for (const s of this.SNAP) if (s > k + eps) return s;
+      return this.SNAP[this.SNAP.length - 1];
+    }
+    for (let i = this.SNAP.length - 1; i >= 0; i--) if (this.SNAP[i] < k - eps) return this.SNAP[i];
+    return this.SNAP[0];
+  }
+
+  // 缩放到指定比例，并让屏幕坐标 (px,py) 处的世界点保持不动
+  _zoomToScale(k, px, py) {
+    const next = clamp(k, 0.18, 2.6);
+    const w = this.screenToWorld(px, py);
+    const t = d3.zoomIdentity.translate(px - w.x * next, py - w.y * next).scale(next);
+    d3.select(this.stageEl).transition().duration(140).call(this.zoom.transform, t);
   }
 
   _applyTransform() {
@@ -252,6 +304,19 @@ export class ForceGraph {
     this.overlayEl.style.transform = css;
     this._notifyOverlay && this._notifyOverlay();
     this._notifyZoom && this._notifyZoom(t.k);
+    this._scheduleSharp();
+  }
+
+  // 渐进式清晰度：缩放过程中保留 will-change（GPU 合成，流畅但位图放大略糊），
+  // 停止 ~180ms 且放大倍率 >1 时移除 will-change，让展开框按当前比例重新栅格化变清晰。
+  _scheduleSharp() {
+    const app = this._appEl || (this._appEl = document.getElementById('app'));
+    if (!app) return;
+    app.classList.remove('render-sharp');
+    clearTimeout(this._sharpTimer);
+    this._sharpTimer = setTimeout(() => {
+      if (this.transform.k > 1.05) app.classList.add('render-sharp');
+    }, 180);
   }
 
   setOverlaySync(fn) { this._notifyOverlay = fn; }
@@ -290,7 +355,7 @@ export class ForceGraph {
       ev.stopPropagation();
       sx = ev.clientX; sy = ev.clientY; ox = n.x; oy = n.y; moved = false;
       n.fx = n.x; n.fy = n.y;
-      this.sim.alphaTarget(0.18).restart();
+      this.sim.alphaTarget(0.1).restart();
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
     };
