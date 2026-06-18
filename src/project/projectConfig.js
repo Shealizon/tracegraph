@@ -3,6 +3,7 @@ import { isProjectPayload, saveProject } from './store.js';
 import { extractFixedTexGraph } from '../import/texExtract.js';
 import { extractGenericTexGraph } from '../import/texGeneric.js';
 import { ICON } from '../ui/icons.js';
+import { toast, confirmDialog } from '../ui/feedback.js';
 
 export function projectMainUrl(projectId) {
   return `${location.pathname}?screen=main&project=${encodeURIComponent(projectId)}`;
@@ -16,8 +17,8 @@ export function downloadProject(project) {
   downloadJson(project, `${safeName(project.name || project.id)}.paper-graph-project.json`);
 }
 
-export async function importStructuredJson(db, currentProject = null) {
-  const file = await pickFile('.json,application/json');
+export async function importStructuredJson(db, currentProject = null, file = null) {
+  file = file || await pickFile('.json,application/json');
   if (!file) return null;
   const payload = JSON.parse(await file.text());
   if (isProjectPayload(payload)) {
@@ -47,10 +48,11 @@ export async function importStructuredJson(db, currentProject = null) {
   });
 }
 
-export async function importFixedTex(db, currentProject = null) {
-  const texFile = await pickFile('.tex,text/x-tex,text/plain');
+export async function importFixedTex(db, currentProject = null, texFile = null) {
+  texFile = texFile || await pickFile('.tex,text/x-tex,text/plain');
   if (!texFile) return null;
-  const auxFile = confirm('是否选择对应的 .aux 文件以保留论文编号？') ? await pickFile('.aux,text/plain') : null;
+  const useAux = await confirmDialog({ title: '保留论文编号', message: '是否同时选择对应的 .aux 文件以沿用论文中的编号？取消则自动编号。', okText: '选择 .aux', cancelText: '自动编号' });
+  const auxFile = useAux ? await pickFile('.aux,text/plain') : null;
   const graph = extractFixedTexGraph(await texFile.text(), auxFile ? await auxFile.text() : '', { source: texFile.name, title: texFile.name.replace(/\.tex$/i, '') });
   const doc = graphToDocument(graph, texFile.name, 'fixed-tex');
   if (currentProject) {
@@ -76,11 +78,11 @@ export async function importFixedTex(db, currentProject = null) {
 }
 
 // 通用 TeX（自动识别）：无需固定格式，自动发现定理类环境，全部本地解析
-export async function importGenericTex(db, currentProject = null) {
-  const texFile = await pickFile('.tex,.txt,text/x-tex,text/plain');
+export async function importGenericTex(db, currentProject = null, texFile = null) {
+  texFile = texFile || await pickFile('.tex,.txt,text/x-tex,text/plain');
   if (!texFile) return null;
-  const auxFile = confirm('可选：选择对应的 .aux 文件以沿用论文中的编号？（取消则本地自动编号）') ? await pickFile('.aux,text/plain') : null;
-  const graph = extractGenericTexGraph(await texFile.text(), auxFile ? await auxFile.text() : '', { source: texFile.name, title: texFile.name.replace(/\.(tex|txt)$/i, '') });
+  // 通用 TeX 自动识别本就自动编号，不再询问 .aux
+  const graph = extractGenericTexGraph(await texFile.text(), '', { source: texFile.name, title: texFile.name.replace(/\.(tex|txt)$/i, '') });
   const doc = graphToDocument(graph, texFile.name, 'generic-tex');
   if (currentProject) {
     const project = normalizeProject({
@@ -105,7 +107,7 @@ export async function importGenericTex(db, currentProject = null) {
 }
 
 export function showTodoImport() {
-  alert('PDF 本地解析仍在开发中：将在浏览器内提取文字层并做结构识别，无需服务端。\n当前可先用「通用 TeX（自动识别）」导入 .tex / .txt。');
+  toast('PDF 本地解析开发中：将在浏览器内提取文字层并做结构识别。当前可用 JSON / TeX 导入。');
 }
 
 export function openProjectConfigDialog({ db, project, onSaved }) {

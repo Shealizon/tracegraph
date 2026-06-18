@@ -274,7 +274,7 @@ body {
 
 /* 溢出菜单 */
 .side-menu {
-  position: fixed; z-index: 240; min-width: 160px;
+  position: fixed; z-index: 600; min-width: 160px; /* 高于项目弹窗(500)，避免"添加文件"菜单被遮 */
   display: flex; flex-direction: column; gap: 2px; padding: 5px;
   background: var(--bg-modal-solid); border: 1px solid var(--line); border-radius: var(--r);
   box-shadow: var(--shadow-pop);
@@ -636,6 +636,19 @@ body {
 
 .project-dialog-actions { display: flex; gap: 10px; justify-content: flex-end; padding: 14px 16px; border-top: 1px solid var(--line-soft); }
 .project-dialog-actions .btn { min-width: 110px; }
+
+/* 自定义提示：toast / confirm（取代原生 alert/confirm） */
+.toast-wrap { position: fixed; right: 18px; bottom: 18px; z-index: 800; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.toast { pointer-events: auto; max-width: 360px; padding: 10px 14px; border-radius: var(--r); background: var(--bg-modal-solid); color: var(--text); border: 1px solid var(--line); box-shadow: var(--shadow-pop); font-size: 12.5px; line-height: 1.45; opacity: 0; transform: translateY(8px); transition: opacity .18s ease, transform .18s ease; cursor: pointer; }
+.toast.in { opacity: 1; transform: none; }
+.toast-error { border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }
+.toast-success { border-color: color-mix(in srgb, var(--lemma) 55%, var(--line)); }
+.confirm-back { position: fixed; inset: 0; z-index: 820; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0,0,0,.42); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.confirm-pop { width: min(380px, 92vw); padding: 18px; border-radius: var(--r-lg); background: var(--bg-modal-solid); border: 1px solid var(--line); box-shadow: var(--shadow-modal); }
+.confirm-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+.confirm-msg { font-size: 13px; color: var(--text); line-height: 1.55; white-space: pre-wrap; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.confirm-actions .btn { min-width: 76px; }
 
 @media (max-width: 680px) {
   .cfg-adv-grid { grid-template-columns: 1fr; }

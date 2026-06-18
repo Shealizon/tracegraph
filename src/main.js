@@ -14,7 +14,8 @@ import { isLeafNode } from './data/schema.js';
 import { renderLeadingPage } from './view/leadingPage.js';
 import { initProjectStore, saveProject, setCurrentProjectId } from './project/store.js';
 import { compileProject } from './project/projectAdapter.js';
-import { downloadProject, goLeading, importFixedTex, importGenericTex, importStructuredJson, openProjectConfigDialog } from './project/projectConfig.js';
+import { downloadProject, goLeading, importGenericTex, importStructuredJson, openProjectConfigDialog } from './project/projectConfig.js';
+import { toast } from './ui/feedback.js';
 
 init().catch((err) => {
   console.error(err);
@@ -110,14 +111,16 @@ function startMain(db, project) {
     openProjectConfig: () => openProjectConfigDialog({ db, project, onSaved: () => location.reload() }),
     exportProject: () => downloadProject(project),
     importFile: async () => {
-      const kind = prompt('导入类型：json / tex（通用·自动识别）/ tex-fixed（固定格式）', 'json');
-      if (!kind) return;
-      const k = kind.toLowerCase().trim();
-      if (k === 'json') await importStructuredJson(db, project);
-      else if (k === 'tex-fixed' || k === 'fixed') await importFixedTex(db, project);
-      else if (k === 'tex' || k === 'generic') await importGenericTex(db, project);
-      else { alert('PDF 本地解析仍在开发中（将在浏览器内提取文字层并做结构识别）。当前可用 json / tex 导入。'); return; }
-      location.reload();
+      // 直接弹文件选择器，按扩展名分发（.json → 结构化；.tex/.txt → 通用自动识别）
+      const file = await pickImportFile();
+      if (!file) return;
+      const lower = file.name.toLowerCase();
+      try {
+        if (lower.endsWith('.json')) await importStructuredJson(db, project, file);
+        else if (lower.endsWith('.tex') || lower.endsWith('.txt')) await importGenericTex(db, project, file);
+        else { toast('暂不支持该格式，请选择 .json / .tex / .txt', { type: 'error' }); return; }
+        location.reload();
+      } catch (e) { toast('导入失败：' + (e?.message || e), { type: 'error' }); }
     },
   };
 
@@ -407,4 +410,14 @@ function fmtNumber(value) {
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function pickImportFile() {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,.tex,.txt,application/json,text/plain';
+    input.onchange = () => resolve(input.files?.[0] || null);
+    input.click();
+  });
 }
