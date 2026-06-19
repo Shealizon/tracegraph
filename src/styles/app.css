@@ -650,6 +650,16 @@ body {
 .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .confirm-actions .btn { min-width: 76px; }
 
+/* 搜索分区：删了标签，与上方主题按钮留间距 */
+.side-group--search { margin-top: 18px; }
+
+/* 项目卡 · 文档信息 hover 提示 */
+.doc-tip { position: fixed; z-index: 300; min-width: 180px; max-width: 320px; padding: 6px; background: var(--bg-modal-solid); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow-pop); font-size: 12px; }
+.doc-tip-row { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-radius: var(--r-sm); }
+.doc-tip-row .dt-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.doc-tip-row .dt-meta { flex: 0 0 auto; color: var(--text-dim); font-variant-numeric: tabular-nums; font-size: 11px; }
+.doc-tip-row.off { opacity: .5; }
+
 @media (max-width: 680px) {
   .cfg-adv-grid { grid-template-columns: 1fr; }
 }

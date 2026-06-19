@@ -19,8 +19,16 @@ import 'katex/dist/katex.min.css';
 // ---- 占位符机制：先把 \ref 等抽出，渲染后再替换，避免被 KaTeX/转义破坏 ----
 const PH = (i) => `\u0000REF${i}\u0000`;
 
+// 常见数学宏兜底：样例/论文未显式提供 macros 时也能正确渲染（论文实际 macros 覆盖同名项）
+const DEFAULT_MACROS = {
+  '\\R': '\\mathbb{R}', '\\C': '\\mathbb{C}', '\\N': '\\mathbb{N}', '\\Z': '\\mathbb{Z}', '\\Q': '\\mathbb{Q}',
+  '\\norm': '\\left\\lVert #1\\right\\rVert', '\\abs': '\\left|#1\\right|', '\\one': '\\mathbf{1}',
+  '\\eps': '\\varepsilon', '\\veps': '\\varepsilon',
+  '\\supp': '\\operatorname{supp}', '\\Real': '\\operatorname{Re}', '\\Imag': '\\operatorname{Im}',
+};
+
 export function createRenderer(opts) {
-  const macros = { ...(opts.macros || {}) };
+  const macros = { ...DEFAULT_MACROS, ...(opts.macros || {}) };
   const numberOf = opts.numberOf || (() => '?');
   const kindOf = opts.kindOf || (() => 'theorem');
   const ownerOf = opts.ownerOf || (() => null);
@@ -244,6 +252,16 @@ function tokenize(src) {
       if (endIdx !== -1) {
         pushText();
         segs.push({ type: 'math', display: false, value: src.slice(i + 2, endIdx) });
+        i = endIdx + 2;
+        continue;
+      }
+    }
+    // $$ ... $$ （display）
+    if (src.startsWith('$$', i)) {
+      const endIdx = src.indexOf('$$', i + 2);
+      if (endIdx !== -1) {
+        pushText();
+        segs.push({ type: 'math', display: true, value: src.slice(i + 2, endIdx) });
         i = endIdx + 2;
         continue;
       }

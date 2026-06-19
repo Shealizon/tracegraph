@@ -67,6 +67,11 @@ export function renderLeadingPage({ db, projects, currentProjectId }) {
     openProjectConfigDialog({ db, project: saved, onSaved: (p) => refresh(p?.id || saved.id) });
   });
 
+  root.querySelectorAll('[data-docinfo]').forEach((btn) => {
+    btn.addEventListener('click', (ev) => ev.stopPropagation());
+    btn.addEventListener('mouseenter', () => { const p = projects.find((x) => x.id === btn.dataset.docinfo); if (p) showDocTip(btn, p); });
+    btn.addEventListener('mouseleave', hideDocTip);
+  });
   root.querySelectorAll('[data-open]').forEach((btn) => btn.addEventListener('click', (ev) => {
     ev.stopPropagation();
     setCurrentProjectId(btn.dataset.open);
@@ -108,10 +113,10 @@ function projectCard(project, active) {
         ${active ? '<span class="pc-badge">当前</span>' : ''}
       </div>
       <p class="project-card-meta">${nodes} 节点 · ${rels} 关系 · ${docs.length} 文件</p>
-      <div class="project-card-docs">${docs.slice(0, 4).map((d) => `<span>${escapeHtml(d.name)}</span>`).join('')}${docs.length > 4 ? '<span>...</span>' : ''}</div>
       <div class="project-card-foot">
         <span class="pc-updated">${updated ? `更新于 ${updated}` : ''}</span>
         <div class="project-card-actions">
+          ${docs.length ? `<button class="icon-btn" title="文档信息" data-docinfo="${escapeAttr(project.id)}">${ICON.info}</button>` : ''}
           <button class="icon-btn" title="打开" data-open="${escapeAttr(project.id)}">${ICON.play}</button>
           <button class="icon-btn" title="配置" data-config="${escapeAttr(project.id)}">${ICON.settings}</button>
           <button class="icon-btn" title="导出" data-export="${escapeAttr(project.id)}">${ICON.download}</button>
@@ -172,6 +177,7 @@ function showDeletePopover(anchor, text, onConfirm = null) {
   pop.className = 'delete-popover';
   pop.innerHTML = `<span>${escapeHtml(text)}</span>${onConfirm ? '<button data-confirm>删除</button><button data-cancel>取消</button>' : '<button data-cancel>知道了</button>'}`;
   card.appendChild(pop);
+  pop.addEventListener('click', (ev) => ev.stopPropagation()); // 阻止冒泡到整卡，避免误进入项目
   pop.querySelector('[data-cancel]').addEventListener('click', () => pop.remove());
   const confirm = pop.querySelector('[data-confirm]');
   if (confirm) confirm.addEventListener('click', onConfirm);
@@ -180,6 +186,28 @@ function showDeletePopover(anchor, text, onConfirm = null) {
 function closeDeletePopovers(root) {
   root.querySelectorAll('.delete-popover').forEach((p) => p.remove());
 }
+
+let docTipEl = null;
+function showDocTip(anchor, project) {
+  hideDocTip();
+  const docs = project.documents || [];
+  const enabled = new Set(project.config?.enabledDocumentIds || docs.map((d) => d.id));
+  const tip = document.createElement('div');
+  tip.className = 'doc-tip';
+  tip.innerHTML = docs.length
+    ? docs.map((d) => {
+      const n = (d.graph?.nodes || []).length;
+      const e = (d.graph?.edges || []).length;
+      return `<div class="doc-tip-row${enabled.has(d.id) ? '' : ' off'}"><span class="dt-name">${escapeHtml(d.name)}</span><span class="dt-meta">${n}·${e}</span></div>`;
+    }).join('')
+    : '<div class="doc-tip-row">无文档</div>';
+  document.body.appendChild(tip);
+  const r = anchor.getBoundingClientRect();
+  tip.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - tip.offsetWidth - 8))}px`;
+  tip.style.top = `${r.bottom + 6}px`;
+  docTipEl = tip;
+}
+function hideDocTip() { if (docTipEl) { docTipEl.remove(); docTipEl = null; } }
 
 function escapeHtml(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 function escapeAttr(s) { return escapeHtml(s).replace(/"/g, '&quot;'); }

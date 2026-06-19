@@ -45,8 +45,9 @@ export function buildSidebar(ctx, root) {
   themeRow.appendChild(buildThemeSwitch(ctx));
   root.appendChild(themeRow);
 
-  // ---- 搜索 ----
-  const grpSearch = group(root, '搜索');
+  // ---- 搜索（无标签，placeholder 已说明；与主题按钮留间距） ----
+  const grpSearch = el('div', 'side-group side-group--search');
+  root.appendChild(grpSearch);
   const searchBox = el('div', 'side-search-box');
   searchBox.innerHTML = `<span class="side-search-ico">${ICON.search}</span>`;
   const input = el('input', 'side-search');
