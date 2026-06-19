@@ -1,7 +1,8 @@
 import { normalizeProject, uniqueId } from '../project/projectAdapter.js';
 import { deleteProject, listProjects, saveProject, setCurrentProjectId } from '../project/store.js';
-import { downloadProject, openProjectConfigDialog, projectMainUrl } from '../project/projectConfig.js';
+import { downloadProject, importGenericTex, importStructuredJson, openProjectConfigDialog, projectMainUrl } from '../project/projectConfig.js';
 import { ICON } from '../ui/icons.js';
+import { toast } from '../ui/feedback.js';
 
 const THEME_MODES = [
   { mode: 'dark', icon: 'moon', title: '深色' },
@@ -67,6 +68,22 @@ export function renderLeadingPage({ db, projects, currentProjectId }) {
     openProjectConfigDialog({ db, project: saved, onSaved: (p) => refresh(p?.id || saved.id) });
   });
 
+  // 拖拽文件到引导页：自动新建项目并导入（标题取第一个文件名）
+  const page = root.querySelector('.leading-page');
+  page.addEventListener('dragover', (ev) => { ev.preventDefault(); page.classList.add('drag-over'); });
+  page.addEventListener('dragleave', (ev) => { if (ev.target === page) page.classList.remove('drag-over'); });
+  page.addEventListener('drop', async (ev) => {
+    ev.preventDefault();
+    page.classList.remove('drag-over');
+    const files = ev.dataTransfer?.files;
+    if (!files || !files.length) return;
+    const saved = await importFilesAsNewProject(db, files);
+    if (saved) {
+      setCurrentProjectId(saved.id);
+      openProjectConfigDialog({ db, project: saved, onSaved: (p) => refresh(p?.id || saved.id) });
+    }
+  });
+
   root.querySelectorAll('[data-docinfo]').forEach((btn) => {
     btn.addEventListener('click', (ev) => ev.stopPropagation());
     btn.addEventListener('mouseenter', () => { const p = projects.find((x) => x.id === btn.dataset.docinfo); if (p) showDocTip(btn, p); });
@@ -98,6 +115,28 @@ export function renderLeadingPage({ db, projects, currentProjectId }) {
       refresh();
     });
   }));
+}
+
+// 拖拽导入：新建空项目，按后缀逐个导入；名称留默认（弹窗据首个文件名提示），返回最终项目
+async function importFilesAsNewProject(db, files) {
+  const valid = [...files].filter((f) => /\.(json|tex|txt)$/i.test(f.name));
+  if (!valid.length) { toast('仅支持 .json / .tex / .txt 文件'); return null; }
+  const now = new Date().toISOString();
+  let project = await saveProject(db, normalizeProject({
+    id: uniqueId('project'),
+    name: '新项目',
+    createdAt: now,
+    updatedAt: now,
+    config: { enabledDocumentIds: [], disabledNodeIds: [], disabledRelationKeys: [], viewState: {} },
+    documents: [],
+  }));
+  for (const f of valid) {
+    try {
+      if (/\.json$/i.test(f.name)) project = await importStructuredJson(db, project, f);
+      else project = await importGenericTex(db, project, f);
+    } catch (e) { toast(`「${f.name}」导入失败：` + (e?.message || e), { type: 'error' }); }
+  }
+  return project;
 }
 
 function projectCard(project, active) {

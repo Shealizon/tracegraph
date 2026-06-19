@@ -120,6 +120,9 @@ export function openProjectConfigDialog({ db, project, onSaved }) {
   const relationRows = project.documents.flatMap((doc) => (doc.graph?.edges || []).map((e) => ({ doc, edge: e, key: `${e.from}|${e.fromLabel}|${e.to}` })));
   const multiDoc = project.documents.length > 1;
   const docMeta = (doc) => `${(doc.graph?.nodes || []).length} 节点 · ${(doc.graph?.edges || []).length} 关系`;
+  // 项目名：未真正命名时 input 留空、用 placeholder 提示；有文件后 placeholder 用第一个文件名
+  const isDefaultName = !project.name || project.name === '新项目' || project.name === '未命名项目';
+  const phName = (isDefaultName && project.documents.length) ? project.documents[0].name : '新项目';
 
   overlay.innerHTML = `
     <div class="project-dialog">
@@ -129,14 +132,14 @@ export function openProjectConfigDialog({ db, project, onSaved }) {
       </div>
       <p class="project-dialog-desc">选择要纳入关系图的文件。展开「高级」可按单条精确开关节点与关系。</p>
       <div class="project-dialog-body">
-        <label class="project-field">项目名称<input data-name value="${escapeAttr(project.name)}"></label>
+        <label class="project-field">项目名称<input data-name value="${isDefaultName ? '' : escapeAttr(project.name)}" placeholder="${escapeAttr(phName)}"></label>
 
         <section class="cfg-section">
           <div class="cfg-section-head">
             <span class="cfg-section-title">文件</span>
             <span class="cfg-count" data-count-doc></span>
             <div class="cfg-add">
-              <button class="btn btn--sm" data-add>${ICON.plus}<span>添加文件</span></button>
+              <button class="btn btn--sm" data-add title="支持 .json / .tex / .txt，按后缀自动选择导入方式">${ICON.plus}<span>添加文件</span></button>
             </div>
           </div>
           <div class="cfg-rows" data-docs>${project.documents.length
@@ -196,11 +199,33 @@ export function openProjectConfigDialog({ db, project, onSaved }) {
     updateCounts();
   }));
 
-  // 添加文件菜单（JSON / 固定 TeX / 通用 TeX 自动识别 / PDF 开发中）
-  attachAddFileMenu($('[data-add]'), {
-    onJson: async () => { await importStructuredJson(db, project); close(); onSaved && onSaved(); },
-    onTex: async () => { await importFixedTex(db, project); close(); onSaved && onSaved(); },
-    onGeneric: async () => { await importGenericTex(db, project); close(); onSaved && onSaved(); },
+  // 把若干文件按后缀导入当前项目；保留已填名称，导入后重开弹窗（更新文件列表与占位名）
+  const importFilesHere = async (fileList) => {
+    const valid = [...fileList].filter((f) => /\.(json|tex|txt)$/i.test(f.name));
+    if (!valid.length) { toast('仅支持 .json / .tex / .txt'); return; }
+    const typed = $('[data-name]').value.trim();
+    let proj = typed ? { ...project, name: typed } : project;
+    for (const f of valid) {
+      try {
+        if (/\.json$/i.test(f.name)) proj = await importStructuredJson(db, proj, f);
+        else proj = await importGenericTex(db, proj, f);
+      } catch (e) { toast(`「${f.name}」导入失败：` + (e?.message || e), { type: 'error' }); }
+    }
+    close();
+    openProjectConfigDialog({ db, project: proj, onSaved });
+  };
+  // 添加文件：单按钮直接选文件（可多选），按后缀自动选导入方式
+  $('[data-add]').addEventListener('click', async () => {
+    const file = await pickFile('.json,.tex,.txt,application/json,text/plain');
+    if (file) importFilesHere([file]);
+  });
+  // 支持把文件直接拖拽进配置弹窗追加导入
+  overlay.addEventListener('dragover', (ev) => { ev.preventDefault(); overlay.classList.add('drag-over'); });
+  overlay.addEventListener('dragleave', (ev) => { if (ev.target === overlay) overlay.classList.remove('drag-over'); });
+  overlay.addEventListener('drop', (ev) => {
+    ev.preventDefault();
+    overlay.classList.remove('drag-over');
+    if (ev.dataTransfer?.files?.length) importFilesHere(ev.dataTransfer.files);
   });
 
   $('[data-close]').addEventListener('click', close);
@@ -223,32 +248,6 @@ export function openProjectConfigDialog({ db, project, onSaved }) {
     await saveProject(db, next);
     close();
     onSaved && onSaved(next);
-  });
-}
-
-// 文件区「+ 添加文件」下拉菜单
-function attachAddFileMenu(anchor, { onJson, onTex, onGeneric }) {
-  let menu = null;
-  const close = () => { if (menu) { menu.remove(); menu = null; document.removeEventListener('click', onDoc, true); } };
-  const onDoc = (ev) => { if (menu && !menu.contains(ev.target) && ev.target !== anchor) close(); };
-  anchor.addEventListener('click', (ev) => {
-    ev.stopPropagation();
-    if (menu) { close(); return; }
-    menu = document.createElement('div');
-    menu.className = 'side-menu';
-    menu.innerHTML = `
-      <button class="side-menu-item" data-json>结构化 JSON</button>
-      <button class="side-menu-item" data-generic>通用 TeX<span class="cfg-soon">自动识别</span></button>
-      <button class="side-menu-item" data-tex>固定 TeX</button>
-      <button class="side-menu-item" data-pdf disabled>PDF<span class="cfg-soon">开发中</span></button>`;
-    menu.querySelector('[data-json]').addEventListener('click', () => { close(); onJson(); });
-    menu.querySelector('[data-tex]').addEventListener('click', () => { close(); onTex(); });
-    menu.querySelector('[data-generic]').addEventListener('click', () => { close(); onGeneric && onGeneric(); });
-    const r = anchor.getBoundingClientRect();
-    menu.style.top = `${r.bottom + 6}px`;
-    menu.style.left = `${Math.max(8, r.right - 168)}px`;
-    document.body.appendChild(menu);
-    setTimeout(() => document.addEventListener('click', onDoc, true), 0);
   });
 }
 

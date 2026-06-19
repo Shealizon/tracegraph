@@ -548,7 +548,9 @@ body {
 
 /* ---- Leading 项目首页 ---- */
 #leading-root { min-height: 100vh; background: var(--bg); color: var(--text); overflow: auto; }
-.leading-page { width: min(1120px, calc(100vw - 40px)); margin: 0 auto; padding: 28px 0 56px; }
+.leading-page { width: min(1120px, calc(100vw - 40px)); margin: 0 auto; padding: 28px 0 56px; border-radius: var(--r-lg); transition: box-shadow .12s ease, background .12s ease; }
+.leading-page.drag-over { box-shadow: inset 0 0 0 2px var(--accent, #ff9e64); background: color-mix(in srgb, var(--accent, #ff9e64) 7%, transparent); }
+.project-dialog-backdrop.drag-over .project-dialog { box-shadow: 0 0 0 2px var(--accent, #ff9e64), var(--shadow-modal); }
 .leading-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 4px 2px 18px; border-bottom: 1px solid var(--line-soft); }
 .leading-brand { display: flex; align-items: baseline; gap: 10px; }
 .leading-topbar h1 { margin: 0; font-size: 21px; font-weight: 650; letter-spacing: -.02em; }
