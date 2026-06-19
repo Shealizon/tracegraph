@@ -294,7 +294,8 @@ export class ModalManager {
     // 远景 LOD：尺寸不变，叠加“大号节点”式正面（类型/编号/标题，上下结构大字体），随 --lod 淡入
     const face = document.createElement('div');
     face.className = 'modal-nodeface';
-    face.innerHTML = `<div class="mnf-type">${escapeHtml(node.typeLabel || node.type || '')}</div><div class="mnf-num">${escapeHtml(String(node.number ?? nodeTag(ctx.model, node)))}</div>`;
+    const mnfNum = String(node.number ?? nodeTag(ctx.model, node));
+    face.innerHTML = `<div class="mnf-type">${escapeHtml(node.typeLabel || node.type || '')}</div><div class="mnf-num" style="--num-len:${Math.max(1, mnfNum.length)}">${escapeHtml(mnfNum)}</div>`;
     el.appendChild(face);
     const body = el.querySelector('.modal-body');
     this.overlayEl.appendChild(el);

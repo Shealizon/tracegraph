@@ -150,7 +150,7 @@ export class ForceGraph {
   // ---- 模拟 ----
   _initSim() {
     // 可调力参数（默认值）
-    this.forceParams = { center: 0.17, charge: 540, link: 0.18 };
+    this.forceParams = { center: 0.3, charge: 540, link: 0.18 };
 
     this.linkForce = d3
       .forceLink(this.links)
@@ -159,7 +159,10 @@ export class ForceGraph {
       .strength(this.forceParams.link);
 
     this.chargeForce = d3.forceManyBody().strength(() => -this.forceParams.charge);
-    this.centerForce = d3.forceCenter(0, 0).strength(this.forceParams.center);
+    // forceCenter 仅防整体漂移（弱）；真正的"聚拢力"用 forceX/Y 向心，对孤立节点也有效
+    this.centerForce = d3.forceCenter(0, 0).strength(0.05);
+    this.forceX = d3.forceX(0).strength(this.forceParams.center);
+    this.forceY = d3.forceY(0).strength(this.forceParams.center);
 
     // 只有“可见的圆节点”才占据碰撞体积；modal 与被隐藏节点（含“仅显示展开框”）半径为 0
     this._collideRadius = (d) => (this._nodeVisible(d) ? d.radius + 22 : 0);
@@ -170,6 +173,8 @@ export class ForceGraph {
       .force('link', this.linkForce)
       .force('charge', this.chargeForce)
       .force('center', this.centerForce)
+      .force('x', this.forceX)
+      .force('y', this.forceY)
       .force('collide', this.collideForce)
       .force('rect', this._forceRect())
       .velocityDecay(0.42)
@@ -181,7 +186,7 @@ export class ForceGraph {
   // 调节力参数（N4）：name ∈ center|charge|link
   setForce(name, value) {
     this.forceParams[name] = value;
-    if (name === 'center') this.centerForce.strength(value);
+    if (name === 'center') { this.forceX.strength(value); this.forceY.strength(value); }
     else if (name === 'charge') this.chargeForce.strength(() => -value);
     else if (name === 'link') this.linkForce.strength(value);
     // 仅轻微 reheat：在现有布局基础上就地微调，避免把整个图重新拉回原点（“重置到一个固定点”）

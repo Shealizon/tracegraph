@@ -119,7 +119,7 @@ export function buildSidebar(ctx, root) {
   // ---- 高级（默认折叠）：布局力度 + 显示 ----
   const grpAdv = section(root, '高级', 'advanced', true);
   grpAdv.appendChild(subLabel('布局力度'));
-  grpAdv.appendChild(slider('聚拢力', 0, 0.6, 0.005, graph.getForce('center'), (v) => { graph.setForce('center', v); ctx.writeHash && ctx.writeHash(); }));
+  grpAdv.appendChild(slider('聚拢力', 0, 1, 0.01, graph.getForce('center'), (v) => { graph.setForce('center', v); ctx.writeHash && ctx.writeHash(); }));
   grpAdv.appendChild(slider('排斥力', 80, 1600, 20, graph.getForce('charge'), (v) => { graph.setForce('charge', v); ctx.writeHash && ctx.writeHash(); }));
   grpAdv.appendChild(slider('连线吸引', 0, 1, 0.02, graph.getForce('link'), (v) => { graph.setForce('link', v); ctx.writeHash && ctx.writeHash(); }));
   grpAdv.appendChild(subLabel('显示'));
