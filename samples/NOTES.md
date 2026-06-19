@@ -35,6 +35,11 @@ v1 截图排查发现两个问题，已在 v2 修复（规则 7、8）：
 
 v2 复测（hardy/beurling）：number 全为纯数字、title 纯文本，问题消除。
 
+**v3（针对空卡片）**：讲义中"仅被引用、无陈述"的命名定理（Young/Plancherel）曾被建成空 `sections` 节点。加规则：① number 非空（无编号命名定理用其名）；② **禁止空 sections**（仅被引用的经典定理补一句标准陈述并标注，或不单独建节点）。重生成 uncertainty：thm:3.10 补足 statement，Young/Plancherel 归为外部引用，消除空卡片。
+
+## 对话记录留存（LLM 回归测试）
+每次 LLM 提取的**原始输出**保存到 `samples/raw/<name>.raw.txt`；提示词版本由 git 追踪 `prompts/paper-graph-extract.md`。二者构成可复现的对话记录，便于回归与提示词迭代。校验用 `scripts/check-sample.mjs`（节点/边/未解析引用/空 sections）。
+
 ## 普适性结论与失败模式
 
 - 引用解析规则（“target 必须指向存在 id”）有效：三篇均 0 未解析。

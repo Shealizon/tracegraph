@@ -1,3 +1,4 @@
+```json
 {
   "format": "relation-graph@1",
   "meta": {
@@ -18,11 +19,7 @@
         }
       ],
       "anchors": [
-        {
-          "id": "thm:3.10",
-          "kind": "theorem",
-          "number": "3.10"
-        }
+        { "id": "thm:3.10", "kind": "theorem", "number": "3.10" }
       ],
       "refs": []
     },
@@ -38,11 +35,7 @@
         }
       ],
       "anchors": [
-        {
-          "id": "prop:1.3",
-          "kind": "proposition",
-          "number": "1.3"
-        }
+        { "id": "prop:1.3", "kind": "proposition", "number": "1.3" }
       ],
       "refs": []
     },
@@ -62,33 +55,13 @@
         }
       ],
       "anchors": [
-        {
-          "id": "prop:5.1",
-          "kind": "proposition",
-          "number": "5.1"
-        },
-        {
-          "id": "eq:55",
-          "kind": "equation",
-          "number": "55"
-        }
+        { "id": "prop:5.1", "kind": "proposition", "number": "5.1" },
+        { "id": "eq:55", "kind": "equation", "number": "55" }
       ],
       "refs": [
-        {
-          "target": "cite:plancherel",
-          "relation": "cite",
-          "where": "proof"
-        },
-        {
-          "target": "thm:3.10",
-          "relation": "ref",
-          "where": "proof"
-        },
-        {
-          "target": "prop:1.3",
-          "relation": "ref",
-          "where": "proof"
-        }
+        { "target": "cite:plancherel", "relation": "cite", "where": "proof" },
+        { "target": "thm:3.10", "relation": "ref", "where": "proof" },
+        { "target": "prop:1.3", "relation": "ref", "where": "proof" }
       ]
     },
     {
@@ -107,11 +80,7 @@
         }
       ],
       "anchors": [
-        {
-          "id": "lem:5.2",
-          "kind": "lemma",
-          "number": "5.2"
-        }
+        { "id": "lem:5.2", "kind": "lemma", "number": "5.2" }
       ],
       "refs": []
     },
@@ -131,23 +100,11 @@
         }
       ],
       "anchors": [
-        {
-          "id": "prop:5.3",
-          "kind": "proposition",
-          "number": "5.3"
-        }
+        { "id": "prop:5.3", "kind": "proposition", "number": "5.3" }
       ],
       "refs": [
-        {
-          "target": "lem:5.2",
-          "relation": "ref",
-          "where": "proof"
-        },
-        {
-          "target": "cite:young",
-          "relation": "cite",
-          "where": "proof"
-        }
+        { "target": "lem:5.2", "relation": "ref", "where": "proof" },
+        { "target": "cite:young", "relation": "cite", "where": "proof" }
       ]
     },
     {
@@ -166,18 +123,10 @@
         }
       ],
       "anchors": [
-        {
-          "id": "prop:5.4",
-          "kind": "proposition",
-          "number": "5.4"
-        }
+        { "id": "prop:5.4", "kind": "proposition", "number": "5.4" }
       ],
       "refs": [
-        {
-          "target": "prop:5.3",
-          "relation": "ref",
-          "where": "proof"
-        }
+        { "target": "prop:5.3", "relation": "ref", "where": "proof" }
       ]
     },
     {
@@ -196,18 +145,10 @@
         }
       ],
       "anchors": [
-        {
-          "id": "prop:5.5",
-          "kind": "proposition",
-          "number": "5.5"
-        }
+        { "id": "prop:5.5", "kind": "proposition", "number": "5.5" }
       ],
       "refs": [
-        {
-          "target": "lem:5.2",
-          "relation": "ref",
-          "where": "proof"
-        }
+        { "target": "lem:5.2", "relation": "ref", "where": "proof" }
       ]
     },
     {
@@ -222,11 +163,7 @@
         }
       ],
       "anchors": [
-        {
-          "id": "cite:plancherel",
-          "kind": "bib",
-          "number": "Plancherel"
-        }
+        { "id": "cite:plancherel", "kind": "bib", "number": "Plancherel" }
       ],
       "refs": []
     },
@@ -242,11 +179,7 @@
         }
       ],
       "anchors": [
-        {
-          "id": "cite:young",
-          "kind": "bib",
-          "number": "Young"
-        }
+        { "id": "cite:young", "kind": "bib", "number": "Young" }
       ],
       "refs": []
     },
@@ -262,11 +195,7 @@
         }
       ],
       "anchors": [
-        {
-          "id": "cite:14",
-          "kind": "bib",
-          "number": "14"
-        }
+        { "id": "cite:14", "kind": "bib", "number": "14" }
       ],
       "refs": []
     },
@@ -282,13 +211,10 @@
         }
       ],
       "anchors": [
-        {
-          "id": "cite:15",
-          "kind": "bib",
-          "number": "15"
-        }
+        { "id": "cite:15", "kind": "bib", "number": "15" }
       ],
       "refs": []
     }
   ]
 }
+```

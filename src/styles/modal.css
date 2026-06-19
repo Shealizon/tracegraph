@@ -47,7 +47,7 @@
   max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 /* 编号大字：短编号用大字号，长文字（如 Young/Plancherel）按字符数自适应缩小，不溢出 */
-.modal-nodeface .mnf-num { font-size: min(clamp(18px, 34cqw, 200px), calc(108cqw / var(--num-len, 1))); font-weight: 700; line-height: 1.05; color: var(--modal-color, var(--text)); max-width: 92%; overflow: hidden; white-space: nowrap; }
+.modal-nodeface .mnf-num { font-size: min(clamp(18px, 34cqw, 200px), calc(108cqw / var(--num-len, 1))); font-weight: 700; line-height: 1.3; padding: 0 2px 0.12em; color: var(--modal-color, var(--text)); max-width: 96%; white-space: nowrap; }
 .modal.type-theorem { --modal-color: var(--thm); }
 .modal.type-proposition { --modal-color: var(--prop); }
 .modal.type-lemma { --modal-color: var(--lemma); }
