@@ -115,6 +115,9 @@ export function typeColor(modelOrMeta, type) {
 
 export function nodeTag(modelOrMeta, node) {
   if (!node) return '';
-  if (isLeafNode(modelOrMeta, node)) return `[${node.number ?? node.id}]`;
+  if (isLeafNode(modelOrMeta, node)) {
+    const num = String(node.number ?? node.id).replace(/^\[+|\]+$/g, ''); // 去掉已有方括号，避免 [[15]]
+    return `[${num}]`;
+  }
   return `${node.typeLabel || node.type || ''}${node.number ? ' ' + node.number : ''}`.trim() || node.id;
 }

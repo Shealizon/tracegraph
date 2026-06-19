@@ -10,20 +10,25 @@ export function openDetails(ctx, nodeId) {
   const { model, render } = ctx;
   const node = model.nodeById.get(nodeId);
   if (!node) return;
-  const proofLabel = model.meta.profileResolved?.id === 'paper' ? '证明' : '详情';
+  const proofLabel = model.meta.proofLabel || '详情';
 
   const page = document.createElement('div');
   page.className = 'details-page';
 
   if (isLeafNode(model, node)) {
+    const users = [...(model.usedBy.get(node.id) || [])];
     page.innerHTML = `
       <div class="details-head">
         <span class="d-num" style="color:${typeColor(model, node.type)}">${escapeHtml(nodeTag(model, node))}</span>
-        <span class="d-title">${escapeHtml(node.title)}</span>
+        <span class="d-title">${escapeHtml(node.title || '')}</span>
         <button class="m-btn d-close" title="关闭">${ICON.close}</button>
       </div>
       <div class="details-cols">
-        <div class="details-main"><p>来源条目 <code>${escapeHtml(node.id)}</code>。</p>${citedByHTML(ctx, node)}</div>
+        <div class="details-main"><p>来源条目 <code>${escapeHtml(node.id)}</code>。</p>${node.title ? `<p>${escapeHtml(node.title)}</p>` : ''}</div>
+        <div class="details-side">
+          <h4>被引用于（${users.length}）</h4>
+          ${refLines(ctx, users)}
+        </div>
       </div>`;
   } else {
     const deps = [...(model.deps.get(node.id) || [])];

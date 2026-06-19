@@ -11,7 +11,7 @@
 ```
 {
   "format": "relation-graph@1",
-  "meta": { "title": "<标题>", "bodyFormat": "latex", "defaultType": "<最核心论断的类型 id>" },
+  "meta": { "title": "<标题>", "bodyFormat": "latex", "defaultType": "<最核心论断的类型 id>", "proofLabel": "<折叠区称呼：数学=证明，实验科学=实验过程/方法/论证，按论文实际>" },
   "types": [
     { "id": "<小写英文 id>", "label": "<显示名，可中文>", "color": "<调色板颜色>", "leaf": false },
     { "id": "reference", "label": "文献", "color": "#8a8a98", "leaf": true }
@@ -48,7 +48,7 @@
 
 5. **依赖即 refs**：A 的陈述/论证用到 B（“by Lemma B”“由实验 2”“follows from”“based on [12]”），就在 A 的 `refs` 加 `{ "target": "<B 的 id>", ... }`。系统据此自动连边，**不要写 edges 字段**。
 6. **refs.target 必须指向本 JSON 中存在的 id**（含 reference 类节点）。外部文献先建成 reference 类型节点（id 如 `cite:Author2020`、`cite:12`），再被 `relation:"cite"` 引用。
-7. **number 非空**：优先编号（如 `"1"`、`"5.2"`）；无编号的命名结论用其简短名（如 `"Young"`）。
+7. **number 非空**：优先编号（如 `"1"`、`"5.2"`）；无编号的命名结论用其简短名（如 `"Young"`）。**引用类(reference)节点的 number 用纯数字/标识，不要带方括号**（系统会自动加 `[ ]`）。
 8. **title 必须是纯文本短名**：可用 Unicode（`L²`、`∂`），但**不能含 `$...$`、`\(...\)` 或任何 LaTeX 命令**；公式只放 `sections[].body`。
 9. **sections 不为空**：每个非引用节点至少一段 `statement`；仅被引用、源中无完整陈述的经典结论，用一句话补其标准内容并标注「（标准结论；源中仅引用）」，否则不单独建节点。
 10. 数学公式保留原文 LaTeX（`$...$`、`\[...\]`、`\begin{equation}`）放进 `sections[].body`。

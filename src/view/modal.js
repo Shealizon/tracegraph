@@ -490,5 +490,5 @@ export class ModalManager {
 }
 
 function escapeHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-function proofLabelOf(ctx) { return ctx.model.meta.profileResolved?.id === 'paper' ? '证明' : '详情'; }
+function proofLabelOf(ctx) { return ctx.model.meta.proofLabel || '详情'; }
 function cssEscape(s) { return String(s).replace(/"/g, '\\"'); }

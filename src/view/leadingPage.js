@@ -110,7 +110,6 @@ function projectCard(project, active) {
     <article class="project-card${active ? ' active' : ''}" data-card="${escapeAttr(project.id)}" role="button" tabindex="0" title="打开项目">
       <div class="project-card-top">
         <h3>${escapeHtml(project.name)}</h3>
-        ${active ? '<span class="pc-badge">当前</span>' : ''}
       </div>
       <p class="project-card-meta">${nodes} 节点 · ${rels} 关系 · ${docs.length} 文件</p>
       <div class="project-card-foot">
