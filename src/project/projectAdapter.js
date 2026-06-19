@@ -145,6 +145,7 @@ export function compileProject(project) {
         labels: nodes.reduce((sum, n) => sum + (n.labels?.length || 0), 0),
       },
     },
+    types: firstGraph.meta?.profileResolved?.types, // 传递领域自定义类型，避免二次编译退回默认 paper 配色
     nodes,
     edges,
   };

@@ -2,67 +2,77 @@
   "format": "relation-graph@1",
   "meta": {
     "title": "End-to-End Speaker Diarization as Post-Processing",
-    "profile": "paper",
-    "bodyFormat": "latex"
+    "bodyFormat": "latex",
+    "defaultType": "method"
   },
-  "nodes": [
+  "types": [
     {
-      "id": "prop:cluster-limitation",
-      "type": "proposition",
-      "number": "1",
-      "title": "Clustering-based diarization cannot handle overlap",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "Clustering-based diarization methods formulate the problem as set partitioning, i.e., predicted active frame sets $T_k$ for $k \\in [K]$ are disjoint: $T_i \\cap T_j = \\emptyset$ for all $\\{i,j\\} \\in \\binom{[K]}{2}$. Each frame is assigned to at most one speaker; consequently, they fundamentally cannot deal with overlapping speech. Despite this limitation, clustering-based methods remain strong baselines on datasets with a large number of speakers because they use unsupervised clustering without overfitting to overlap patterns in training data."
-        }
-      ],
-      "anchors": [
-        {
-          "id": "prop:cluster-limitation",
-          "kind": "proposition",
-          "number": "1"
-        }
-      ],
-      "refs": [
-        {
-          "target": "cite:1",
-          "relation": "cite",
-          "where": "statement"
-        }
-      ]
+      "id": "method",
+      "label": "方法",
+      "color": "#ff9e64",
+      "leaf": false
     },
     {
-      "id": "prop:eend-capability",
-      "type": "proposition",
-      "number": "2",
-      "title": "EEND handles overlap via multi-label classification",
+      "id": "result",
+      "label": "实验结果",
+      "color": "#c39bff",
+      "leaf": false
+    },
+    {
+      "id": "observation",
+      "label": "观察",
+      "color": "#7dd3a8",
+      "leaf": false
+    },
+    {
+      "id": "reference",
+      "label": "文献",
+      "color": "#8a8a98",
+      "leaf": true
+    }
+  ],
+  "nodes": [
+    {
+      "id": "obs:cannot_overlap",
+      "type": "observation",
+      "number": "§1",
+      "title": "Clustering Cannot Handle Overlap",
       "sections": [
         {
           "kind": "statement",
-          "body": "End-to-end neural diarization (EEND) treats speaker diarization as a multi-label classification problem. It predicts whether each speaker is active or not at each frame; thus, it can deal with speaker overlap. Extensions (encoder-decoder-based attractor calculation, speaker-conditional EEND) can handle an unknown number of speakers, but still perform poorly when the number of speakers is large due to training data imbalance (mixtures of many speakers are rare) and the computational cost of permutation invariant training."
+          "body": "Clustering-based diarization methods assign each frame to exactly one speaker cluster (hard clustering such as AHC or k-means), treating diarization as a set partitioning problem. Consequently, they fundamentally cannot deal with overlapping speech where multiple speakers are active simultaneously."
         }
       ],
       "anchors": [
         {
-          "id": "prop:eend-capability",
-          "kind": "proposition",
-          "number": "2"
+          "id": "obs:cannot_overlap",
+          "kind": "node",
+          "number": "§1"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "obs:eend_many_spk",
+      "type": "observation",
+      "number": "§1",
+      "title": "EEND Degrades with Many Speakers",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "End-to-end neural diarization (EEND) methods treat diarization as multi-label classification and can handle overlapping speech. However, they perform poorly when the number of speakers is large because: (1) training datasets rarely contain mixtures with many speakers, causing overtraining on few-speaker mixtures; (2) permutation invariant training becomes computationally expensive for many speakers. Extensions like encoder-decoder attractor (EDA) [8] and speaker-conditioned EEND (SC-EEND) [9] partly address flexible speaker counts but still degrade on large speaker sets."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "obs:eend_many_spk",
+          "kind": "node",
+          "number": "§1"
         }
       ],
       "refs": [
         {
-          "target": "cite:5",
-          "relation": "cite",
-          "where": "statement"
-        },
-        {
-          "target": "cite:6",
-          "relation": "cite",
-          "where": "statement"
-        },
-        {
-          "target": "cite:7",
+          "target": "cite:4",
           "relation": "cite",
           "where": "statement"
         },
@@ -75,95 +85,35 @@
           "target": "cite:9",
           "relation": "cite",
           "where": "statement"
-        },
-        {
-          "target": "cite:10",
-          "relation": "cite",
-          "where": "statement"
         }
       ]
     },
     {
-      "id": "prop:sparsity-assumption",
-      "type": "proposition",
-      "number": "3",
-      "title": "Sparsity of simultaneous speakers",
+      "id": "mth:proposed",
+      "type": "method",
+      "number": "3.1",
+      "title": "Proposed Post-Processing Method",
       "sections": [
         {
           "kind": "statement",
-          "body": "When $K$ is large (e.g., 10), it rarely happens that all $K$ speakers speak together. We assume that at most $\\widetilde{K} (< K)$ speakers speak simultaneously, and refine the clustering-based results using an end-to-end model trained to process at most $\\widetilde{K}$ speakers. In this study, we set $\\widetilde{K} = 2$."
+          "body": "We propose to combine clustering-based and end-to-end diarization methods. First, obtain initial diarization results $\\{T_k\\subseteq[T]\\}_{k=1}^K$ via x-vector clustering (which does not produce overlapping results). Then iteratively select two speakers, pick up frames containing only those two, and process them with a two-speaker EEND model to refine overlapped regions. We assume at most $\\tilde{K}<K$ speakers speak simultaneously and set $\\tilde{K}=2$."
         }
       ],
       "anchors": [
         {
-          "id": "prop:sparsity-assumption",
-          "kind": "proposition",
-          "number": "3"
+          "id": "mth:proposed",
+          "kind": "node",
+          "number": "3.1"
         }
       ],
       "refs": [
         {
-          "target": "prop:cluster-limitation",
+          "target": "obs:cannot_overlap",
           "relation": "ref",
           "where": "statement"
         },
         {
-          "target": "prop:eend-capability",
-          "relation": "ref",
-          "where": "statement"
-        }
-      ]
-    },
-    {
-      "id": "thm:proposed-algorithm",
-      "type": "theorem",
-      "number": "4",
-      "title": "Iterative post-processing with two-speaker EEND",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "Given initial diarization results $\\{\\overline{T}_k \\subseteq [T]\\}_{k=1}^{\\widehat{K}}$ from a clustering-based method, iteratively select two speakers among $\\widehat{K}$ and update the diarization results of the two speakers using a two-speaker EEND model $f_{\\mathrm{EEND}} : \\mathbb{R}^{D \\times L} \\to (0, 1)^{2 \\times L}$. The algorithm: (i) determine processing order by decreasing $|P_{i,j}|$, (ii) for each pair, reselect $P_{i,j}$, apply EEND to obtain posteriors, resolve permutation, check update conditions, and update results. The model used is SA-EEND-EDA (\\cite{cite:8}), consisting of a four-layer Transformer encoder to extract frame embeddings and an EDA module with shuffled embedding order for permutation invariance."
-        },
-        {
-          "kind": "proof",
-          "body": "The method compensates for each approach's weakness: clustering handles large speaker counts but misses overlap; EEND handles overlap but degrades with many speakers. By restricting EEND to two-speaker subsets via frame selection (see Lemma~5), the overlap estimation becomes tractable regardless of total speaker count. Experimental validation on CALLHOME, AMI, and DIHARD II confirms consistent improvement over baselines."
-        }
-      ],
-      "anchors": [
-        {
-          "id": "thm:proposed-algorithm",
-          "kind": "theorem",
-          "number": "4"
-        }
-      ],
-      "refs": [
-        {
-          "target": "prop:sparsity-assumption",
-          "relation": "ref",
-          "where": "statement"
-        },
-        {
-          "target": "prop:cluster-limitation",
-          "relation": "ref",
-          "where": "statement"
-        },
-        {
-          "target": "lem:frame-selection",
-          "relation": "ref",
-          "where": "statement"
-        },
-        {
-          "target": "lem:processing-order",
-          "relation": "ref",
-          "where": "statement"
-        },
-        {
-          "target": "lem:eend-inference",
-          "relation": "ref",
-          "where": "statement"
-        },
-        {
-          "target": "lem:update-rules",
+          "target": "obs:eend_many_spk",
           "relation": "ref",
           "where": "statement"
         },
@@ -175,174 +125,95 @@
       ]
     },
     {
-      "id": "lem:frame-selection",
-      "type": "lemma",
-      "number": "5",
-      "title": "Frame selection for two-speaker subsets",
+      "id": "alg:frame_selection",
+      "type": "method",
+      "number": "3.2.1",
+      "title": "Frame Selection for Speaker Pairs",
       "sections": [
         {
           "kind": "statement",
-          "body": "To isolate two speakers $i$ and $j$, select frames not containing any other speakers:\n\\[\nP_{i,j} = [T] \\setminus \\bigcup_{k \\in [\\widehat{K}] \\setminus \\{i,j\\}} \\overline{T}_k. \\tag{1}\n\\]\nThis ensures $X_{P_{i,j}}$ contains only speakers $i$, $j$, and silence."
+          "body": "For each speaker pair $\\{i,j\\}\\in\\binom{[K]}{2}$, select a set of frames $P_{i,j}$ not containing speakers other than $i$ and $j$:\n\\begin{equation}\nP_{i,j}=[T]\\setminus\\bigcup_{k\\in[K]\\setminus\\{i,j\\}}T_k.\n\\end{equation}\nWe then process speaker pairs in descending order of $|P_{i,j}|$ to minimize the impact of diarization errors (impurities) in the selected frames."
         }
       ],
       "anchors": [
         {
-          "id": "lem:frame-selection",
-          "kind": "lemma",
-          "number": "5"
-        },
-        {
-          "id": "eq:frame-select",
-          "kind": "equation",
-          "number": "1"
-        }
-      ],
-      "refs": []
-    },
-    {
-      "id": "lem:processing-order",
-      "type": "lemma",
-      "number": "6",
-      "title": "Processing order by descending frame count",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "We process speaker pairs in decreasing order of $|P_{i,j}|$. Since the estimated diarization results contain errors, frames selected by \\eqref{eq:frame-select} may include impurities (other speakers). Processing pairs with larger $|P_{i,j}|$ first reduces the ratio of such impurities in later iterations."
-        },
-        {
-          "kind": "proof",
-          "body": "If we process a pair with small $|P_{i,j}|$ first, the ratio of impurity frames among the selected frames is higher, causing the EEND refinement to perform poorly. Sorting by descending $|P_{i,j}|$ minimizes this effect because pairs with more clean frames (fewer impurities) are processed first."
-        }
-      ],
-      "anchors": [
-        {
-          "id": "lem:processing-order",
-          "kind": "lemma",
-          "number": "6"
+          "id": "alg:frame_selection",
+          "kind": "node",
+          "number": "3.2.1"
         }
       ],
       "refs": [
         {
-          "target": "lem:frame-selection",
+          "target": "mth:proposed",
           "relation": "ref",
           "where": "statement"
         }
       ]
     },
     {
-      "id": "lem:eend-inference",
-      "type": "lemma",
-      "number": "7",
-      "title": "EEND inference and permutation resolution",
+      "id": "alg:iterative_refinement",
+      "type": "method",
+      "number": "3.2.2",
+      "title": "Iterative Refinement with Permutation Solving",
       "sections": [
         {
-          "kind": "statement",
-          "body": "For selected frames $P_{i,j}$, feed the corresponding features to the EEND model:\n\\[\n\\left( q_t^{(a)}, q_t^{(b)} \\right)_{t \\in P_{i,j}}^{\\mathsf{T}} = f\\!\\left( X_{P_{i,j}} \\right) \\in (0, 1)^{2 \\times |P_{i,j}|}. \\tag{2}\n\\]\nApply threshold $0.5$ to obtain hard decisions:\n\\[\nQ^{(a)} = \\{\\, t \\in P_{i,j} \\mid q_t^{(a)} > 0.5 \\,\\}, \\quad Q^{(b)} = \\{\\, t \\in P_{i,j} \\mid q_t^{(b)} > 0.5 \\,\\}. \\tag{3}\n\\]\nResolve speaker permutation between $(a,b)$ and $(i,j)$ by maximizing similarity:\n\\[\n(\\hat{T}_i, \\hat{T}_j) = \\arg\\!\\max_{(u,v) \\in \\{(a,b),(b,a)\\}} \\bigl[\\, s(Q^{(u)}, \\overline{T}_i) + s(Q^{(v)}, \\overline{T}_j) \\,\\bigr], \\tag{4}\n\\]\nwhere the similarity function $s(U,V)$ sums speech and non-speech agreements:\n\\[\ns(U, V) := |U \\cap V| + |([T] \\setminus U) \\cap ([T] \\setminus V)|. \\tag{5}\n\\]"
+          "kind": "proof",
+          "body": "The EEND model used is SA-EEND-EDA [8]: a 4-layer Transformer encoder extracts frame embeddings, then an encoder-decoder attractor (EDA) module computes attractors. Embedding order is shuffled before the EDA, making all components order-independent, so the model handles non-contiguous selected frames."
         }
       ],
       "anchors": [
         {
-          "id": "lem:eend-inference",
-          "kind": "lemma",
-          "number": "7"
-        },
-        {
-          "id": "eq:eend-posterior",
-          "kind": "equation",
-          "number": "2"
-        },
-        {
-          "id": "eq:permutation",
-          "kind": "equation",
-          "number": "4"
+          "id": "alg:iterative_refinement",
+          "kind": "node",
+          "number": "3.2.2"
         }
       ],
       "refs": [
         {
-          "target": "lem:frame-selection",
+          "target": "alg:frame_selection",
           "relation": "ref",
           "where": "statement"
         },
         {
           "target": "cite:8",
           "relation": "cite",
-          "where": "statement"
+          "where": "proof"
         }
       ]
     },
     {
-      "id": "lem:update-rules",
-      "type": "lemma",
-      "number": "8",
-      "title": "Update conditions and rules",
+      "id": "alg:training_strategy",
+      "type": "method",
+      "number": "3.3",
+      "title": "Training Strategy Using Frame Selection",
       "sections": [
-        {
-          "kind": "statement",
-          "body": "Before updating, verify the new results $\\hat{T}_i$, $\\hat{T}_j$ are consistent with the original results on the selected frames:\n\\[\n\\frac{|\\hat{T}_i \\cap (\\overline{T}_i \\cap P_{i,j})|}{|\\overline{T}_i \\cap P_{i,j}|} > \\tau, \\qquad\n\\frac{|\\hat{T}_j \\cap (\\overline{T}_j \\cap P_{i,j})|}{|\\overline{T}_j \\cap P_{i,j}|} > \\tau, \\tag{6}\n\\]\nwith $\\tau = 0.5$. When $\\widehat{K} = 2$, use the full update:\n\\[\n\\overline{T}_i \\leftarrow \\hat{T}_i \\cup (\\overline{T}_i \\setminus P_{i,j}), \\qquad\n\\overline{T}_j \\leftarrow \\hat{T}_j \\cup (\\overline{T}_j \\setminus P_{i,j}). \\tag{7}\n\\]\nWhen $\\widehat{K} \\geq 3$, use the overlap-only update to avoid performance drop from impurities in selected frames:\n\\[\n\\overline{T}_i \\leftarrow \\overline{T}_i \\cup (\\hat{T}_i \\setminus \\overline{T}_j), \\qquad\n\\overline{T}_j \\leftarrow \\overline{T}_j \\cup (\\hat{T}_j \\setminus \\overline{T}_i). \\tag{8}\n\\]"
-        }
-      ],
-      "anchors": [
-        {
-          "id": "lem:update-rules",
-          "kind": "lemma",
-          "number": "8"
-        },
-        {
-          "id": "eq:update-conditions",
-          "kind": "equation",
-          "number": "6"
-        }
-      ],
-      "refs": [
-        {
-          "target": "lem:eend-inference",
-          "relation": "ref",
-          "where": "statement"
-        },
-        {
-          "target": "lem:frame-selection",
-          "relation": "ref",
-          "where": "statement"
-        }
-      ]
-    },
-    {
-      "id": "thm:training-adaptation",
-      "type": "theorem",
-      "number": "9",
-      "title": "Frame-selection training strategy for multi-speaker datasets",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "To adapt a two-speaker EEND model on datasets containing mixtures of more than two speakers (e.g., AMI, CALLHOME), we adopt the frame-selection technique from \\eqref{eq:frame-select} for model training. If the input chunk contains more than two speakers, choose the two dominant speakers and eliminate frames in which other speakers are active, as in \\eqref{eq:frame-select}. The model is trained only on the selected frames to output speech activities of the two dominant speakers. This enables finetuning two-speaker models on any multi-speaker dataset without mixture-wise selection."
-        },
         {
           "kind": "proof",
-          "body": "The original EEND training strategy used only two-speaker subsets of datasets for model adaptation. This is impossible when the dataset lacks two-speaker mixtures (e.g., AMI) and wastes data even when they exist. Frame selection solves this by extracting two-speaker subregions from any multi-speaker mixture. Preliminary experiments (see Theorem~10) confirm that training on full CALLHOME with frame selection outperforms training on CALLHOME-2spk alone."
+          "body": "The original EEND methods [6,8,9] used matched datasets for adaptation (e.g., only two-speaker subsets). Frame-selection training makes full use of all available data, improving performance without mixture-wise selection."
         }
       ],
       "anchors": [
         {
-          "id": "thm:training-adaptation",
-          "kind": "theorem",
-          "number": "9"
+          "id": "alg:training_strategy",
+          "kind": "node",
+          "number": "3.3"
         }
       ],
       "refs": [
         {
-          "target": "lem:frame-selection",
+          "target": "alg:frame_selection",
           "relation": "ref",
           "where": "statement"
         },
         {
           "target": "cite:6",
           "relation": "cite",
-          "where": "statement"
+          "where": "proof"
         },
         {
           "target": "cite:8",
           "relation": "cite",
-          "where": "statement"
+          "where": "proof"
         },
         {
           "target": "cite:24",
@@ -352,36 +223,31 @@
       ]
     },
     {
-      "id": "thm:prelim-result",
-      "type": "theorem",
-      "number": "10",
-      "title": "Frame selection improves training on CALLHOME-2spk",
+      "id": "res:preliminary",
+      "type": "result",
+      "number": "4.2",
+      "title": "Preliminary: Frame-Selection Training Works",
       "sections": [
         {
           "kind": "statement",
-          "body": "Training SA-EEND and SA-EEND-EDA on the full CALLHOME dataset with frame selection outperforms training on CALLHOME-2spk subsets alone. On the CALLHOME-2spk test set: SA-EEND DER drops from $9.54\\%$ to $9.00\\%$; SA-EEND-EDA DER drops from $8.07\\%$ to $7.84\\%$. (Collar tolerance $0.25\\,\\mathrm{s}$, no oracle SAD.)"
+          "body": "On the CALLHOME-2spk test set, training with the full CALLHOME dataset using frame selection improved SA-EEND DER from 9.54% to 9.00% and SA-EEND-EDA DER from 8.07% to 7.84%, demonstrating the effectiveness of the proposed training strategy."
         }
       ],
       "anchors": [
         {
-          "id": "thm:prelim-result",
-          "kind": "theorem",
-          "number": "10"
+          "id": "res:preliminary",
+          "kind": "node",
+          "number": "4.2"
         }
       ],
       "refs": [
         {
-          "target": "thm:training-adaptation",
+          "target": "alg:training_strategy",
           "relation": "ref",
           "where": "statement"
         },
         {
           "target": "cite:6",
-          "relation": "cite",
-          "where": "statement"
-        },
-        {
-          "target": "cite:7",
           "relation": "cite",
           "where": "statement"
         },
@@ -393,32 +259,27 @@
       ]
     },
     {
-      "id": "thm:callhome-result",
-      "type": "theorem",
-      "number": "11",
-      "title": "Proposed method improves CALLHOME diarization",
+      "id": "res:callhome",
+      "type": "result",
+      "number": "4.3.1",
+      "title": "CALLHOME Results: Proposed Outperforms SA-EEND-EDA",
       "sections": [
         {
           "kind": "statement",
-          "body": "On CALLHOME (telephone conversations, $2$--$7$ speakers), the proposed post-processing reduces DER: x-vector AHC from $19.43\\%$ to $16.79\\%$; x-vector AHC + VB from $17.61\\%$ to $14.06\\%$. The latter outperforms SA-EEND-EDA ($15.29\\%$) by $1.23$ percentage points. The method performs well across both small ($2$--$3$) and large ($4$--$6$) speaker counts. (Collar $0.25\\,\\mathrm{s}$, including overlapped regions, no oracle SAD.)"
+          "body": "x-vector AHC + VB + Proposed achieved 14.06% DER, outperforming SA-EEND-EDA's 15.29% by 1.23% absolute. Clustering-based methods outperform EEND when the number of speakers exceeds four, but the proposed method performs well on both large and small speaker counts. Improvements were consistent across all speaker counts (2--6 speakers). All results include overlapped regions and are not based on oracle SAD."
         }
       ],
       "anchors": [
         {
-          "id": "thm:callhome-result",
-          "kind": "theorem",
-          "number": "11"
+          "id": "res:callhome",
+          "kind": "node",
+          "number": "4.3.1"
         }
       ],
       "refs": [
         {
-          "target": "thm:proposed-algorithm",
+          "target": "mth:proposed",
           "relation": "ref",
-          "where": "statement"
-        },
-        {
-          "target": "cite:8",
-          "relation": "cite",
           "where": "statement"
         },
         {
@@ -429,32 +290,27 @@
       ]
     },
     {
-      "id": "thm:ami-result",
-      "type": "theorem",
-      "number": "12",
-      "title": "Proposed method improves AMI meeting diarization",
+      "id": "res:ami",
+      "type": "result",
+      "number": "4.3.2",
+      "title": "AMI Results: 3% DER Improvement",
       "sections": [
         {
           "kind": "statement",
-          "body": "On AMI eval set (Headset mix, $3$--$4$ speakers), the proposed post-processing reduces absolute DER: x-vector AHC by $3.07\\%$, x-vector AHC + VB by $3.14\\%$, and x-vector AHC + VB + overlap detection by $0.18\\%$. JER is also consistently reduced. Notably, the method improves results even when overlap detection (\\cite{cite:29}) is already applied. (No oracle SAD, no collar tolerance, including overlapped regions.)"
+          "body": "On the AMI eval set (headset mix), the proposed method reduced DER by 3.07% (x-vector AHC baseline), 3.14% (AHC+VB), and 0.18% (AHC+VB+overlap detection). Surprisingly, it improved results even when overlap detection [29] was already applied. JER improvements were similar in magnitude."
         }
       ],
       "anchors": [
         {
-          "id": "thm:ami-result",
-          "kind": "theorem",
-          "number": "12"
+          "id": "res:ami",
+          "kind": "node",
+          "number": "4.3.2"
         }
       ],
       "refs": [
         {
-          "target": "thm:proposed-algorithm",
+          "target": "mth:proposed",
           "relation": "ref",
-          "where": "statement"
-        },
-        {
-          "target": "cite:24",
-          "relation": "cite",
           "where": "statement"
         },
         {
@@ -470,26 +326,26 @@
       ]
     },
     {
-      "id": "thm:dihard-result",
-      "type": "theorem",
-      "number": "13",
-      "title": "Proposed method improves DIHARD II diarization",
+      "id": "res:dihard",
+      "type": "result",
+      "number": "4.3.3",
+      "title": "DIHARD II Results: Consistent Improvement",
       "sections": [
         {
           "kind": "statement",
-          "body": "On DIHARD II eval set ($1$--$9$ speakers, $10$ domains), the proposed post-processing reduces DER: official baseline by $2.96\\%$, BUT system (w/o overlap) by $0.35\\%$, and BUT system (w/ overlap) by $0.23\\%$. The improvement from the proposed EEND-based post-processing exceeds the improvement ($0.15\\%$ DER) from the heuristic-based overlap assignment in the BUT system. (No oracle SAD, no collar tolerance, including overlapped regions.)"
+          "body": "On DIHARD II eval (10 diverse domains), the proposed method reduced the official baseline DER by 2.96% and JER by 2.91%. It also improved the winning BUT system: DER by 0.35% (w/o OVL) and 0.38% (w/ OVL), JER by 0.66% and 0.64%, respectively. These gains exceed the heuristic overlap assignment gains (0.15% DER, 0.08% JER)."
         }
       ],
       "anchors": [
         {
-          "id": "thm:dihard-result",
-          "kind": "theorem",
-          "number": "13"
+          "id": "res:dihard",
+          "kind": "node",
+          "number": "4.3.3"
         }
       ],
       "refs": [
         {
-          "target": "thm:proposed-algorithm",
+          "target": "mth:proposed",
           "relation": "ref",
           "where": "statement"
         },
@@ -504,11 +360,6 @@
           "where": "statement"
         },
         {
-          "target": "cite:16",
-          "relation": "cite",
-          "where": "statement"
-        },
-        {
           "target": "cite:30",
           "relation": "cite",
           "where": "statement"
@@ -516,130 +367,106 @@
       ]
     },
     {
-      "id": "cite:1",
-      "type": "bib",
-      "number": "1",
-      "title": "Speaker diarization: A review of recent research",
+      "id": "conc:main",
+      "type": "result",
+      "number": "5",
+      "title": "Conclusion",
       "sections": [
         {
           "kind": "statement",
-          "body": "X. Anguera, S. Bozonnet, N. Evans, C. Fredouille, G. Friedland, and O. Vinyals, \"Speaker diarization: A review of recent research,\" IEEE TASLP, vol. 20, no. 2, pp. 356--370, 2012."
+          "body": "The proposed post-processing method iteratively selects two speakers from clustering-based diarization results, extracts frames containing only those two, and refines them with a two-speaker EEND model. Evaluations on CALLHOME, AMI, and DIHARD II datasets show consistent improvement over various clustering-based diarization baselines."
         }
       ],
       "anchors": [
         {
-          "id": "cite:1",
-          "kind": "bib",
-          "number": "1"
+          "id": "conc:main",
+          "kind": "node",
+          "number": "5"
         }
       ],
-      "refs": []
+      "refs": [
+        {
+          "target": "res:callhome",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "res:ami",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "res:dihard",
+          "relation": "ref",
+          "where": "statement"
+        }
+      ]
     },
     {
       "id": "cite:4",
-      "type": "bib",
-      "number": "4",
-      "title": "The Second DIHARD Diarization Challenge",
+      "type": "reference",
+      "number": "[4]",
+      "title": "Ryant et al. 2019 — The Second DIHARD Diarization Challenge",
       "sections": [
         {
           "kind": "statement",
-          "body": "N. Ryant, K. Church, C. Cieri, A. Cristia, J. Du, S. Ganapathy, and M. Liberman, \"The Second DIHARD Diarization Challenge: Dataset, task, and baselines,\" in INTERSPEECH, 2019, pp. 978--982."
+          "body": "N. Ryant, K. Church, C. Cieri, A. Cristia, J. Du, S. Ganapathy, and M. Liberman, \"The Second DIHARD Diarization Challenge: Dataset, task, and baselines,\" in INTERSPEECH, 2019."
         }
       ],
       "anchors": [
         {
           "id": "cite:4",
-          "kind": "bib",
-          "number": "4"
-        }
-      ],
-      "refs": []
-    },
-    {
-      "id": "cite:5",
-      "type": "bib",
-      "number": "5",
-      "title": "End-to-end neural speaker diarization with permutation-free objectives",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "Y. Fujita, N. Kanda, S. Horiguchi, K. Nagamatsu, and S. Watanabe, \"End-to-end neural speaker diarization with permutation-free objectives,\" in INTERSPEECH, 2019, pp. 4300--4304."
-        }
-      ],
-      "anchors": [
-        {
-          "id": "cite:5",
-          "kind": "bib",
-          "number": "5"
+          "kind": "node",
+          "number": "[4]"
         }
       ],
       "refs": []
     },
     {
       "id": "cite:6",
-      "type": "bib",
-      "number": "6",
-      "title": "End-to-end neural speaker diarization with self-attention",
+      "type": "reference",
+      "number": "[6]",
+      "title": "Fujita et al. 2019 — SA-EEND",
       "sections": [
         {
           "kind": "statement",
-          "body": "Y. Fujita, N. Kanda, S. Horiguchi, Y. Xue, K. Nagamatsu, and S. Watanabe, \"End-to-end neural speaker diarization with self-attention,\" in ASRU, 2019, pp. 296--303."
+          "body": "Y. Fujita, N. Kanda, S. Horiguchi, Y. Xue, K. Nagamatsu, and S. Watanabe, \"End-to-end neural speaker diarization with self-attention,\" in ASRU, 2019."
         }
       ],
       "anchors": [
         {
           "id": "cite:6",
-          "kind": "bib",
-          "number": "6"
-        }
-      ],
-      "refs": []
-    },
-    {
-      "id": "cite:7",
-      "type": "bib",
-      "number": "7",
-      "title": "End-to-end neural diarization: Reformulating as simple multi-label classification",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "Y. Fujita, S. Watanabe, S. Horiguchi, Y. Xue, and K. Nagamatsu, \"End-to-end neural diarization: Reformulating speaker diarization as simple multi-label classification,\" arXiv:2003.02966, 2020."
-        }
-      ],
-      "anchors": [
-        {
-          "id": "cite:7",
-          "kind": "bib",
-          "number": "7"
+          "kind": "node",
+          "number": "[6]"
         }
       ],
       "refs": []
     },
     {
       "id": "cite:8",
-      "type": "bib",
-      "number": "8",
-      "title": "End-to-end speaker diarization for an unknown number of speakers with encoder-decoder based attractors",
+      "type": "reference",
+      "number": "[8]",
+      "title": "Horiguchi et al. 2020 — SA-EEND-EDA",
       "sections": [
         {
           "kind": "statement",
-          "body": "S. Horiguchi, Y. Fujita, S. Watanabe, Y. Xue, and K. Nagamatsu, \"End-to-end speaker diarization for an unknown number of speakers with encoder-decoder based attractors,\" in INTERSPEECH, 2020, pp. 269--273."
+          "body": "S. Horiguchi, Y. Fujita, S. Watanabe, Y. Xue, and K. Nagamatsu, \"End-to-end speaker diarization for an unknown number of speakers with encoder-decoder based attractors,\" in INTERSPEECH, 2020."
         }
       ],
       "anchors": [
         {
           "id": "cite:8",
-          "kind": "bib",
-          "number": "8"
+          "kind": "node",
+          "number": "[8]"
         }
       ],
       "refs": []
     },
     {
       "id": "cite:9",
-      "type": "bib",
-      "number": "9",
-      "title": "Neural speaker diarization with speaker-wise chain rule",
+      "type": "reference",
+      "number": "[9]",
+      "title": "Fujita et al. 2020 — SC-EEND",
       "sections": [
         {
           "kind": "statement",
@@ -649,168 +476,128 @@
       "anchors": [
         {
           "id": "cite:9",
-          "kind": "bib",
-          "number": "9"
-        }
-      ],
-      "refs": []
-    },
-    {
-      "id": "cite:10",
-      "type": "bib",
-      "number": "10",
-      "title": "Permutation invariant training of deep models",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "D. Yu, M. Kolbæk, Z.-H. Tan, and J. Jensen, \"Permutation invariant training of deep models for speaker-independent multi-talker speech separation,\" in ICASSP, 2017, pp. 241--245."
-        }
-      ],
-      "anchors": [
-        {
-          "id": "cite:10",
-          "kind": "bib",
-          "number": "10"
+          "kind": "node",
+          "number": "[9]"
         }
       ],
       "refs": []
     },
     {
       "id": "cite:12",
-      "type": "bib",
-      "number": "12",
-      "title": "BUT system for the Second DIHARD Speech Diarization Challenge",
+      "type": "reference",
+      "number": "[12]",
+      "title": "Landini et al. 2020 — BUT System for DIHARD II",
       "sections": [
         {
           "kind": "statement",
-          "body": "F. Landini, S. Wang, M. Diez, L. Burget, P. Matejka, K. Zmolikova, L. Mosner, A. Silnova, O. Plchot, O. Novotny, H. Zeinali, and J. Rohdin, \"BUT system for the Second DIHARD Speech Diarization Challenge,\" in ICASSP, 2020, pp. 6529--6533."
+          "body": "F. Landini, S. Wang, M. Diez, L. Burget, P. Matejka, K. Zmolikova, L. Mosner, A. Silnova, O. Plchot, O. Novotny, H. Zeinali, and J. Rohdin, \"BUT system for the Second DIHARD Speech Diarization Challenge,\" in ICASSP, 2020."
         }
       ],
       "anchors": [
         {
           "id": "cite:12",
-          "kind": "bib",
-          "number": "12"
+          "kind": "node",
+          "number": "[12]"
         }
       ],
       "refs": []
     },
     {
       "id": "cite:15",
-      "type": "bib",
-      "number": "15",
-      "title": "Speaker diarization based on Bayesian HMM with eigenvoice priors",
+      "type": "reference",
+      "number": "[15]",
+      "title": "Diez et al. 2018 — VB-HMM Resegmentation",
       "sections": [
         {
           "kind": "statement",
-          "body": "M. Diez, L. Burget, and P. Matejka, \"Speaker diarization based on Bayesian HMM with eigenvoice priors,\" in Odyssey, 2018, pp. 102--109."
+          "body": "M. Diez, L. Burget, and P. Matejka, \"Speaker diarization based on Bayesian HMM with eigenvoice priors,\" in Odyssey, 2018."
         }
       ],
       "anchors": [
         {
           "id": "cite:15",
-          "kind": "bib",
-          "number": "15"
-        }
-      ],
-      "refs": []
-    },
-    {
-      "id": "cite:16",
-      "type": "bib",
-      "number": "16",
-      "title": "BUT system description for DIHARD Speech Diarization Challenge 2019",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "F. Landini, S. Wang, M. Diez, L. Burget, P. Matejka, K. Zmolikova, L. Mosner, O. Plchot, O. Novotny, H. Zeinali, and J. Rohdin, \"BUT system description for DIHARD Speech Diarization Challenge 2019,\" arXiv:1910.08847, 2019."
-        }
-      ],
-      "anchors": [
-        {
-          "id": "cite:16",
-          "kind": "bib",
-          "number": "16"
+          "kind": "node",
+          "number": "[15]"
         }
       ],
       "refs": []
     },
     {
       "id": "cite:24",
-      "type": "bib",
-      "number": "24",
-      "title": "Unleashing the killer corpus: the AMI Meeting Corpus",
+      "type": "reference",
+      "number": "[24]",
+      "title": "Carletta 2007 — AMI Meeting Corpus",
       "sections": [
         {
           "kind": "statement",
-          "body": "J. Carletta, \"Unleashing the killer corpus: experiences in creating the multi-everything AMI Meeting Corpus,\" Language Resources and Evaluation, vol. 41, no. 2, pp. 181--190, 2007."
+          "body": "J. Carletta, \"Unleashing the killer corpus: experiences in creating the multi-everything AMI Meeting Corpus,\" Language Resources and Evaluation, vol. 41, no. 2, pp. 181-190, 2007."
         }
       ],
       "anchors": [
         {
           "id": "cite:24",
-          "kind": "bib",
-          "number": "24"
+          "kind": "node",
+          "number": "[24]"
         }
       ],
       "refs": []
     },
     {
       "id": "cite:28",
-      "type": "bib",
-      "number": "28",
-      "title": "Speaker detection in the wild: Lessons learned from JSALT 2019",
+      "type": "reference",
+      "number": "[28]",
+      "title": "Garcia et al. 2020 — JSALT 2019 Speaker Detection",
       "sections": [
         {
           "kind": "statement",
-          "body": "P. Garcia, J. Villalba, H. Bredin, J. Du, D. Castan, A. Cristia, L. Bullock, L. Guo, K. Okabe, P. S. Nidadavolu, et al., \"Speaker detection in the wild: Lessons learned from JSALT 2019,\" in Odyssey, 2020, pp. 415--422."
+          "body": "P. Garcia, J. Villalba, H. Bredin, J. Du, D. Castan, A. Cristia, L. Bullock, L. Guo, K. Okabe, P. S. Nidadavolu, et al., \"Speaker detection in the wild: Lessons learned from JSALT 2019,\" in Odyssey, 2020."
         }
       ],
       "anchors": [
         {
           "id": "cite:28",
-          "kind": "bib",
-          "number": "28"
+          "kind": "node",
+          "number": "[28]"
         }
       ],
       "refs": []
     },
     {
       "id": "cite:29",
-      "type": "bib",
-      "number": "29",
-      "title": "Overlap-aware diarization: Resegmentation using neural end-to-end overlapped speech detection",
+      "type": "reference",
+      "number": "[29]",
+      "title": "Bullock et al. 2020 — Overlap-Aware Resegmentation",
       "sections": [
         {
           "kind": "statement",
-          "body": "L. Bullock, H. Bredin, and L. P. Garcia-Perera, \"Overlap-aware diarization: Resegmentation using neural end-to-end overlapped speech detection,\" in ICASSP, 2020, pp. 7114--7118."
+          "body": "L. Bullock, H. Bredin, and L. P. Garcia-Perera, \"Overlap-aware diarization: Resegmentation using neural end-to-end overlapped speech detection,\" in ICASSP, 2020."
         }
       ],
       "anchors": [
         {
           "id": "cite:29",
-          "kind": "bib",
-          "number": "29"
+          "kind": "node",
+          "number": "[29]"
         }
       ],
       "refs": []
     },
     {
       "id": "cite:30",
-      "type": "bib",
-      "number": "30",
-      "title": "Diarization is hard: Experiences and lessons learned for the JHU team in the inaugural DIHARD challenge",
+      "type": "reference",
+      "number": "[30]",
+      "title": "Sell et al. 2018 — DIHARD I Baseline",
       "sections": [
         {
           "kind": "statement",
-          "body": "G. Sell, D. Snyder, A. McCree, D. Garcia-Romero, J. Villalba, M. Maciejewski, V. Manohar, N. Dehak, D. Povey, S. Watanabe, and S. Khudanpur, \"Diarization is hard: Some experiences and lessons learned for the JHU team in the inaugural DIHARD challenge,\" in INTERSPEECH, 2018, pp. 2808--2812."
+          "body": "G. Sell, D. Snyder, A. McCree, D. Garcia-Romero, J. Villalba, M. Maciejewski, V. Manohar, N. Dehak, D. Povey, S. Watanabe, and S. Khudanpur, \"Diarization is hard: Some experiences and lessons learned for the JHU team in the inaugural DIHARD challenge,\" in INTERSPEECH, 2018."
         }
       ],
       "anchors": [
         {
           "id": "cite:30",
-          "kind": "bib",
-          "number": "30"
+          "kind": "node",
+          "number": "[30]"
         }
       ],
       "refs": []

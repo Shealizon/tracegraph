@@ -2,287 +2,138 @@
   "format": "relation-graph@1",
   "meta": {
     "title": "The effect of nudging personal and injunctive norms on the tradeoff between objective equality and efficiency",
-    "profile": "paper",
-    "bodyFormat": "text"
+    "bodyFormat": "latex",
+    "defaultType": "result"
   },
+  "types": [
+    {
+      "id": "result",
+      "label": "结论",
+      "color": "#ff9e64",
+      "leaf": false
+    },
+    {
+      "id": "hypothesis",
+      "label": "假设",
+      "color": "#c39bff",
+      "leaf": false
+    },
+    {
+      "id": "method",
+      "label": "方法",
+      "color": "#7dd3a8",
+      "leaf": false
+    },
+    {
+      "id": "concept",
+      "label": "概念",
+      "color": "#5bb1c9",
+      "leaf": false
+    },
+    {
+      "id": "reference",
+      "label": "文献",
+      "color": "#8a8a98",
+      "leaf": true
+    }
+  ],
   "nodes": [
     {
-      "id": "prop:pn-equal-effect",
-      "type": "proposition",
-      "number": "1.1",
-      "title": "Personal norm nudge increases equal choice",
+      "id": "conc:outcome-prefs",
+      "type": "concept",
+      "number": "OP",
+      "title": "Outcome-based social preferences",
       "sections": [
         {
           "kind": "statement",
-          "body": "Nudging the personal norm toward equality (by labeling the equal allocation as \"Fair\" and the efficient allocation as \"Unfair\") significantly increases the proportion of participants choosing the equal option in the trade-off game, compared to the baseline (Study 1: coeff = 0.441, p < .001; Study 2: coeff = 0.397, p < .001)."
+          "body": "Outcome-based social preference models assert that individuals derive psychological disutility from unequal payoffs (inequity aversion, Fehr & Schmidt 1999; Bolton & Ockenfels 2000) or utility from increasing total payoff of all players (efficiency/altruism, Charness & Rabin 2002). These models explain prosocial behaviour solely through monetary payoff distributions."
         }
       ],
       "anchors": [
         {
-          "id": "prop:pn-equal-effect",
-          "kind": "proposition",
-          "number": "1.1"
+          "id": "conc:outcome-prefs",
+          "kind": "node",
+          "number": "OP"
         }
       ],
       "refs": [
         {
-          "target": "cite:CapraroRand2018",
+          "target": "cite:FehrSchmidt1999",
           "relation": "cite",
           "where": "statement"
         },
         {
-          "target": "cite:TappinCapraro2018",
+          "target": "cite:BoltonOckenfels2000",
           "relation": "cite",
           "where": "statement"
         },
         {
-          "target": "cite:CapraroRodriguezLaraRuizMartos2020",
-          "relation": "cite",
-          "where": "statement"
-        },
-        {
-          "target": "cite:CapraroJordanTappin2020",
-          "relation": "cite",
-          "where": "statement"
-        },
-        {
-          "target": "cite:Capraro2020",
+          "target": "cite:CharnessRabin2002",
           "relation": "cite",
           "where": "statement"
         }
       ]
     },
     {
-      "id": "prop:s1-no-additive",
-      "type": "proposition",
-      "number": "1.2",
-      "title": "No additive effect when norms target same option",
+      "id": "conc:non-outcome",
+      "type": "concept",
+      "number": "NOM",
+      "title": "Non-outcome-based motivation",
       "sections": [
         {
           "kind": "statement",
-          "body": "When both the personal norm and the injunctive norm are nudged toward the same option (both promoting the equal choice), there is no statistically significant additive effect beyond nudging the personal norm alone (Study 1, PN_equal vs PN_equal+IN_equal: coeff = 0.0137, p = 0.857)."
+          "body": "A substantial body of evidence shows behaviour inconsistent with pure outcome-based preferences. People act honestly even at monetary cost (Gneezy 2005), and honesty, cooperation, and altruism correlate positively in one-shot anonymous games (Biziou-van-Pol et al. 2015). This suggests a common underlying motivation—termed \"preference for doing the right thing\"—not captured by payoff-based utility functions."
         }
       ],
       "anchors": [
         {
-          "id": "prop:s1-no-additive",
-          "kind": "proposition",
-          "number": "1.2"
+          "id": "conc:non-outcome",
+          "kind": "node",
+          "number": "NOM"
         }
       ],
       "refs": [
         {
-          "target": "prop:pn-equal-effect",
-          "relation": "ref",
-          "where": "statement"
-        }
-      ]
-    },
-    {
-      "id": "prop:s1-conflict-in-effect",
-      "type": "proposition",
-      "number": "S1.np",
-      "title": "Injunctive norm effect when conflicting with personal norm",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "When the injunctive norm is nudged toward the efficient option while the personal norm is nudged toward the equal option, there is a statistically significant shift away from equality compared to the personal-norm-alone condition (Study 1, PN_equal vs PN_equal+IN_efficient: coeff = 0.161, p = 0.004). This suggests that when the injunctive norm conflicts with the personal norm, at least some participants follow the injunctive norm."
-        }
-      ],
-      "anchors": [
-        {
-          "id": "prop:s1-conflict-in-effect",
-          "kind": "proposition",
-          "number": "S1.np"
-        }
-      ],
-      "refs": [
-        {
-          "target": "prop:pn-equal-effect",
+          "target": "conc:outcome-prefs",
           "relation": "ref",
           "where": "statement"
         },
         {
-          "target": "cite:CialdiniRenoKallgren1990",
+          "target": "cite:Gneezy2005",
+          "relation": "cite",
+          "where": "statement"
+        },
+        {
+          "target": "cite:Biziou2015",
           "relation": "cite",
           "where": "statement"
         }
       ]
     },
     {
-      "id": "prop:s1-misaligned-heterogeneity",
-      "type": "proposition",
-      "number": "S1.exp",
-      "title": "Heterogeneity when norms are misaligned",
+      "id": "conc:personal-norm",
+      "type": "concept",
+      "number": "PN",
+      "title": "Personal norm",
       "sections": [
         {
           "kind": "statement",
-          "body": "When the personal norm and the injunctive norm are nudged toward opposite options, some participants follow the personal norm while others follow the injunctive norm. Evidence: IN_equal vs PN_equal+IN_efficient are significantly different (Study 1: coeff = -0.158, p = 0.035), indicating that not all participants uniformly follow one norm."
+          "body": "The personal norm is defined as an individual's own perception of what is the morally right thing to do in a given situation (Schwartz 1994). Instructions using morally loaded language (e.g., labelling options \"Fair\" vs \"Unfair\") can shift the personal norm and significantly influence behaviour in economic games including the dictator game, ultimatum game, and trade-off game."
         }
       ],
       "anchors": [
         {
-          "id": "prop:s1-misaligned-heterogeneity",
-          "kind": "proposition",
-          "number": "S1.exp"
+          "id": "conc:personal-norm",
+          "kind": "node",
+          "number": "PN"
         }
       ],
       "refs": [
         {
-          "target": "prop:s1-conflict-in-effect",
+          "target": "conc:non-outcome",
           "relation": "ref",
           "where": "statement"
         },
-        {
-          "target": "prop:s1-no-additive",
-          "relation": "ref",
-          "where": "statement"
-        }
-      ]
-    },
-    {
-      "id": "prop:in-equal-effect",
-      "type": "proposition",
-      "number": "2.1a",
-      "title": "Injunctive norm nudge increases equal choice",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "Nudging the injunctive norm toward equality (informing participants that 90% of previous participants declared the equal choice to be morally right) significantly increases the proportion choosing the equal option in the trade-off game, compared to baseline (Study 2: coeff = 0.678, p = 0.002)."
-        }
-      ],
-      "anchors": [
-        {
-          "id": "prop:in-equal-effect",
-          "kind": "proposition",
-          "number": "2.1a"
-        }
-      ],
-      "refs": [
-        {
-          "target": "cite:BicchieriChavez2010",
-          "relation": "cite",
-          "where": "statement"
-        },
-        {
-          "target": "cite:SchramCharness2015",
-          "relation": "cite",
-          "where": "statement"
-        }
-      ]
-    },
-    {
-      "id": "prop:pn-in-equivalent",
-      "type": "proposition",
-      "number": "2.2",
-      "title": "Personal and injunctive norm effects are equivalent",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "Nudging the personal norm and nudging the injunctive norm in the trade-off game have similar effects on the proportion of participants choosing the equal option. The difference is not statistically significant (Study 2, IN_equal vs PN_equal: coeff = 0.115, p = 0.589)."
-        }
-      ],
-      "anchors": [
-        {
-          "id": "prop:pn-in-equivalent",
-          "kind": "proposition",
-          "number": "2.2"
-        }
-      ],
-      "refs": [
-        {
-          "target": "prop:pn-equal-effect",
-          "relation": "ref",
-          "where": "statement"
-        },
-        {
-          "target": "prop:in-equal-effect",
-          "relation": "ref",
-          "where": "statement"
-        }
-      ]
-    },
-    {
-      "id": "prop:symbolization-weak",
-      "type": "proposition",
-      "number": "3.1",
-      "title": "Symbolization weakly predicts injunctive norm following",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "The interaction between symbolization score (Aquino & Reed moral identity subscale) and treatment condition weakly predicts choosing the efficient option in the PN_equal + IN_efficient condition: participants higher in symbolization are more likely to follow the injunctive norm toward efficiency (Study 3: interaction coeff = -0.163, p = 0.089)."
-        }
-      ],
-      "anchors": [
-        {
-          "id": "prop:symbolization-weak",
-          "kind": "proposition",
-          "number": "3.1"
-        }
-      ],
-      "refs": [
-        {
-          "target": "cite:AquinoReed2002",
-          "relation": "cite",
-          "where": "statement"
-        },
-        {
-          "target": "prop:s1-misaligned-heterogeneity",
-          "relation": "ref",
-          "where": "statement"
-        }
-      ]
-    },
-    {
-      "id": "prop:internalization-null",
-      "type": "proposition",
-      "number": "3.2",
-      "title": "Internalization does not predict personal norm following",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "The interaction between internalization score (Aquino & Reed moral identity subscale) and treatment condition does not significantly predict choosing the equal option. No clear evidence that people higher in internalization are more likely to follow the personal norm (Study 3: interaction coeff = 0.0228, p = 0.132)."
-        }
-      ],
-      "anchors": [
-        {
-          "id": "prop:internalization-null",
-          "kind": "proposition",
-          "number": "3.2"
-        }
-      ],
-      "refs": [
-        {
-          "target": "cite:AquinoReed2002",
-          "relation": "cite",
-          "where": "statement"
-        },
-        {
-          "target": "prop:s1-misaligned-heterogeneity",
-          "relation": "ref",
-          "where": "statement"
-        }
-      ]
-    },
-    {
-      "id": "prop:theory-personal-norm",
-      "type": "proposition",
-      "number": "Intro.1",
-      "title": "Personal norm drives prosocial behavior beyond outcome-based preferences",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "In one-shot anonymous economic games, behavior goes beyond outcome-based preferences and can be rationalized by a \"generalized morality preference\" for following one's personal norm—what one believes is the morally right thing to do in a given situation. Morally loaded language can significantly influence behavior in the ultimatum game, dictator game, and trade-off game by changing people's perception of the personal norm."
-        }
-      ],
-      "anchors": [
-        {
-          "id": "prop:theory-personal-norm",
-          "kind": "proposition",
-          "number": "Intro.1"
-        }
-      ],
-      "refs": [
         {
           "target": "cite:Schwartz1994",
           "relation": "cite",
@@ -296,26 +147,31 @@
       ]
     },
     {
-      "id": "prop:theory-injunctive-norm-mixed",
-      "type": "proposition",
-      "number": "Intro.2",
-      "title": "Mixed evidence for injunctive norm in anonymous games",
+      "id": "conc:injunctive-norm",
+      "type": "concept",
+      "number": "IN",
+      "title": "Injunctive norm",
       "sections": [
         {
           "kind": "statement",
-          "body": "Previous work provides mixed evidence about the causal role of the injunctive norm in one-shot anonymous economic games: Krupka & Weber (2013) found correlational support; Schram & Charness (2015) found no causal link in the dictator game; Bicchieri & Chavez (2010) found an effect in the ultimatum game; Dimant, Van Kleef & Shalvi (2020) found no effect on honesty in a mind game."
+          "body": "The injunctive norm is defined as what one ought to do, based on one's belief of what others think the right thing to do is (Cialdini, Reno, & Kallgren 1990). In the context of one-shot anonymous economic games, causal evidence for the injunctive norm is mixed: Krupka & Weber (2013) found correlational evidence in the dictator game; Bicchieri & Chavez (2010) found a causal effect in the ultimatum game; but Schram & Charness (2015) found no causal effect in anonymous dictator games, and Dimant et al. (2020) failed to manipulate the injunctive norm in a mind game."
         }
       ],
       "anchors": [
         {
-          "id": "prop:theory-injunctive-norm-mixed",
-          "kind": "proposition",
-          "number": "Intro.2"
+          "id": "conc:injunctive-norm",
+          "kind": "node",
+          "number": "IN"
         }
       ],
       "refs": [
         {
-          "target": "cite:SchramCharness2015",
+          "target": "cite:Cialdini1990",
+          "relation": "cite",
+          "where": "statement"
+        },
+        {
+          "target": "cite:KrupkaWeber2013",
           "relation": "cite",
           "where": "statement"
         },
@@ -325,46 +181,62 @@
           "where": "statement"
         },
         {
-          "target": "cite:DimantVanKleefShalvi2020",
+          "target": "cite:SchramCharness2015",
+          "relation": "cite",
+          "where": "statement"
+        },
+        {
+          "target": "cite:Dimant2020",
           "relation": "cite",
           "where": "statement"
         }
       ]
     },
     {
-      "id": "prop:asymmetry-explanation",
-      "type": "proposition",
-      "number": "Disc",
-      "title": "General moral preferences plus norm-specific preferences explain asymmetry",
+      "id": "conc:moral-identity",
+      "type": "concept",
+      "number": "MI",
+      "title": "Moral identity scale",
       "sections": [
         {
           "kind": "statement",
-          "body": "One possible explanation for the observed asymmetry: some people have general moral preferences and will follow whichever norm (personal or injunctive) is nudged first. When both norms target the same option, no additional effect occurs because these people have already been moved. When norms target different options, people turn to norm-specific preferences—those with higher preference for the injunctive norm follow it, those with higher preference for the personal norm follow that."
+          "body": "Aquino & Reed's (2002) moral identity scale contains two sub-dimensions: (i) internalisation—the degree to which moral traits are central to one's self-concept; (ii) symbolisation—the degree to which these moral traits are reflected in public choices and/or actions in identifiable social settings."
         }
       ],
       "anchors": [
         {
-          "id": "prop:asymmetry-explanation",
-          "kind": "proposition",
-          "number": "Disc"
+          "id": "conc:moral-identity",
+          "kind": "node",
+          "number": "MI"
         }
       ],
       "refs": [
         {
-          "target": "prop:s1-no-additive",
-          "relation": "ref",
-          "where": "statement"
-        },
-        {
-          "target": "prop:s1-misaligned-heterogeneity",
-          "relation": "ref",
-          "where": "statement"
-        },
-        {
-          "target": "cite:BicchieriXiao2009",
+          "target": "cite:AquinoReed2002",
           "relation": "cite",
           "where": "statement"
-        },
+        }
+      ]
+    },
+    {
+      "id": "meth:trade-off-game",
+      "type": "method",
+      "number": "TG",
+      "title": "Three-player trade-off game",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "A three-player game (Capraro & Rand 2018). Player A chooses between two payoff distributions: an equal allocation, e.g., $(13,13,13)$ or $(5,5,5)$, and an efficient (unequal) allocation, e.g., $(13,23,13)$ or $(5,10,5)$. Players B and C are passive. This formalises the trade-off between objective equality and efficiency. The game is unilateral and one-shot; Player B and C cannot reciprocate."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "meth:trade-off-game",
+          "kind": "node",
+          "number": "TG"
+        }
+      ],
+      "refs": [
         {
           "target": "cite:CapraroRand2018",
           "relation": "cite",
@@ -373,241 +245,1005 @@
       ]
     },
     {
-      "id": "cite:CapraroRand2018",
-      "type": "bib",
-      "number": "1",
-      "title": "",
+      "id": "hyp:h1.1",
+      "type": "hypothesis",
+      "number": "H1.1",
+      "title": "PN_equal yields more equal choices than Baseline",
       "sections": [
         {
           "kind": "statement",
-          "body": "Capraro, V., & Rand, D. G. (2018). Do the right thing: Experimental evidence that preferences for moral behavior, rather than equity or efficiency per se, drive human prosociality. Judgment and Decision Making, 13, 99-111."
+          "body": "People are more likely to choose the equal option in the PN_equal condition (options labelled \"Fair\"/\"Unfair\") compared to the Baseline condition (options labelled \"Option A\"/\"Option B\")."
+        },
+        {
+          "kind": "proof",
+          "body": "Confirmed in Study 1: Baseline $39.4\\%$ equal vs. PN_equal $61.1\\%$ equal; logistic regression $\\text{coeff}=0.441$, $p<.001$. Replicated in Study 2: Baseline $33.2\\%$ vs. PN_equal $52.2\\%$; $\\text{coeff}=0.397$, $p<.001$."
         }
       ],
       "anchors": [
         {
-          "id": "cite:CapraroRand2018",
-          "kind": "bib",
-          "number": "1"
+          "id": "hyp:h1.1",
+          "kind": "node",
+          "number": "H1.1"
+        }
+      ],
+      "refs": [
+        {
+          "target": "conc:personal-norm",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "meth:trade-off-game",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "exp:study1",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "exp:study2",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "hyp:h1.2",
+      "type": "hypothesis",
+      "number": "H1.2",
+      "title": "Adding IN on same option as PN has no additive effect",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "People are equally likely to choose the equal option in PN_equal alone, compared to PN_equal + IN_equal (both norms promote equality) and PN_equal + IN_efficient (norms conflict). Derived from the theoretical expectation that the injunctive norm plays little role in unilateral games like the trade-off game."
+        },
+        {
+          "kind": "proof",
+          "body": "Partially confirmed. PN_equal vs PN_equal + IN_equal: $\\text{coeff}=0.0137$, $p=0.857$ (no additive effect, confirmed). PN_equal vs PN_equal + IN_efficient: $\\text{coeff}=0.161$, $p=0.004$ (significant difference, unpredicted—when norms conflict, behaviour shifts)."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "hyp:h1.2",
+          "kind": "node",
+          "number": "H1.2"
+        }
+      ],
+      "refs": [
+        {
+          "target": "conc:personal-norm",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "conc:injunctive-norm",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "meth:trade-off-game",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "exp:study1",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "hyp:h2.1",
+      "type": "hypothesis",
+      "number": "H2.1",
+      "title": "Either norm alone increases equal choices vs. Baseline",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "In light of Study 1 results, nudging either the personal norm or the injunctive norm (individually) increases the proportion of participants choosing the equal option, compared to the baseline."
+        },
+        {
+          "kind": "proof",
+          "body": "Confirmed in Study 2. PN_equal vs Baseline: $\\text{coeff}=0.397$, $p<.001$. IN_equal vs Baseline: $49.4\\%$ equal vs $33.2\\%$; $\\text{coeff}=0.678$ ($0.679$), $p=0.002$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "hyp:h2.1",
+          "kind": "node",
+          "number": "H2.1"
+        }
+      ],
+      "refs": [
+        {
+          "target": "conc:personal-norm",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "conc:injunctive-norm",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "meth:trade-off-game",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "exp:study2",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "hyp:h2.2",
+      "type": "hypothesis",
+      "number": "H2.2",
+      "title": "Effect of IN and PN are similar in size",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "The difference between nudging the personal norm and nudging the injunctive norm is negligible in the trade-off game."
+        },
+        {
+          "kind": "proof",
+          "body": "Confirmed in Study 2. IN_equal vs PN_equal: $\\text{coeff}=0.115$, $p=0.589$ (not significantly different)."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "hyp:h2.2",
+          "kind": "node",
+          "number": "H2.2"
+        }
+      ],
+      "refs": [
+        {
+          "target": "conc:personal-norm",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "conc:injunctive-norm",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "exp:study2",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "hyp:h3.1",
+      "type": "hypothesis",
+      "number": "H3.1",
+      "title": "Symbolisation moderates: higher symbolisation → follow IN",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "The interaction between symbolisation score and condition significantly predicts choosing the efficient option, such that in the PN_equal + IN_efficient condition, participants higher in symbolisation are more likely to follow the injunctive norm (efficient choice)."
+        },
+        {
+          "kind": "proof",
+          "body": "Weakly supported. Interaction term: $\\text{coeff}=-0.163$, $p=0.089$ (marginally significant). Treatment main effect: $\\text{coeff}=1.027$, $p<.05$. Symbolisation main effect: $\\text{coeff}=0.192$, $p<.001$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "hyp:h3.1",
+          "kind": "node",
+          "number": "H3.1"
+        }
+      ],
+      "refs": [
+        {
+          "target": "conc:moral-identity",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "conc:injunctive-norm",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "exp:study3",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "hyp:h3.2",
+      "type": "hypothesis",
+      "number": "H3.2",
+      "title": "Internalisation moderates: higher internalisation → follow PN",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "The interaction between internalisation score and condition significantly predicts choosing the equal option, such that in the PN_equal + IN_efficient condition, participants higher in internalisation are more likely to follow the personal norm (equal choice)."
+        },
+        {
+          "kind": "proof",
+          "body": "Not supported. Interaction term: $\\text{coeff}=0.0228$, $p=0.132$ (not significantly different from zero, though coefficient has the predicted sign)."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "hyp:h3.2",
+          "kind": "node",
+          "number": "H3.2"
+        }
+      ],
+      "refs": [
+        {
+          "target": "conc:moral-identity",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "conc:personal-norm",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "exp:study3",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "exp:study1",
+      "type": "method",
+      "number": "Study 1",
+      "title": "Study 1: Five-condition test of PN and IN",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Pre-registered study on AMT (US workers, $\\ge 90\\%$ acceptance). Five between-subject conditions in the trade-off game with payoffs $(13,13,13)$ vs $(13,23,13)$: BL (N=175, \"Option A\"/\"Option B\"); PN_equal (N=162, \"Fair\"/\"Unfair\"); PN_equal + IN_equal (N=158, Fair/Unfair labels plus message that 90% of prior participants said equality is morally right); PN_equal + IN_efficient (N=166, Fair/Unfair labels plus message that 90% said maximising sum is morally right); IN_efficient (N=171, neutral labels plus injunctive norm message for efficiency—this condition was not pre-registered). Comprehension questions screened participants."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "exp:study1",
+          "kind": "node",
+          "number": "Study 1"
+        }
+      ],
+      "refs": [
+        {
+          "target": "meth:trade-off-game",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "hyp:h1.1",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "hyp:h1.2",
+          "relation": "ref",
+          "where": "statement"
+        }
+      ]
+    },
+    {
+      "id": "exp:study2",
+      "type": "method",
+      "number": "Study 2",
+      "title": "Study 2: Direct comparison of PN and IN",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Pre-registered study on AMT (US workers, $\\ge 90\\%$ acceptance; no Study 1 overlap). Three between-subject conditions in the trade-off game with payoffs $(5,5,5)$ vs $(5,10,5)$: BL (N=187, \"Option A\"/\"Option B\"); PN_equal (N=172, \"Fair\"/\"Unfair\"); IN_equal (N=180, neutral labels plus message that 90% of prior participants said equality is morally right). Designed in light of Study 1's results to directly compare the effect sizes of personal norm and injunctive norm nudges."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "exp:study2",
+          "kind": "node",
+          "number": "Study 2"
+        }
+      ],
+      "refs": [
+        {
+          "target": "meth:trade-off-game",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "hyp:h2.1",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "hyp:h2.2",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "res:conflict-split",
+          "relation": "ref",
+          "where": "statement"
+        }
+      ]
+    },
+    {
+      "id": "exp:study3",
+      "type": "method",
+      "number": "Study 3",
+      "title": "Study 3: Moral identity as moderator",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Pre-registered study on AMT (US workers, $\\ge 90\\%$ acceptance; no overlap with Studies 1–2). Two between-subject conditions in the trade-off game with payoffs $(5,5,5)$ vs $(5,10,5)$: BL (N=226) and PN_equal + IN_efficient (N=202). After decision, all participants completed Aquino & Reed's (2002) 10-item moral identity scale, used to compute internalisation and symbolisation scores."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "exp:study3",
+          "kind": "node",
+          "number": "Study 3"
+        }
+      ],
+      "refs": [
+        {
+          "target": "meth:trade-off-game",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "conc:moral-identity",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "hyp:h3.1",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "hyp:h3.2",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "res:conflict-split",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "cite:AquinoReed2002",
+          "relation": "cite",
+          "where": "statement"
+        }
+      ]
+    },
+    {
+      "id": "res:pn-replication",
+      "type": "result",
+      "number": "R1",
+      "title": "Nudging personal norm increases equal choices",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Making the personal norm salient—by labelling the equal option \"Fair\" and the efficient option \"Unfair\"—significantly increases the proportion of participants choosing equality over efficiency in the trade-off game."
+        },
+        {
+          "kind": "proof",
+          "body": "Confirmed in two studies. Study 1: $39.4\\% \\to 61.1\\%$, $p<.001$. Study 2: $33.2\\% \\to 52.2\\%$, $p<.001$. Consistent with previous work (Capraro & Rand 2018; Tappin & Capraro 2018; Capraro et al. 2020)."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "res:pn-replication",
+          "kind": "node",
+          "number": "R1"
+        }
+      ],
+      "refs": [
+        {
+          "target": "conc:personal-norm",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "meth:trade-off-game",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "hyp:h1.1",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "hyp:h2.1",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "exp:study1",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "exp:study2",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "cite:CapraroRand2018",
+          "relation": "cite",
+          "where": "proof"
+        },
+        {
+          "target": "cite:TappinCapraro2018",
+          "relation": "cite",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "res:in-effect",
+      "type": "result",
+      "number": "R2",
+      "title": "Nudging injunctive norm has effect similar to personal norm",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Nudging the injunctive norm—by informing participants that 90% of prior players declared equality the morally right choice—significantly increases equal choices in the trade-off game. This effect is statistically indistinguishable in size from the personal norm effect."
+        },
+        {
+          "kind": "proof",
+          "body": "Study 2: IN_equal vs Baseline, $49.4\\%$ vs $33.2\\%$, $\\text{coeff}=0.679$, $p=0.002$. PN_equal vs IN_equal: $\\text{coeff}=0.115$, $p=0.589$ (no significant difference). This provides a new example of a one-shot anonymous game where injunctive norm nudging has a causal effect, contributing to the mixed prior literature."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "res:in-effect",
+          "kind": "node",
+          "number": "R2"
+        }
+      ],
+      "refs": [
+        {
+          "target": "conc:injunctive-norm",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "conc:personal-norm",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "hyp:h2.1",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "hyp:h2.2",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "exp:study2",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "res:no-additive",
+      "type": "result",
+      "number": "R3",
+      "title": "No additive effect when both norms target the same option",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "When both the personal norm and the injunctive norm are nudged towards the same option (equality), there is no additive effect beyond nudging the personal norm alone."
+        },
+        {
+          "kind": "proof",
+          "body": "Study 1: PN_equal vs PN_equal + IN_equal, $\\text{coeff}=0.0137$, $p=0.857$."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "res:no-additive",
+          "kind": "node",
+          "number": "R3"
+        }
+      ],
+      "refs": [
+        {
+          "target": "conc:personal-norm",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "conc:injunctive-norm",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "hyp:h1.2",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "exp:study1",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "res:conflict-split",
+      "type": "result",
+      "number": "R4",
+      "title": "When norms conflict, some follow PN and some follow IN",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "When the personal norm and the injunctive norm are nudged towards opposite options (PN → equality, IN → efficiency), participants split: some follow the personal norm while others follow the injunctive norm. This suggests individual differences in norm-specific preferences."
+        },
+        {
+          "kind": "proof",
+          "body": "Study 1: PN_equal vs PN_equal + IN_efficient, $\\text{coeff}=0.161$, $p=0.004$ (significant shift from PN alone). PN_equal + IN_efficient vs IN_efficient (not pre-registered): $\\text{coeff}=-0.158$, $p=0.035$ (IN_efficient has fewer equal choices, meaning some participants followed IN when PN was absent). Also PN_equal + IN_efficient vs IN_equal: $p=0.035$, confirming not everyone follows the same norm."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "res:conflict-split",
+          "kind": "node",
+          "number": "R4"
+        }
+      ],
+      "refs": [
+        {
+          "target": "conc:personal-norm",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "conc:injunctive-norm",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "exp:study1",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "res:symb-weak",
+      "type": "result",
+      "number": "R5",
+      "title": "Symbolisation weakly predicts following injunctive norm",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Participants higher in the symbolisation dimension of moral identity—those who like to be seen as moral—are weakly more likely to follow the injunctive norm over the personal norm when the two norms conflict."
+        },
+        {
+          "kind": "proof",
+          "body": "Study 3 logistic regression: interaction symbolisation × treatment (PN_equal + IN_efficient vs BL) on choosing equal: $\\text{coeff}=-0.163$, $p=0.089$ (marginally significant). Negative coefficient means higher symbolisation → less likely to choose equality when IN promotes efficiency, i.e., more likely to follow IN."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "res:symb-weak",
+          "kind": "node",
+          "number": "R5"
+        }
+      ],
+      "refs": [
+        {
+          "target": "conc:moral-identity",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "conc:injunctive-norm",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "hyp:h3.1",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "exp:study3",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "res:intern-null",
+      "type": "result",
+      "number": "R6",
+      "title": "Internalisation does not predict following personal norm",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Contrary to predictions, participants higher in the internalisation dimension of moral identity—those for whom moral traits are central to self-concept—are not significantly more likely to follow the personal norm when PN and IN conflict."
+        },
+        {
+          "kind": "proof",
+          "body": "Study 3 logistic regression: interaction internalisation × treatment on choosing equal: $\\text{coeff}=0.0228$, $p=0.132$ (not significant, though coefficient sign matches prediction)."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "res:intern-null",
+          "kind": "node",
+          "number": "R6"
+        }
+      ],
+      "refs": [
+        {
+          "target": "conc:moral-identity",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "conc:personal-norm",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "hyp:h3.2",
+          "relation": "ref",
+          "where": "proof"
+        },
+        {
+          "target": "exp:study3",
+          "relation": "ref",
+          "where": "proof"
+        }
+      ]
+    },
+    {
+      "id": "res:main",
+      "type": "result",
+      "number": "M",
+      "title": "Main conclusion: PN and IN both matter with distinct interplay",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Across three pre-registered studies (total $N=1799$): (i) both personal norm and injunctive norm nudges significantly shift choices in the equality–efficiency trade-off, with similar effect sizes; (ii) when both norms target the same option, there is no additive effect; (iii) when norms target opposite options, participants split according to individual norm-specific preferences—some follow PN, others follow IN. Symbolisation weakly predicts which norm one follows, while internalisation does not. This provides the first direct comparison of personal and injunctive norm effects in a one-shot economic game."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "res:main",
+          "kind": "node",
+          "number": "M"
+        }
+      ],
+      "refs": [
+        {
+          "target": "res:pn-replication",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "res:in-effect",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "res:no-additive",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "res:conflict-split",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "res:symb-weak",
+          "relation": "ref",
+          "where": "statement"
+        },
+        {
+          "target": "res:intern-null",
+          "relation": "ref",
+          "where": "statement"
+        }
+      ]
+    },
+    {
+      "id": "cite:Schwartz1994",
+      "type": "reference",
+      "number": "Schwartz 1994",
+      "title": "Are there universal aspects in the structure and contents of human values?",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Schwartz, S. H. (1994). Journal of Social Issues, 50, 19–45."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "cite:Schwartz1994",
+          "kind": "node",
+          "number": "Schwartz 1994"
         }
       ],
       "refs": []
     },
     {
-      "id": "cite:TappinCapraro2018",
-      "type": "bib",
-      "number": "2",
-      "title": "",
+      "id": "cite:Cialdini1990",
+      "type": "reference",
+      "number": "Cialdini et al. 1990",
+      "title": "A focus theory of normative conduct",
       "sections": [
         {
           "kind": "statement",
-          "body": "Tappin, B. M., & Capraro, V. (2018). Doing good vs. avoiding bad in prosocial choice: A refined test and extension of the morality preference hypothesis. Journal of Experimental Social Psychology, 79, 64-70."
+          "body": "Cialdini, R. B., Reno, R. R., & Kallgren, C. A. (1990). Journal of Personality and Social Psychology, 58, 1015–1026."
         }
       ],
       "anchors": [
         {
-          "id": "cite:TappinCapraro2018",
-          "kind": "bib",
-          "number": "2"
-        }
-      ],
-      "refs": []
-    },
-    {
-      "id": "cite:CapraroRodriguezLaraRuizMartos2020",
-      "type": "bib",
-      "number": "3",
-      "title": "",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "Capraro, V., Rodriguez-Lara, I., & Ruiz-Martos, M. J. (2020). Preferences for efficiency, rather than preferences for morality, drive cooperation in the one-shot Stag-Hunt Game. Journal of Behavioral and Experimental Economics, 101535."
-        }
-      ],
-      "anchors": [
-        {
-          "id": "cite:CapraroRodriguezLaraRuizMartos2020",
-          "kind": "bib",
-          "number": "3"
-        }
-      ],
-      "refs": []
-    },
-    {
-      "id": "cite:CapraroJordanTappin2020",
-      "type": "bib",
-      "number": "4",
-      "title": "",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "Capraro, V., Jordan, J. J., & Tappin, B. M. (2020). Does observability amplify sensitivity to moral frames? Evaluating a reputation-based account of moral preferences. arXiv preprint arXiv:2004.04408."
-        }
-      ],
-      "anchors": [
-        {
-          "id": "cite:CapraroJordanTappin2020",
-          "kind": "bib",
-          "number": "4"
-        }
-      ],
-      "refs": []
-    },
-    {
-      "id": "cite:Capraro2020",
-      "type": "bib",
-      "number": "5",
-      "title": "",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "Capraro, V. (2020). Gender differences in the trade-off between objective equality and efficiency. Judgment and Decision Making, 15, 534-544."
-        }
-      ],
-      "anchors": [
-        {
-          "id": "cite:Capraro2020",
-          "kind": "bib",
-          "number": "5"
-        }
-      ],
-      "refs": []
-    },
-    {
-      "id": "cite:SchramCharness2015",
-      "type": "bib",
-      "number": "6",
-      "title": "",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "Schram, A., & Charness, G. (2015). Inducing social norms in laboratory allocation choices. Management Science, 61, 1531-1546."
-        }
-      ],
-      "anchors": [
-        {
-          "id": "cite:SchramCharness2015",
-          "kind": "bib",
-          "number": "6"
-        }
-      ],
-      "refs": []
-    },
-    {
-      "id": "cite:BicchieriChavez2010",
-      "type": "bib",
-      "number": "7",
-      "title": "",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "Bicchieri, C., & Chavez, A. (2010). Behaving as expected: Public information and fairness norms. Journal of Behavioral Decision Making, 23, 161-178."
-        }
-      ],
-      "anchors": [
-        {
-          "id": "cite:BicchieriChavez2010",
-          "kind": "bib",
-          "number": "7"
-        }
-      ],
-      "refs": []
-    },
-    {
-      "id": "cite:DimantVanKleefShalvi2020",
-      "type": "bib",
-      "number": "8",
-      "title": "",
-      "sections": [
-        {
-          "kind": "statement",
-          "body": "Dimant, E., van Kleef, G. A., & Shalvi, S. (2020). Requiem for a nudge: Framing effects in nudging honesty. Journal of Economic Behavior & Organization, 172, 247-266."
-        }
-      ],
-      "anchors": [
-        {
-          "id": "cite:DimantVanKleefShalvi2020",
-          "kind": "bib",
-          "number": "8"
+          "id": "cite:Cialdini1990",
+          "kind": "node",
+          "number": "Cialdini et al. 1990"
         }
       ],
       "refs": []
     },
     {
       "id": "cite:AquinoReed2002",
-      "type": "bib",
-      "number": "9",
-      "title": "",
+      "type": "reference",
+      "number": "Aquino & Reed 2002",
+      "title": "The self-importance of moral identity",
       "sections": [
         {
           "kind": "statement",
-          "body": "Aquino, K., & Reed II, A. (2002). The self-importance of moral identity. Journal of Personality and Social Psychology, 83, 1423-1440."
+          "body": "Aquino, K., & Reed II, A. (2002). Journal of Personality and Social Psychology, 83, 1423–1440."
         }
       ],
       "anchors": [
         {
           "id": "cite:AquinoReed2002",
-          "kind": "bib",
-          "number": "9"
+          "kind": "node",
+          "number": "Aquino & Reed 2002"
         }
       ],
       "refs": []
     },
     {
-      "id": "cite:CialdiniRenoKallgren1990",
-      "type": "bib",
-      "number": "10",
-      "title": "",
+      "id": "cite:CapraroRand2018",
+      "type": "reference",
+      "number": "Capraro & Rand 2018",
+      "title": "Do the right thing: Experimental evidence that preferences for moral behavior drive human prosociality",
       "sections": [
         {
           "kind": "statement",
-          "body": "Cialdini, R. B., Reno, R. R., & Kallgren, C. A. (1990). A focus theory of normative conduct: recycling the concept of norms to reduce littering in public places. Journal of Personality and Social Psychology, 58, 1015-1026."
+          "body": "Capraro, V., & Rand, D. G. (2018). Judgment and Decision Making, 13, 99–111."
         }
       ],
       "anchors": [
         {
-          "id": "cite:CialdiniRenoKallgren1990",
-          "kind": "bib",
-          "number": "10"
+          "id": "cite:CapraroRand2018",
+          "kind": "node",
+          "number": "Capraro & Rand 2018"
         }
       ],
       "refs": []
     },
     {
-      "id": "cite:Schwartz1994",
-      "type": "bib",
-      "number": "11",
-      "title": "",
+      "id": "cite:BicchieriChavez2010",
+      "type": "reference",
+      "number": "Bicchieri & Chavez 2010",
+      "title": "Behaving as expected: Public information and fairness norms",
       "sections": [
         {
           "kind": "statement",
-          "body": "Schwartz, S. H. (1994). Are there universal aspects in the structure and contents of human values? Journal of Social Issues, 50, 19-45."
+          "body": "Bicchieri, C., & Chavez, A. (2010). Journal of Behavioral Decision Making, 23, 161–178."
         }
       ],
       "anchors": [
         {
-          "id": "cite:Schwartz1994",
-          "kind": "bib",
-          "number": "11"
+          "id": "cite:BicchieriChavez2010",
+          "kind": "node",
+          "number": "Bicchieri & Chavez 2010"
         }
       ],
       "refs": []
     },
     {
-      "id": "cite:BicchieriXiao2009",
-      "type": "bib",
-      "number": "12",
-      "title": "",
+      "id": "cite:SchramCharness2015",
+      "type": "reference",
+      "number": "Schram & Charness 2015",
+      "title": "Inducing social norms in laboratory allocation choices",
       "sections": [
         {
           "kind": "statement",
-          "body": "Bicchieri, C., & Xiao, E. (2009). Do the right thing: but only if others do so. Journal of Behavioral Decision Making, 22, 191-208."
+          "body": "Schram, A., & Charness, G. (2015). Management Science, 61, 1531–1546."
         }
       ],
       "anchors": [
         {
-          "id": "cite:BicchieriXiao2009",
-          "kind": "bib",
-          "number": "12"
+          "id": "cite:SchramCharness2015",
+          "kind": "node",
+          "number": "Schram & Charness 2015"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "cite:FehrSchmidt1999",
+      "type": "reference",
+      "number": "Fehr & Schmidt 1999",
+      "title": "A theory of fairness, competition, and cooperation",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Fehr, E., & Schmidt, K. M. (1999). The Quarterly Journal of Economics, 114(3), 817–868."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "cite:FehrSchmidt1999",
+          "kind": "node",
+          "number": "Fehr & Schmidt 1999"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "cite:BoltonOckenfels2000",
+      "type": "reference",
+      "number": "Bolton & Ockenfels 2000",
+      "title": "ERC: A theory of equity, reciprocity, and competition",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Bolton, G. E., & Ockenfels, A. (2000). American Economic Review, 90(1), 166–193."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "cite:BoltonOckenfels2000",
+          "kind": "node",
+          "number": "Bolton & Ockenfels 2000"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "cite:CharnessRabin2002",
+      "type": "reference",
+      "number": "Charness & Rabin 2002",
+      "title": "Understanding social preferences with simple tests",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Charness, G., & Rabin, M. (2002). Quarterly Journal of Economics, 117(3), 817–869."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "cite:CharnessRabin2002",
+          "kind": "node",
+          "number": "Charness & Rabin 2002"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "cite:Gneezy2005",
+      "type": "reference",
+      "number": "Gneezy 2005",
+      "title": "Deception: The role of consequences",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Gneezy, U. (2005). American Economic Review, 95, 384–394."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "cite:Gneezy2005",
+          "kind": "node",
+          "number": "Gneezy 2005"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "cite:Biziou2015",
+      "type": "reference",
+      "number": "Biziou-van-Pol et al. 2015",
+      "title": "Does telling white lies signal pro-social preferences?",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Biziou-van-Pol, L., Haenen, J., Novaro, A., Occhipinti Liberman, A., & Capraro, V. (2015). Judgment and Decision Making, 10, 538–548."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "cite:Biziou2015",
+          "kind": "node",
+          "number": "Biziou-van-Pol et al. 2015"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "cite:KrupkaWeber2013",
+      "type": "reference",
+      "number": "Krupka & Weber 2013",
+      "title": "Identifying social norms using coordination games",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Krupka, E. L., & Weber, R. A. (2013). Journal of the European Economic Association, 11, 495–524."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "cite:KrupkaWeber2013",
+          "kind": "node",
+          "number": "Krupka & Weber 2013"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "cite:Dimant2020",
+      "type": "reference",
+      "number": "Dimant et al. 2020",
+      "title": "Requiem for a nudge: Framing effects in nudging honesty",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Dimant, E., van Kleef, G. A., & Shalvi, S. (2020). Journal of Economic Behavior & Organization, 172, 247–266."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "cite:Dimant2020",
+          "kind": "node",
+          "number": "Dimant et al. 2020"
+        }
+      ],
+      "refs": []
+    },
+    {
+      "id": "cite:TappinCapraro2018",
+      "type": "reference",
+      "number": "Tappin & Capraro 2018",
+      "title": "Doing good vs. avoiding bad in prosocial choice",
+      "sections": [
+        {
+          "kind": "statement",
+          "body": "Tappin, B. M., & Capraro, V. (2018). Journal of Experimental Social Psychology, 79, 64–70."
+        }
+      ],
+      "anchors": [
+        {
+          "id": "cite:TappinCapraro2018",
+          "kind": "node",
+          "number": "Tappin & Capraro 2018"
         }
       ],
       "refs": []
