@@ -347,8 +347,16 @@ export class ForceGraph {
   _zoomToScale(k, px, py) {
     const next = clamp(k, MIN_K, MAX_K);
     const w = this.screenToWorld(px, py);
-    const t = d3.zoomIdentity.translate(px - w.x * next, py - w.y * next).scale(next);
+    const t = this._constrain(d3.zoomIdentity.translate(px - w.x * next, py - w.y * next).scale(next));
     d3.select(this.stageEl).transition().duration(140).call(this.zoom.transform, t);
+  }
+
+  // 用 d3-zoom 自身的 constrain 预约束程序化设置的变换：与拖拽手势的约束一致，
+  // 避免“程序化变换未约束 → 首次拖动被重新约束而瞬移”。
+  _constrain(t) {
+    if (!this.zoom || !this.W) return t;
+    const c = this.zoom.constrain();
+    return c(t, [[0, 0], [this.W, this.H]], this.zoom.translateExtent());
   }
 
   _applyTransform() {
@@ -403,12 +411,12 @@ export class ForceGraph {
     const cx = this.W / 2;
     const cy = this.H / 2;
     const w = this.screenToWorld(cx, cy);
-    const t = d3.zoomIdentity.translate(cx - w.x * next, cy - w.y * next).scale(next);
+    const t = this._constrain(d3.zoomIdentity.translate(cx - w.x * next, cy - w.y * next).scale(next));
     d3.select(this.stageEl).transition().duration(120).call(this.zoom.transform, t);
   }
   // 即时设置完整视角变换（用于 deep-link 恢复，无动画）
   setTransform(k, x, y) {
-    const t = d3.zoomIdentity.translate(x || 0, y || 0).scale(clamp(k, MIN_K, MAX_K));
+    const t = this._constrain(d3.zoomIdentity.translate(x || 0, y || 0).scale(clamp(k, MIN_K, MAX_K)));
     d3.select(this.stageEl).call(this.zoom.transform, t);
   }
 
@@ -427,9 +435,9 @@ export class ForceGraph {
     // 初次：有 deep-link 保存的视角则直接用它（首帧即就位，不先 0.82 再跳）；否则世界原点居中
     if (!this._centered) {
       const it = this._initialTransform;
-      this.transform = (it && Number.isFinite(it.k))
+      this.transform = this._constrain((it && Number.isFinite(it.k))
         ? d3.zoomIdentity.translate(it.x || 0, it.y || 0).scale(it.k)
-        : d3.zoomIdentity.translate(this.W / 2, this.H / 2).scale(0.82);
+        : d3.zoomIdentity.translate(this.W / 2, this.H / 2).scale(0.82));
       d3.select(this.stageEl).call(this.zoom.transform, this.transform);
       this._centered = true;
     } else {
