@@ -1,4 +1,5 @@
 import { compileGraph } from '../data/adapter.js';
+import { mergeProfile } from '../data/schema.js';
 
 export const PROJECT_FORMAT = 'paper-graph-project@1';
 
@@ -76,6 +77,7 @@ export function compileProject(project) {
   const docLabelOwner = new Map();
   const docAlias = new Map();
   const labelAliases = {};
+  const docMetas = [];
 
   for (const doc of docs) {
     docAlias.set(doc.id, doc.id);
@@ -83,6 +85,7 @@ export function compileProject(project) {
     docAlias.set(slug(doc.name), doc.id);
     docLabelOwner.set(doc.id, new Map());
     const compiled = compileGraph(doc.graph);
+    docMetas.push(compiled.meta);
     for (const rawNode of compiled.nodes || []) {
       if (disabledNodes.has(rawNode.id)) continue;
       const node = {
@@ -128,24 +131,43 @@ export function compileProject(project) {
     }
   }
 
-  const firstGraph = docs[0] ? compileGraph(docs[0].graph) : { meta: {} };
+  const firstMeta = docMetas[0] || {};
+
+  // 合并各启用文档的 profile 类型：多文件时每个文档自带的领域类型/配色都要保留，
+  // 否则只有第一篇的类型有颜色、其余全部退回灰色。按出现顺序去重（首次定义为准）。
+  const baseProfile = firstMeta?.profileResolved;
+  const mergedTypes = [];
+  const seenType = new Set();
+  for (const m of docMetas) {
+    for (const t of m?.profileResolved?.types || []) {
+      if (seenType.has(t.id)) continue;
+      seenType.add(t.id);
+      mergedTypes.push({ ...t, order: mergedTypes.length }); // 重排 order，保持按文档分组的出现顺序
+    }
+  }
+  const profileResolved = baseProfile
+    ? mergeProfile({ ...baseProfile, types: mergedTypes.length ? mergedTypes : baseProfile.types })
+    : undefined;
+  const isLeafType = (type) => !!profileResolved?.typeById?.[type]?.leaf || type === 'bib';
+
   return {
     meta: {
-      ...(firstGraph.meta || {}),
+      ...firstMeta,
       title: normalized.name,
       source: 'project',
       projectId: normalized.id,
       projectName: normalized.name,
       documents: docs.map((d) => ({ id: d.id, name: d.name, sourceType: d.sourceType })),
       labelAliases,
+      profileResolved, // 合并后的 profile，覆盖首篇单独的 profileResolved
       counts: {
-        statements: nodes.filter((n) => n.type !== 'bib').length,
-        bib: nodes.filter((n) => n.type === 'bib').length,
+        statements: nodes.filter((n) => !isLeafType(n.type)).length,
+        bib: nodes.filter((n) => isLeafType(n.type)).length,
         edges: edges.length,
         labels: nodes.reduce((sum, n) => sum + (n.labels?.length || 0), 0),
       },
     },
-    types: firstGraph.meta?.profileResolved?.types, // 传递领域自定义类型，避免二次编译退回默认 paper 配色
+    types: mergedTypes.length ? mergedTypes : baseProfile?.types,
     nodes,
     edges,
   };

@@ -474,7 +474,10 @@ export class ForceGraph {
   updateVisibility() {
     for (const n of this.nodes) {
       const el = this.nodeEls.get(n.id);
-      if (el) el.classList.toggle('node-hidden', !this._nodeVisible(n));
+      if (!el) continue;
+      const vis = this._nodeVisible(n);
+      el.classList.toggle('node-hidden', !vis);
+      n._visApplied = vis; // 与 _tick 的增量判断保持同步
     }
     this.refreshCollision();
     this._renderEdges();
@@ -491,12 +494,13 @@ export class ForceGraph {
     for (const n of this.nodes) {
       const el = this.nodeEls.get(n.id);
       if (!el) continue;
-      el.classList.toggle('node-hidden', !this._nodeVisible(n));
-      if (n.isModal) continue;
+      const vis = this._nodeVisible(n);
+      if (n._visApplied !== vis) { el.classList.toggle('node-hidden', !vis); n._visApplied = vis; } // 仅在变化时改 DOM
+      if (!vis) continue; // 隐藏 / 已展开为 modal 的圆无需更新位置（_nodeVisible 对 modal 返回 false）
       const r = n.radius;
       el.style.transform = `translate(${n.x - r}px, ${n.y - r}px)`;
     }
-    this._renderEdges();
+    this._positionEdges();
     this._notifyOverlay && this._notifyOverlay();
   }
 
@@ -529,9 +533,13 @@ export class ForceGraph {
   }
 
   // ---- 边渲染 ----
+  // 完整重建：仅在可见边集合/拓扑变化（展开、过滤、模式切换、悬停高亮）时调用。
   _renderEdges() {
     const self = this;
     const visible = this.links.filter((l) => this._edgeVisible(l));
+    this._visibleEdges = visible;
+    for (const l of visible) this._computeEnds(l);
+
     const paths = this.gEdges.selectAll('path').data(visible, (d) => `${d.from}|${d.fromLabel}|${d.to}`);
     paths.exit().remove();
     const ent = paths
@@ -545,7 +553,11 @@ export class ForceGraph {
     const arrEnt = arr.enter().append('polygon').attr('class', 'arrowhead');
     this.arrowSel = arrEnt.merge(arr);
 
-    const dotsData = visible.flatMap((d) => ([{ ...d, end: 'from' }, { ...d, end: 'to' }]));
+    // 圆点 datum 通过 __src 引用所属边对象，定位时复用边上缓存的 _p1/_p2
+    const dotsData = visible.flatMap((d) => ([
+      { from: d.from, fromLabel: d.fromLabel, to: d.to, end: 'from', __src: d },
+      { from: d.from, fromLabel: d.fromLabel, to: d.to, end: 'to', __src: d },
+    ]));
     const dots = this.gAnchors.selectAll('circle').data(dotsData, (d) => `${d.from}|${d.fromLabel}|${d.to}|${d.end}`);
     dots.exit().remove();
     const dotEnt = dots.enter().append('circle').attr('class', (d) => `edge-dot edge-dot-${d.end}`).attr('r', 3.2);
@@ -557,13 +569,42 @@ export class ForceGraph {
     });
     this.edgeDotSel = dotEnt.merge(dots);
 
-    this.edgeSel.attr('d', (l) => self._edgePath(l)).classed('hi', (l) => !!l._hi).classed('dimmed', (l) => !!l._dim);
-    this.arrowSel.attr('points', (l) => self._arrowPoints(l)).classed('hi', (l) => !!l._hi);
-    this.edgeDotSel
-      .attr('cx', (l) => self._edgeDotPos(l).x)
-      .attr('cy', (l) => self._edgeDotPos(l).y)
-      .classed('hi', (l) => !!l._hi)
-      .classed('dimmed', (l) => !!l._dim);
+    this._edgesDirty = false;
+    this._applyEdgeAttrs(true);
+  }
+
+  // 每个可见边的端点只算一次，缓存到 l._p1 / l._p2
+  _computeEnds(l) {
+    const a = this.model.nodeById.get(l.from);
+    const b = this.model.nodeById.get(l.to);
+    l._p1 = a ? this.anchorPos(a, l.fromLabel) : { x: 0, y: 0 };
+    l._p2 = b ? this.refsPos(b) : { x: 0, y: 0 };
+  }
+
+  // 写入路径/箭头/圆点的几何属性；withClasses=true 时一并刷新 hi/dimmed 状态类
+  _applyEdgeAttrs(withClasses) {
+    const self = this;
+    const e = this.edgeSel.attr('d', (l) => self._edgePathFrom(l._p1, l._p2));
+    const a = this.arrowSel.attr('points', (l) => self._arrowPointsFrom(l._p1, l._p2));
+    const d = this.edgeDotSel
+      .attr('cx', (o) => (o.end === 'from' ? o.__src._p1 : o.__src._p2).x)
+      .attr('cy', (o) => (o.end === 'from' ? o.__src._p1 : o.__src._p2).y);
+    if (withClasses) {
+      e.classed('hi', (l) => !!l._hi).classed('dimmed', (l) => !!l._dim);
+      a.classed('hi', (l) => !!l._hi);
+      d.classed('hi', (o) => !!o.__src._hi).classed('dimmed', (o) => !!o.__src._dim);
+    }
+  }
+
+  // 每帧轻量定位：复用已建好的选择集，只重算端点并写几何属性，避免重做数据连接。
+  _positionEdges() {
+    if (!this.edgeSel || this._edgesDirty || !this._visibleEdges) return this._renderEdges();
+    // 可见边集合数量变化（展开/隐藏/模式切换）→ 退回完整重建
+    let count = 0;
+    for (const l of this.links) if (this._edgeVisible(l)) count++;
+    if (count !== this._visibleEdges.length) return this._renderEdges();
+    for (const l of this._visibleEdges) this._computeEnds(l);
+    this._applyEdgeAttrs(false);
   }
 
   _edgeVisible(l) {
@@ -577,11 +618,7 @@ export class ForceGraph {
     return true;
   }
 
-  _edgePath(l) {
-    const a = this.model.nodeById.get(l.from);
-    const b = this.model.nodeById.get(l.to);
-    const p1 = this.anchorPos(a, l.fromLabel);
-    const p2 = this.refsPos(b);
+  _edgePathFrom(p1, p2) {
     const mx = (p1.x + p2.x) / 2;
     const my = (p1.y + p2.y) / 2;
     const dx = p2.x - p1.x, dy = p2.y - p1.y;
@@ -593,11 +630,7 @@ export class ForceGraph {
     return `M${p1.x},${p1.y} Q${cx},${cy} ${p2.x},${p2.y}`;
   }
 
-  _arrowPoints(l) {
-    const a = this.model.nodeById.get(l.from);
-    const b = this.model.nodeById.get(l.to);
-    const p1 = this.anchorPos(a, l.fromLabel);
-    const p2 = this.refsPos(b);
+  _arrowPointsFrom(p1, p2) {
     const dx = p2.x - p1.x, dy = p2.y - p1.y;
     const ang = Math.atan2(dy, dx);
     const size = 7;
@@ -606,12 +639,6 @@ export class ForceGraph {
     const a1 = ang + Math.PI - 0.4;
     const a2 = ang + Math.PI + 0.4;
     return `${tipX},${tipY} ${tipX + Math.cos(a1) * size},${tipY + Math.sin(a1) * size} ${tipX + Math.cos(a2) * size},${tipY + Math.sin(a2) * size}`;
-  }
-
-  _edgeDotPos(l) {
-    const a = this.model.nodeById.get(l.from);
-    const b = this.model.nodeById.get(l.to);
-    return l.end === 'from' ? this.anchorPos(a, l.fromLabel) : this.refsPos(b);
   }
 
   // ---- 公共 API ----
