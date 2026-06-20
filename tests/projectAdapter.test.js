@@ -58,3 +58,40 @@ describe('projectAdapter · compileProject', () => {
     expect(c.meta.counts.statements).toBe(2);
   });
 });
+
+describe('projectAdapter · compileProject 跨文档重复 id', () => {
+  const mkDoc = (id, tag) => ({
+    id, name: 'Doc' + tag,
+    graph: {
+      meta: {},
+      nodes: [
+        { id: 'method:training', type: 'theorem', labels: [{ id: 'method:training' }], refs: [] },
+        { id: 'result:r1', type: 'lemma', labels: [{ id: 'result:r1' }], refs: [{ cmd: 'ref', target: 'method:training', where: 'statement' }] },
+      ],
+      edges: [],
+    },
+  });
+  const proj = {
+    id: 'p2', name: 'P2',
+    config: { enabledDocumentIds: ['dA', 'dB'], disabledNodeIds: [], disabledRelationKeys: [] },
+    documents: [mkDoc('dA', 'A'), mkDoc('dB', 'B')],
+  };
+  const c = compileProject(proj);
+
+  it('每个节点 id 全局唯一（不被覆盖）', () => {
+    const ids = c.nodes.map((n) => n.id);
+    expect(ids.length).toBe(4);
+    expect(new Set(ids).size).toBe(4);
+    expect(ids.filter((x) => x === 'method:training').length).toBe(1); // 仅一个保留原 id
+  });
+  it('每篇内部引用仍解析为各自文档内的边', () => {
+    expect(c.edges.length).toBe(2);
+    // 每条边的 from/to 都来自同一文档（不串文档）
+    for (const e of c.edges) {
+      const from = c.nodes.find((n) => n.id === e.from);
+      const to = c.nodes.find((n) => n.id === e.to);
+      expect(from.documentId).toBe(to.documentId);
+      expect(e.fromLabel).toBe(e.from); // fromLabel 跟随唯一化后的节点 id
+    }
+  });
+});

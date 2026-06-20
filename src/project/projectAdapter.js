@@ -78,6 +78,17 @@ export function compileProject(project) {
   const docAlias = new Map();
   const labelAliases = {};
   const docMetas = [];
+  // 跨文档去重：不同文档可能用相同的节点/锚点 id（如各自的 method:training、eq:1），
+  // 若不唯一化，nodeById / nodeEls 会被覆盖，导致该节点无法拖拽、展开后原圆不消失等。
+  // 这里为冲突的 id 重命名，同时把解析用的 owner 仍以“原始 id”登记，保证引用照常解析。
+  const usedNodeIds = new Set();
+  const usedLabelIds = new Set();
+  const uniqueId2 = (orig, docId, used) => {
+    if (!used.has(orig)) return orig;
+    let k = 2, cand = `${orig}#${docId}`;
+    while (used.has(cand)) cand = `${orig}#${docId}-${k++}`;
+    return cand;
+  };
 
   for (const doc of docs) {
     docAlias.set(doc.id, doc.id);
@@ -88,21 +99,36 @@ export function compileProject(project) {
     docMetas.push(compiled.meta);
     for (const rawNode of compiled.nodes || []) {
       if (disabledNodes.has(rawNode.id)) continue;
+      const origId = rawNode.id;
+      const newId = uniqueId2(origId, doc.id, usedNodeIds);
+      usedNodeIds.add(newId);
+
+      // 标签：自锚点（id === 节点原 id）跟随新节点 id；其余锚点按需唯一化。
+      // _origId 记录原始 id，供下面以“原始 id”登记 owner（引用用原始 target 解析）。
+      const labels = (rawNode.labels || []).map((l) => {
+        const lid = l.id === origId ? newId : uniqueId2(l.id, doc.id, usedLabelIds);
+        usedLabelIds.add(lid);
+        return { ...l, id: lid, _origId: l.id };
+      });
+
       const node = {
         ...rawNode,
+        id: newId,
         documentId: doc.id,
         documentName: doc.name,
-        labels: (rawNode.labels || []).map((l) => ({ ...l })),
+        labels,
         refs: (rawNode.refs || []).map((r) => ({ ...r })),
       };
       nodes.push(node);
-      for (const label of node.labels) {
-        if (!labelOwner.has(label.id)) labelOwner.set(label.id, { node, label });
-        docLabelOwner.get(doc.id).set(label.id, { node, label });
-        docLabelOwner.get(doc.id).set(`${doc.id}/${label.id}`, { node, label });
-        docLabelOwner.get(doc.id).set(`${slug(doc.name)}/${label.id}`, { node, label });
-        labelAliases[`${doc.id}/${label.id}`] = { nodeId: node.id, labelId: label.id };
-        labelAliases[`${slug(doc.name)}/${label.id}`] = { nodeId: node.id, labelId: label.id };
+      const dm = docLabelOwner.get(doc.id);
+      for (const label of labels) {
+        const oid = label._origId;
+        if (!labelOwner.has(oid)) labelOwner.set(oid, { node, label });
+        dm.set(oid, { node, label });
+        dm.set(`${doc.id}/${oid}`, { node, label });
+        dm.set(`${slug(doc.name)}/${oid}`, { node, label });
+        labelAliases[`${doc.id}/${oid}`] = { nodeId: newId, labelId: label.id };
+        labelAliases[`${slug(doc.name)}/${oid}`] = { nodeId: newId, labelId: label.id };
       }
     }
   }
@@ -174,8 +200,9 @@ export function compileProject(project) {
 }
 
 function resolveTarget(target, currentDocId, labelOwner, docLabelOwner, docAlias) {
+  // labelId 用 owner 实际（可能已唯一化）的 label.id，保证边的 fromLabel 能在目标节点上命中锚点
   const currentDocLabels = docLabelOwner.get(currentDocId);
-  if (currentDocLabels?.has(target)) return { owner: currentDocLabels.get(target), labelId: target };
+  if (currentDocLabels?.has(target)) { const owner = currentDocLabels.get(target); return { owner, labelId: owner.label.id }; }
 
   const slash = String(target || '').indexOf('/');
   if (slash > 0) {
@@ -183,11 +210,11 @@ function resolveTarget(target, currentDocId, labelOwner, docLabelOwner, docAlias
     const labelId = target.slice(slash + 1);
     const docId = docAlias.get(scope) || docAlias.get(slug(scope));
     const scopedOwner = docId ? docLabelOwner.get(docId)?.get(labelId) : null;
-    if (scopedOwner) return { owner: scopedOwner, labelId };
+    if (scopedOwner) return { owner: scopedOwner, labelId: scopedOwner.label.id };
   }
 
   const globalOwner = labelOwner.get(target);
-  return globalOwner ? { owner: globalOwner, labelId: target } : null;
+  return globalOwner ? { owner: globalOwner, labelId: globalOwner.label.id } : null;
 }
 
 function slug(value) {
