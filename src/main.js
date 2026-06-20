@@ -105,7 +105,6 @@ function startMain(db, project) {
     theme: 'dark',
     hidden: new Set(initialState.hidden),
     filterActive: initialState.types ? new Set(initialState.types) : null,
-    docFilterActive: initialState.docs ? new Set(initialState.docs) : null,
     sidebarCollapsed: initialState.sidebarCollapsed,
     openDetails: (nodeId) => openDetails(ctx, nodeId),
     goLeading,
@@ -260,7 +259,6 @@ function startMain(db, project) {
     if (ids.length) params.set('open', ids.join(','));
     params.set('mode', ctx.mode);
     if (ctx.filterActive) params.set('types', [...ctx.filterActive].join(','));
-    if (ctx.docFilterActive) params.set('docs', [...ctx.docFilterActive].join(','));
     params.set('hidden', [...(ctx.hidden || [])].join(','));
     if (ctx.graph) params.set('force', ['center', 'charge', 'link'].map((k) => fmtNumber(ctx.graph.getForce(k))).join(','));
     if (ctx.graph) params.set('edge', fmtNumber(ctx.graph.getEdgeWidth()));
@@ -393,7 +391,6 @@ function readHash() {
     mode: h.get('mode') || 'show-all',
     focus: h.get('focus') || '',
     types: h.has('types') ? parseList(h.get('types')) : null,
-    docs: h.has('docs') ? parseList(h.get('docs')) : null,
     hidden: parseList(h.get('hidden')),
     force: h.has('force') ? { center: forceParts[0], charge: forceParts[1], link: forceParts[2] } : null,
     edgeWidth: h.has('edge') ? Number(h.get('edge')) : null,

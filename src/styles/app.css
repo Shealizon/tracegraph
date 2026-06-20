@@ -229,6 +229,28 @@ body {
 .disclosure > .disc-body { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
 .disclosure.collapsed > .disc-body { display: none; }
 
+/* 筛选里的「论文文件夹」：一级折叠头（caret + 色点 + 论文名 + 一键显隐） */
+.filter-paper { margin-top: 2px; }
+.filter-paper > .paper-head {
+  display: flex; align-items: center; gap: 7px;
+  padding: 5px 6px; border-radius: var(--r);
+  font-size: 12px; text-transform: none; letter-spacing: normal; color: var(--text);
+}
+.filter-paper > .paper-head:hover { background: var(--hover); color: var(--text); }
+.filter-paper > .paper-head .tr-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
+.filter-paper > .paper-head .paper-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
+.filter-paper > .disc-body { padding-left: 14px; }
+.paper-master {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: var(--r-sm);
+  background: transparent; border: 1px solid transparent; color: var(--accent); cursor: pointer;
+  transition: opacity .12s, background .12s, color .12s;
+}
+.paper-master:hover { background: var(--hover); }
+.paper-master svg { width: 14px; height: 14px; display: block; }
+.paper-master.off { color: var(--text-dim); opacity: .8; }
+.paper-master.partial { color: var(--accent); opacity: .55; }
+
 #app { position: relative; height: 100vh; width: 100vw; }
 
 /* 按住 Alt：全屏平移手势 —— 任意位置（节点 / 卡片 / 正文）都显示抓手光标 */

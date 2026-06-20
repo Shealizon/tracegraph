@@ -94,39 +94,32 @@ export function buildSidebar(ctx, root) {
   actions.appendChild(actionRow);
   grpMode.appendChild(actions);
 
-  // ---- 论文（多文件时按整篇筛选） ----
+  // ---- 筛选 ----
+  // 多篇：每篇论文作为一级折叠文件夹，其出现的类型置于其下，论文可一键显示/隐藏
+  // 单篇：直接平铺类型开关
   const docs = model.meta.documents || [];
-  if (docs.length > 1) {
-    ctx.docFilterActive = ctx.docFilterActive || new Set(docs.map((d) => d.id));
-    const grpDocs = section(root, '论文', 'papers', false);
+  ctx._multiDoc = docs.length > 1;
+  const profileLabel = new Map((model.meta.profileResolved?.types || []).map((t) => [t.id, t.label || t.id]));
+  // 筛选键：单篇用 type；多篇用 docId::type（每篇的同类型可独立开关）
+  const allKeys = new Set(model.nodes.map((n) => filterKeyFor(ctx, n)));
+  ctx.filterActive = ctx.filterActive || new Set(allKeys);
+  // 兼容旧链接/键格式变化：现有筛选键与当前完全不匹配时，视为全选
+  if (![...ctx.filterActive].some((k) => allKeys.has(k))) ctx.filterActive = new Set(allKeys);
+
+  const grpFilter = group(root, '筛选');
+  if (ctx._multiDoc) {
     docs.forEach((d, i) => {
-      const tr = toggleRow(escapeHtml(d.name), ctx.docFilterActive.has(d.id), () => {
-        if (ctx.docFilterActive.has(d.id)) ctx.docFilterActive.delete(d.id); else ctx.docFilterActive.add(d.id);
-        tr.set(ctx.docFilterActive.has(d.id));
-        applyFilter(ctx);
-        ctx.writeHash && ctx.writeHash();
-      }, PAPER_DOT[i % PAPER_DOT.length]);
-      grpDocs.appendChild(tr.row);
+      const present = [...new Set(model.nodes.filter((n) => n.documentId === d.id).map((n) => n.type))];
+      if (present.length) buildPaperFolder(grpFilter, ctx, d, i, present.map((t) => [t, profileLabel.get(t) || t]));
     });
   } else {
-    ctx.docFilterActive = null; // 单篇：无需按论文筛选
-  }
-
-  // ---- 筛选 ----
-  const grpFilter = group(root, '筛选');
-  // 按实际载入的数据给定筛选项（不再固定为某套定理类型）；标签优先取 profile 中文名
-  const profileLabel = new Map((model.meta.profileResolved?.types || []).map((t) => [t.id, t.label || t.id]));
-  const presentTypes = [...new Set(model.nodes.map((n) => n.type))];
-  const types = presentTypes.map((t) => [t, profileLabel.get(t) || t]);
-  ctx.filterActive = ctx.filterActive || new Set(types.map((t) => t[0]));
-  for (const [t, label] of types) {
-    const tr = toggleRow(escapeHtml(label), ctx.filterActive.has(t), () => {
-      if (ctx.filterActive.has(t)) ctx.filterActive.delete(t); else ctx.filterActive.add(t);
-      tr.set(ctx.filterActive.has(t));
-      applyFilter(ctx);
-      ctx.writeHash && ctx.writeHash();
-    }, typeColor(model, t));
-    grpFilter.appendChild(tr.row);
+    const present = [...new Set(model.nodes.map((n) => n.type))];
+    for (const t of present) {
+      const tr = toggleRow(escapeHtml(profileLabel.get(t) || t), ctx.filterActive.has(t), () => {
+        toggleFilterKey(ctx, t); tr.set(ctx.filterActive.has(t)); applyFilter(ctx); ctx.writeHash && ctx.writeHash();
+      }, typeColor(model, t));
+      grpFilter.appendChild(tr.row);
+    }
   }
 
   // ---- 已隐藏（仅在有内容时展开） ----
@@ -250,12 +243,73 @@ function ensureCollapseRail(app) {
   return b;
 }
 
+// 节点对应的筛选键：单篇=type，多篇=docId::type
+function filterKeyFor(ctx, n) {
+  return ctx._multiDoc ? `${n.documentId}::${n.type}` : n.type;
+}
+function toggleFilterKey(ctx, key) {
+  if (ctx.filterActive.has(key)) ctx.filterActive.delete(key); else ctx.filterActive.add(key);
+}
+
+// 论文文件夹：折叠头（caret + 论文名 + 一键显隐）+ 该篇类型开关列表
+function buildPaperFolder(parent, ctx, doc, index, typeList) {
+  const { model } = ctx;
+  const keysOf = typeList.map(([t]) => `${doc.id}::${t}`);
+  const g = el('div', 'side-group disclosure filter-paper');
+  const stored = localStorage.getItem(`hg-paperfolder-${doc.id}`);
+  g.classList.toggle('collapsed', stored === '1');
+
+  const head = el('div', 'disc-head paper-head');
+  head.innerHTML = `<span class="disc-caret">${ICON.chevronDown}</span><span class="tr-dot" style="background:${PAPER_DOT[index % PAPER_DOT.length]}"></span><span class="paper-name">${escapeHtml(doc.name)}</span>`;
+  head.title = doc.name;
+  head.addEventListener('click', () => {
+    const now = g.classList.toggle('collapsed');
+    localStorage.setItem(`hg-paperfolder-${doc.id}`, now ? '1' : '0');
+  });
+
+  // 一键显示/隐藏整篇
+  const master = el('button', 'paper-master');
+  master.type = 'button';
+  const rows = [];
+  const syncMaster = () => {
+    const on = keysOf.filter((k) => ctx.filterActive.has(k)).length;
+    const full = on === keysOf.length, none = on === 0;
+    master.classList.toggle('on', full);
+    master.classList.toggle('off', none);
+    master.classList.toggle('partial', !full && !none);
+    master.title = full ? '隐藏整篇' : '显示整篇';
+    master.innerHTML = none ? ICON.eyeOff : ICON.check;
+  };
+  master.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const allOn = keysOf.every((k) => ctx.filterActive.has(k));
+    keysOf.forEach((k) => { if (allOn) ctx.filterActive.delete(k); else ctx.filterActive.add(k); });
+    rows.forEach((r) => r.sync());
+    syncMaster();
+    applyFilter(ctx);
+    ctx.writeHash && ctx.writeHash();
+  });
+  head.appendChild(master);
+
+  const body = el('div', 'disc-body');
+  for (const [t, label] of typeList) {
+    const key = `${doc.id}::${t}`;
+    const tr = toggleRow(escapeHtml(label), ctx.filterActive.has(key), () => {
+      toggleFilterKey(ctx, key); tr.set(ctx.filterActive.has(key)); syncMaster(); applyFilter(ctx); ctx.writeHash && ctx.writeHash();
+    }, typeColor(model, t));
+    tr.sync = () => tr.set(ctx.filterActive.has(key));
+    rows.push(tr);
+    body.appendChild(tr.row);
+  }
+  syncMaster();
+  g.appendChild(head);
+  g.appendChild(body);
+  parent.appendChild(g);
+}
+
 function applyFilter(ctx) {
   const { graph, model } = ctx;
-  const docs = ctx.docFilterActive;
-  for (const n of model.nodes) {
-    n._hidden = !ctx.filterActive.has(n.type) || (docs && n.documentId && !docs.has(n.documentId));
-  }
+  for (const n of model.nodes) n._hidden = !ctx.filterActive.has(filterKeyFor(ctx, n));
   graph.updateVisibility();
   ctx.refLayer && ctx.refLayer.refreshRelations();
 }
