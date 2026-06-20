@@ -56,6 +56,8 @@ export class ForceGraph {
   // ---- SVG 结构 ----
   _initSvg() {
     const root = this.svg.append('g').attr('class', 'zoom-g');
+    // 世界硬边界（暂时可见，置于最底层，随 pan/zoom 变换；描边不随缩放变粗）
+    this.boundsRect = root.append('rect').attr('class', 'world-bounds').attr('fill', 'none').attr('vector-effect', 'non-scaling-stroke');
     this.gEdges = root.append('g').attr('class', 'edges');
     this.gArrows = root.append('g').attr('class', 'arrows');
     this.gAnchors = root.append('g').attr('class', 'anchors');
@@ -421,6 +423,7 @@ export class ForceGraph {
     const hh = (this.H / BOUND_ZOOM) / 2;
     this.worldBounds = { x0: -hw, y0: -hh, x1: hw, y1: hh };
     if (this.zoom) this.zoom.translateExtent([[-hw, -hh], [hw, hh]]);
+    if (this.boundsRect) this.boundsRect.attr('x', -hw).attr('y', -hh).attr('width', hw * 2).attr('height', hh * 2);
     // 初次：有 deep-link 保存的视角则直接用它（首帧即就位，不先 0.82 再跳）；否则世界原点居中
     if (!this._centered) {
       const it = this._initialTransform;
