@@ -9,9 +9,7 @@ const THEME_MODES = [
   { mode: 'system', icon: 'monitor', title: '跟随系统' },
   { mode: 'light', icon: 'sun', title: '浅色' },
 ];
-// 论文筛选行的标识色（区分不同论文，仅作视觉分组提示）
-const PAPER_DOT = ['#ff9e64', '#c39bff', '#7dd3a8', '#5bb1c9', '#e3879e', '#7c9cff', '#d9b65c', '#8a8a98'];
-const CHEVRON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+const CHEVRON ='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
 const LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 
 export function buildSidebar(ctx, root) {
@@ -108,9 +106,9 @@ export function buildSidebar(ctx, root) {
 
   const grpFilter = group(root, '筛选');
   if (ctx._multiDoc) {
-    docs.forEach((d, i) => {
+    docs.forEach((d) => {
       const present = [...new Set(model.nodes.filter((n) => n.documentId === d.id).map((n) => n.type))];
-      if (present.length) buildPaperFolder(grpFilter, ctx, d, i, present.map((t) => [t, profileLabel.get(t) || t]));
+      if (present.length) buildPaperFolder(grpFilter, ctx, d, present.map((t) => [t, profileLabel.get(t) || t]));
     });
   } else {
     const present = [...new Set(model.nodes.map((n) => n.type))];
@@ -208,6 +206,10 @@ export function buildZoomControl(ctx, stageEl) {
   input.max = '260';
   input.step = '1';
   input.className = 'slider zoom-slider';
+  const home = el('button', 'zoom-home');
+  home.innerHTML = ICON.home;
+  home.title = '适应视图（全部元素居中、约 80%）';
+  home.addEventListener('click', () => ctx.graph.fitView(0.8));
   const lock = el('button', 'zoom-lock');
   lock.innerHTML = LOCK;
   lock.title = '锁定滚轮缩放（防止误触）';
@@ -227,6 +229,7 @@ export function buildZoomControl(ctx, stageEl) {
   panel.addEventListener('wheel', (ev) => ev.stopPropagation(), { passive: true });
   top.appendChild(input);
   top.appendChild(lock);
+  top.appendChild(home);
   panel.appendChild(top);
   panel.appendChild(val);
   stageEl.appendChild(panel);
@@ -252,7 +255,7 @@ function toggleFilterKey(ctx, key) {
 }
 
 // 论文文件夹：折叠头（caret + 论文名 + 一键显隐）+ 该篇类型开关列表
-function buildPaperFolder(parent, ctx, doc, index, typeList) {
+function buildPaperFolder(parent, ctx, doc, typeList) {
   const { model } = ctx;
   const keysOf = typeList.map(([t]) => `${doc.id}::${t}`);
   const g = el('div', 'side-group disclosure filter-paper');
@@ -260,7 +263,7 @@ function buildPaperFolder(parent, ctx, doc, index, typeList) {
   g.classList.toggle('collapsed', stored === '1');
 
   const head = el('div', 'disc-head paper-head');
-  head.innerHTML = `<span class="disc-caret">${ICON.chevronDown}</span><span class="tr-dot" style="background:${PAPER_DOT[index % PAPER_DOT.length]}"></span><span class="paper-name">${escapeHtml(doc.name)}</span>`;
+  head.innerHTML = `<span class="disc-caret">${ICON.chevronDown}</span><span class="paper-name">${escapeHtml(doc.name)}</span>`;
   head.title = doc.name;
   head.addEventListener('click', () => {
     const now = g.classList.toggle('collapsed');

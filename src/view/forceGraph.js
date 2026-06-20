@@ -412,6 +412,24 @@ export class ForceGraph {
     const t = this._constrain(d3.zoomIdentity.translate(cx - w.x * next, cy - w.y * next).scale(next));
     d3.select(this.stageEl).transition().duration(120).call(this.zoom.transform, t);
   }
+  // 适应视图：把所有可见元素的外接矩形居中，并约占视口 fraction（默认 80%），平滑过渡
+  fitView(fraction = 0.8) {
+    const present = this.nodes.filter((n) => this.isNodePresent(n));
+    if (!present.length) return;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const n of present) {
+      let a, b, c, d;
+      if (n.isModal) { a = n.x; b = n.y; c = n.x + (n.mw || 0); d = n.y + (n.mh || 0); }
+      else { const r = n.radius || 0; a = n.x - r; b = n.y - r; c = n.x + r; d = n.y + r; }
+      if (a < x0) x0 = a; if (b < y0) y0 = b; if (c > x1) x1 = c; if (d > y1) y1 = d;
+    }
+    const bw = Math.max(1, x1 - x0), bh = Math.max(1, y1 - y0);
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    const k = clamp(fraction * Math.min(this.W / bw, this.H / bh), MIN_K, MAX_K);
+    const t = this._constrain(d3.zoomIdentity.translate(this.W / 2 - cx * k, this.H / 2 - cy * k).scale(k));
+    d3.select(this.stageEl).transition().duration(460).ease(d3.easeCubicInOut).call(this.zoom.transform, t);
+  }
+
   // 即时设置完整视角变换（用于 deep-link 恢复，无动画）
   setTransform(k, x, y) {
     const t = this._constrain(d3.zoomIdentity.translate(x || 0, y || 0).scale(clamp(k, MIN_K, MAX_K)));

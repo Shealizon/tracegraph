@@ -459,6 +459,22 @@ body {
 }
 .zoom-lock.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .zoom-lock svg { width: 13px; height: 13px; }
+.zoom-home {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--bg-soft) 70%, transparent);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: color .12s, background .12s;
+}
+.zoom-home:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.zoom-home svg { width: 13px; height: 13px; }
 
 /* ---- 节点（圆）：编号上 / 名称下，字体自适应 ---- */
 .node {
