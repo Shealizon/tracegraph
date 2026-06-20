@@ -105,6 +105,7 @@ function startMain(db, project) {
     theme: 'dark',
     hidden: new Set(initialState.hidden),
     filterActive: initialState.types ? new Set(initialState.types) : null,
+    docFilterActive: initialState.docs ? new Set(initialState.docs) : null,
     sidebarCollapsed: initialState.sidebarCollapsed,
     openDetails: (nodeId) => openDetails(ctx, nodeId),
     goLeading,
@@ -216,6 +217,7 @@ function startMain(db, project) {
     if (Number.isFinite(initialState.force.charge)) graph.setForce('charge', initialState.force.charge);
     if (Number.isFinite(initialState.force.link)) graph.setForce('link', initialState.force.link);
   }
+  if (Number.isFinite(initialState.edgeWidth)) graph.setEdgeWidth(initialState.edgeWidth);
 
   ctx.modals = new ModalManager(ctx, { overlayEl, stageEl });
   ctx.refLayer = new RefLayer(ctx, { overlayEl, stageEl });
@@ -258,8 +260,10 @@ function startMain(db, project) {
     if (ids.length) params.set('open', ids.join(','));
     params.set('mode', ctx.mode);
     if (ctx.filterActive) params.set('types', [...ctx.filterActive].join(','));
+    if (ctx.docFilterActive) params.set('docs', [...ctx.docFilterActive].join(','));
     params.set('hidden', [...(ctx.hidden || [])].join(','));
     if (ctx.graph) params.set('force', ['center', 'charge', 'link'].map((k) => fmtNumber(ctx.graph.getForce(k))).join(','));
+    if (ctx.graph) params.set('edge', fmtNumber(ctx.graph.getEdgeWidth()));
     if (ctx.modals) params.set('modal', String(ctx.modals.getWidth()));
     params.set('refs', ctx.refsRaiseEnabled ? '1' : '0');
     params.set('theme', ctx.themeMode);
@@ -389,8 +393,10 @@ function readHash() {
     mode: h.get('mode') || 'show-all',
     focus: h.get('focus') || '',
     types: h.has('types') ? parseList(h.get('types')) : null,
+    docs: h.has('docs') ? parseList(h.get('docs')) : null,
     hidden: parseList(h.get('hidden')),
     force: h.has('force') ? { center: forceParts[0], charge: forceParts[1], link: forceParts[2] } : null,
+    edgeWidth: h.has('edge') ? Number(h.get('edge')) : null,
     modalWidth: h.has('modal') ? Number(h.get('modal')) : null,
     refsRaiseEnabled: h.has('refs') ? h.get('refs') !== '0' : null,
     themeMode: h.get('theme') || '',

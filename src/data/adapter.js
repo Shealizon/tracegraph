@@ -40,6 +40,8 @@ import { DEFAULT_PROFILE, PROFILES, mergeProfile } from './schema.js';
 // 判断是否“通用 schema”输入（需要编译），否则按已编译运行时格式透传。
 export function isGenericSchema(raw) {
   if (!raw || typeof raw !== 'object') return false;
+  // 已编译产物（如 compileProject 输出）带 meta.profileResolved，直接按运行时透传，避免二次编译丢失 documents/documentName
+  if (raw.meta?.profileResolved) return false;
   if (typeof raw.format === 'string' && raw.format.startsWith('relation-graph')) return true;
   // 探测：节点用 sections/anchors 而非 statementBody/labels → 通用
   const n = Array.isArray(raw.nodes) ? raw.nodes[0] : null;

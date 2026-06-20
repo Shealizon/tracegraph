@@ -8,7 +8,7 @@
 // =============================================================================
 import { buildModalShell, applyHeightCap } from './modal.js';
 import { ICON } from '../ui/icons.js';
-import { isLeafNode, nodeTag, typeColor } from '../data/schema.js';
+import { isLeafNode, nodeTag, paperName, typeColor } from '../data/schema.js';
 
 const HOVER_CLOSE_DELAY = 180;
 const HIT_PAD = 12; // hit-test 容差，便于从 ref 移动到预览
@@ -53,7 +53,9 @@ export class RefLayer {
     shell.className = `node-tip type-${node.type || ''}`;
     shell.style.setProperty('--node-color', typeColor(this.ctx.model, node.type));
     const num = nodeTag(this.ctx.model, node);
-    shell.innerHTML = `<span class="tip-num">${escapeHtml(num)}</span>${escapeHtml(node.title || node.id)}`;
+    const paper = paperName(this.ctx.model, node);
+    shell.innerHTML = `<span class="tip-num">${escapeHtml(num)}</span>${escapeHtml(node.title || node.id)}`
+      + (paper ? `<span class="tip-paper">${ICON.fileText}${escapeHtml(paper)}</span>` : '');
     shell.style.position = 'fixed';
     document.body.appendChild(shell);
     this._placePreview(shell, anchorEl, 12);

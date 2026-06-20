@@ -9,6 +9,8 @@ const THEME_MODES = [
   { mode: 'system', icon: 'monitor', title: '跟随系统' },
   { mode: 'light', icon: 'sun', title: '浅色' },
 ];
+// 论文筛选行的标识色（区分不同论文，仅作视觉分组提示）
+const PAPER_DOT = ['#ff9e64', '#c39bff', '#7dd3a8', '#5bb1c9', '#e3879e', '#7c9cff', '#d9b65c', '#8a8a98'];
 const CHEVRON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
 const LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 
@@ -92,6 +94,24 @@ export function buildSidebar(ctx, root) {
   actions.appendChild(actionRow);
   grpMode.appendChild(actions);
 
+  // ---- 论文（多文件时按整篇筛选） ----
+  const docs = model.meta.documents || [];
+  if (docs.length > 1) {
+    ctx.docFilterActive = ctx.docFilterActive || new Set(docs.map((d) => d.id));
+    const grpDocs = section(root, '论文', 'papers', false);
+    docs.forEach((d, i) => {
+      const tr = toggleRow(escapeHtml(d.name), ctx.docFilterActive.has(d.id), () => {
+        if (ctx.docFilterActive.has(d.id)) ctx.docFilterActive.delete(d.id); else ctx.docFilterActive.add(d.id);
+        tr.set(ctx.docFilterActive.has(d.id));
+        applyFilter(ctx);
+        ctx.writeHash && ctx.writeHash();
+      }, PAPER_DOT[i % PAPER_DOT.length]);
+      grpDocs.appendChild(tr.row);
+    });
+  } else {
+    ctx.docFilterActive = null; // 单篇：无需按论文筛选
+  }
+
   // ---- 筛选 ----
   const grpFilter = group(root, '筛选');
   // 按实际载入的数据给定筛选项（不再固定为某套定理类型）；标签优先取 profile 中文名
@@ -124,6 +144,7 @@ export function buildSidebar(ctx, root) {
   grpAdv.appendChild(slider('连线吸引', 0, 1, 0.02, graph.getForce('link'), (v) => { graph.setForce('link', v); ctx.writeHash && ctx.writeHash(); }));
   grpAdv.appendChild(subLabel('显示'));
   grpAdv.appendChild(slider('卡片宽度', 280, 620, 10, ctx.modals.getWidth(), (v) => { ctx.modals.setWidth(v); ctx.writeHash && ctx.writeHash(); }, 'px'));
+  grpAdv.appendChild(slider('箭头粗细', 1, 4, 0.1, graph.getEdgeWidth(), (v) => { graph.setEdgeWidth(v); ctx.writeHash && ctx.writeHash(); }, '×'));
 
   applyFilter(ctx);
   ctx.renderHidden();
@@ -190,7 +211,7 @@ export function buildZoomControl(ctx, stageEl) {
   val.addEventListener('click', () => ctx.graph.setZoomScale(1));
   const input = document.createElement('input');
   input.type = 'range';
-  input.min = '18';
+  input.min = '10';
   input.max = '260';
   input.step = '1';
   input.className = 'slider zoom-slider';
@@ -231,7 +252,10 @@ function ensureCollapseRail(app) {
 
 function applyFilter(ctx) {
   const { graph, model } = ctx;
-  for (const n of model.nodes) n._hidden = !ctx.filterActive.has(n.type);
+  const docs = ctx.docFilterActive;
+  for (const n of model.nodes) {
+    n._hidden = !ctx.filterActive.has(n.type) || (docs && n.documentId && !docs.has(n.documentId));
+  }
   graph.updateVisibility();
   ctx.refLayer && ctx.refLayer.refreshRelations();
 }

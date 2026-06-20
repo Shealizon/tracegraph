@@ -526,8 +526,8 @@ body {
 .node.pinned:hover { box-shadow: 0 0 0 4px color-mix(in srgb, var(--node-color) 70%, transparent), 0 0 18px 3px color-mix(in srgb, var(--node-color) 50%, transparent); }
 
 /* ---- SVG 边与锚点 ---- */
-.edge-path { fill: none; stroke: var(--edge); stroke-width: 1.05; opacity: .38; transition: stroke .15s, stroke-width .15s, opacity .15s; }
-.edge-path.hi { stroke: var(--edge-hi); stroke-width: 1.55; opacity: .5; }
+.edge-path { fill: none; stroke: var(--edge); stroke-width: calc(1.05px * var(--edge-w, 1)); opacity: .38; transition: stroke .15s, stroke-width .15s, opacity .15s; }
+.edge-path.hi { stroke: var(--edge-hi); stroke-width: calc(1.55px * var(--edge-w, 1)); opacity: .5; }
 .refs-active .edge-path.hi { stroke-dasharray: 5 4; }
 .edge-path.dimmed { opacity: 0.07; }
 .arrowhead { fill: var(--edge); opacity: .48; }

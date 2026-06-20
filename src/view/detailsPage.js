@@ -1,6 +1,6 @@
 // =============================================================================
 
-import { isLeafNode, nodeTag, typeColor } from '../data/schema.js';
+import { isLeafNode, nodeTag, paperName, typeColor } from '../data/schema.js';
 import { ICON } from '../ui/icons.js';
 // view/detailsPage.js  —  Phase 7 全屏详情页
 //   显示论述完整内容（statement + proof）、引用列表、被引用列表、文献信息
@@ -11,6 +11,7 @@ export function openDetails(ctx, nodeId) {
   const node = model.nodeById.get(nodeId);
   if (!node) return;
   const proofLabel = model.meta.proofLabel || '详情';
+  const paper = paperName(model, node);
 
   const page = document.createElement('div');
   page.className = 'details-page';
@@ -21,6 +22,7 @@ export function openDetails(ctx, nodeId) {
       <div class="details-head">
         <span class="d-num" style="color:${typeColor(model, node.type)}">${escapeHtml(nodeTag(model, node))}</span>
         <span class="d-title">${escapeHtml(node.title || '')}</span>
+        ${paper ? `<span class="d-paper">${ICON.fileText}${escapeHtml(paper)}</span>` : ''}
         <button class="m-btn d-close" title="关闭">${ICON.close}</button>
       </div>
       <div class="details-cols">
@@ -37,6 +39,7 @@ export function openDetails(ctx, nodeId) {
       <div class="details-head">
         <span class="d-num" style="color:${typeColor(model, node.type)}">${escapeHtml(nodeTag(model, node))}</span>
         <span class="d-title">${escapeHtml(node.title || '')}</span>
+        ${paper ? `<span class="d-paper">${ICON.fileText}${escapeHtml(paper)}</span>` : ''}
         <button class="m-btn d-close" title="关闭">${ICON.close}</button>
       </div>
       <div class="details-cols">

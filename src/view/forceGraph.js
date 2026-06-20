@@ -17,6 +17,11 @@
 import * as d3 from 'd3';
 import { isLeafNode, nodeTag, typeColor } from '../data/schema.js';
 
+// 缩放范围与空间边界：最小 10%；世界边界 = 15% 缩放时铺满当前视口的范围（隐藏的硬墙）
+const MIN_K = 0.10;
+const MAX_K = 2.6;
+const BOUND_ZOOM = 0.15;
+
 export class ForceGraph {
   constructor(model, { stageEl, svgEl, nodesEl, overlayEl, onNodeActivate, onAnchorEnter, onAnchorLeave, storageKey, initialTransform }) {
     this.model = model;
@@ -34,6 +39,7 @@ export class ForceGraph {
     this.links = model.edges.map((e) => ({ ...e, source: e.from, target: e.to }));
     this.transform = d3.zoomIdentity;
     this.mode = 'show-all'; // show-all | show-modals-only
+    this._edgeW = 1; // 边/箭头粗细倍率（1 = 当前最细）
 
     this._initSvg();
     this._initNodes();
@@ -269,13 +275,13 @@ export class ForceGraph {
   // ---- zoom ----
   _initZoom() {
     // 滚轮缩放档位（%）：50/75/100/125/150/175/200 等 25% 对齐，并向两端延伸
-    this.SNAP = [18, 25, 33, 50, 75, 100, 125, 150, 175, 200, 230, 260].map((v) => v / 100);
+    this.SNAP = [10, 12, 15, 18, 25, 33, 50, 75, 100, 125, 150, 175, 200, 230, 260].map((v) => v / 100);
     this._wheelAccum = 0;
     this._wheelDir = 0;
 
     this.zoom = d3
       .zoom()
-      .scaleExtent([0.18, 2.6])
+      .scaleExtent([MIN_K, MAX_K])
       // 滚轮缩放由自定义处理（见下）；这里只管平移：节点 / modal / 详情页等上不触发平移
       .filter((ev) => {
         if (ev.type === 'wheel') return false; // 滚轮交给 _onWheel 处理（支持档位对齐 + 节点/短框上也可缩放）
@@ -337,7 +343,7 @@ export class ForceGraph {
 
   // 缩放到指定比例，并让屏幕坐标 (px,py) 处的世界点保持不动
   _zoomToScale(k, px, py) {
-    const next = clamp(k, 0.18, 2.6);
+    const next = clamp(k, MIN_K, MAX_K);
     const w = this.screenToWorld(px, py);
     const t = d3.zoomIdentity.translate(px - w.x * next, py - w.y * next).scale(next);
     d3.select(this.stageEl).transition().duration(140).call(this.zoom.transform, t);
@@ -391,7 +397,7 @@ export class ForceGraph {
   setZoomLocked(on) { this.zoomLocked = !!on; }
   getZoomScale() { return this.transform.k; }
   setZoomScale(k) {
-    const next = clamp(k, 0.18, 2.6);
+    const next = clamp(k, MIN_K, MAX_K);
     const cx = this.W / 2;
     const cy = this.H / 2;
     const w = this.screenToWorld(cx, cy);
@@ -400,7 +406,7 @@ export class ForceGraph {
   }
   // 即时设置完整视角变换（用于 deep-link 恢复，无动画）
   setTransform(k, x, y) {
-    const t = d3.zoomIdentity.translate(x || 0, y || 0).scale(clamp(k, 0.18, 2.6));
+    const t = d3.zoomIdentity.translate(x || 0, y || 0).scale(clamp(k, MIN_K, MAX_K));
     d3.select(this.stageEl).call(this.zoom.transform, t);
   }
 
@@ -410,6 +416,11 @@ export class ForceGraph {
     this.H = r.height;
     // SVG 使用与 HTML 层一致的左上原点坐标系；缩放/平移统一交给 zoom transform。
     this.svg.attr('viewBox', `0 0 ${this.W} ${this.H}`).attr('width', this.W).attr('height', this.H);
+    // 世界硬边界：15% 缩放铺满视口的范围，居中于世界原点；同时限制平移不越界
+    const hw = (this.W / BOUND_ZOOM) / 2;
+    const hh = (this.H / BOUND_ZOOM) / 2;
+    this.worldBounds = { x0: -hw, y0: -hh, x1: hw, y1: hh };
+    if (this.zoom) this.zoom.translateExtent([[-hw, -hh], [hw, hh]]);
     // 初次：有 deep-link 保存的视角则直接用它（首帧即就位，不先 0.82 再跳）；否则世界原点居中
     if (!this._centered) {
       const it = this._initialTransform;
@@ -489,8 +500,38 @@ export class ForceGraph {
     if (this.collideForce) this.collideForce.radius(this._collideRadius);
   }
 
+  // 把所有元素夹在世界硬边界内（圆按半径、卡片按外接框留边），元素无法越界
+  _clampToBounds() {
+    const b = this.worldBounds;
+    if (!b) return;
+    for (const n of this.nodes) {
+      if (n.isModal) {
+        const w = n.mw || 0, h = n.mh || 0;
+        n.x = clamp(n.x, b.x0, b.x1 - w);
+        n.y = clamp(n.y, b.y0, b.y1 - h);
+        if (n.fx != null) n.fx = clamp(n.fx, b.x0, b.x1 - w);
+        if (n.fy != null) n.fy = clamp(n.fy, b.y0, b.y1 - h);
+      } else {
+        const r = n.radius || 0;
+        n.x = clamp(n.x, b.x0 + r, b.x1 - r);
+        n.y = clamp(n.y, b.y0 + r, b.y1 - r);
+        if (n.fx != null) n.fx = clamp(n.fx, b.x0 + r, b.x1 - r);
+        if (n.fy != null) n.fy = clamp(n.fy, b.y0 + r, b.y1 - r);
+      }
+    }
+  }
+
+  // ---- 边/箭头粗细 ----
+  setEdgeWidth(mult) {
+    this._edgeW = Math.max(1, +mult || 1);
+    this.stageEl.style.setProperty('--edge-w', String(this._edgeW));
+    this._renderEdges(); // 重算箭头尺寸/圆点半径
+  }
+  getEdgeWidth() { return this._edgeW; }
+
   // ---- 每帧更新 ----
   _tick() {
+    this._clampToBounds();
     for (const n of this.nodes) {
       const el = this.nodeEls.get(n.id);
       if (!el) continue;
@@ -568,6 +609,7 @@ export class ForceGraph {
       this.addEventListener('click', (e) => { e.stopPropagation(); self._onLabelDotClick(d, e); });
     });
     this.edgeDotSel = dotEnt.merge(dots);
+    this.edgeDotSel.attr('r', (3.2 * (this._edgeW || 1)).toFixed(2));
 
     this._edgesDirty = false;
     this._applyEdgeAttrs(true);
@@ -633,7 +675,7 @@ export class ForceGraph {
   _arrowPointsFrom(p1, p2) {
     const dx = p2.x - p1.x, dy = p2.y - p1.y;
     const ang = Math.atan2(dy, dx);
-    const size = 7;
+    const size = 7 * (this._edgeW || 1);
     const tipX = p2.x - Math.cos(ang) * 3;
     const tipY = p2.y - Math.sin(ang) * 3;
     const a1 = ang + Math.PI - 0.4;

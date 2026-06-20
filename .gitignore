@@ -5,3 +5,6 @@ dist/
 .vite/
 coverage/
 .llmsrc/
+.opencode/
+output/
+output.json

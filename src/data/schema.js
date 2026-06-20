@@ -113,6 +113,18 @@ export function typeColor(modelOrMeta, type) {
   return typeDefOf(modelOrMeta, type)?.color || '#8a8a98';
 }
 
+// 项目是否含多篇文献（决定是否展示“所属论文”信息）
+export function isMultiDoc(modelOrMeta) {
+  const meta = modelOrMeta?.meta || modelOrMeta;
+  return ((meta?.documents?.length) || 0) > 1;
+}
+
+// 节点所属论文名（仅多篇时返回，单篇返回空串）
+export function paperName(modelOrMeta, node) {
+  if (!node || !isMultiDoc(modelOrMeta)) return '';
+  return node.documentName || '';
+}
+
 export function nodeTag(modelOrMeta, node) {
   if (!node) return '';
   if (isLeafNode(modelOrMeta, node)) {

@@ -2,7 +2,7 @@
 // view/modal.js  —  节点 ↔ modal
 // =============================================================================
 import { ICON } from '../ui/icons.js';
-import { isLeafNode, nodeTag, typeColor } from '../data/schema.js';
+import { isLeafNode, nodeTag, paperName, typeColor } from '../data/schema.js';
 
 const DEFAULT_W = 380;
 const A4 = 1.414;
@@ -37,6 +37,7 @@ export function buildModalShell(opts) {
       <span class="m-title">${opts.titleHTML || ''}</span>
       ${btns}
     </div>
+    ${opts.subHTML ? `<div class="m-sub">${opts.subHTML}</div>` : ''}
     <div class="modal-body${opts.collapsed ? ' collapsed' : ''}">${opts.bodyHTML || ''}</div>
     ${opts.foot ? `<div class="modal-foot">${ICON.chevronDown}<span>展开${escapeHtml(opts.footLabel || '详情')}</span></div>` : ''}`;
   return el;
@@ -280,10 +281,12 @@ export class ModalManager {
     const stmtHtml = ctx.getRendered ? ctx.getRendered(node.id, 'statement') : ctx.render(node.statementBody);
     const proofHtml = node.proofBody ? (ctx.getRendered ? ctx.getRendered(node.id, 'proof') : ctx.render(node.proofBody)) : '';
 
+    const paper = paperName(ctx.model, node);
     const el = buildModalShell({
       type: node.type,
       color: typeColor(ctx.model, node.type),
       titleHTML: titleHTML(node),
+      subHTML: paper ? `<span class="m-paper">${ICON.fileText || ''}${escapeHtml(paper)}</span>` : '',
       buttons: TOP_BUTTONS,
       bodyHTML: `<div class="statement">${stmtHtml}</div>${proofHtml ? `<div class="proof-wrap"><div class="proof-label">${escapeHtml(proofLabel)}.</div>${proofHtml}</div>` : ''}`,
       foot: !!proofHtml,
