@@ -149,12 +149,16 @@
 
 /* 关系箭头层 */
 #rel-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
-/* 高亮(raise)的连线也保持在卡片下方（z-index < overlay 层的 3），仅靠颜色/粗细区分，不再抬到卡片上方 */
-#rel-raised-layer { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+/* 近景：高亮连线抬到卡片上方并用虚线（raise）；远景见下方 lod-far 覆盖 */
+#rel-raised-layer { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
 #rel-raised-layer:not(.rel-active) { display: none; }
 .rel-path { fill: none; stroke: var(--edge); stroke-width: 1.05; opacity: .36; transition: opacity .12s, stroke-width .12s, stroke .12s; }
 .rel-path.hi { stroke: var(--edge-hi); opacity: .5; stroke-width: 1.55; }
+#rel-raised-layer .rel-path.raised { stroke-dasharray: 5 4; }
 .rel-path.dimmed { opacity: .08; }
+/* 远景：高亮连线改实线并降到卡片下方（近景仍虚线、在卡片上方） */
+#app.lod-far #rel-raised-layer { z-index: 1; }
+#app.lod-far #rel-raised-layer .rel-path.raised { stroke-dasharray: none; }
 .rel-arrow { fill: var(--edge); opacity: .46; }
 .rel-arrow.hi { fill: var(--edge-hi); opacity: .5; }
 .rel-arrow.dimmed { opacity: .12; }
