@@ -61,7 +61,7 @@ function startMain(db, project) {
   const numberOf = (key) => labelEntryOf(key)?.label.number ?? (model.meta?.bib?.[key] ?? '?');
   const kindOf = (key) => labelEntryOf(key)?.label.kind ?? model.meta.profileResolved?.defaultType ?? 'theorem';
   const ownerOf = (key) => labelEntryOf(key)?.node.id ?? null;
-  const render = createRenderer({ macros: model.meta.macros, numberOf, kindOf, ownerOf });
+  const render = createRenderer({ macros: model.meta.macros, numberOf, kindOf, ownerOf, bodyFormat: model.meta.bodyFormat });
 
   const stageEl = document.getElementById('stage');
   const svgEl = document.getElementById('edges-layer');

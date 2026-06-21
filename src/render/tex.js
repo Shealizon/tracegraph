@@ -32,6 +32,9 @@ export function createRenderer(opts) {
   const numberOf = opts.numberOf || (() => '?');
   const kindOf = opts.kindOf || (() => 'theorem');
   const ownerOf = opts.ownerOf || (() => null);
+  // 正文格式：'markdown' 走 Markdown prose（**粗体**、`行内代码`、```代码块```、*斜体*、链接），
+  // 其余（latex/text）走原 LaTeX prose。两种模式都仍支持行内/行间数学与 \ref/\cite 引用。
+  const isMarkdown = opts.bodyFormat === 'markdown';
 
   // 把 KaTeX 宏里的 \newcommand 形式转成 katex macros 对象（已是对象，直接用）
   // 但 \ref/\eqref/\cite 不交给 KaTeX，改为占位符再做 HTML 替换。
@@ -70,7 +73,7 @@ export function createRenderer(opts) {
     let html = '';
     let paraBuf = '';
     const flushPara = () => {
-      if (paraBuf.trim()) html += renderProse(paraBuf, inlineStore);
+      if (paraBuf.trim()) html += (isMarkdown ? renderMarkdownProse : renderProse)(paraBuf, inlineStore);
       paraBuf = '';
     };
     for (const seg of segs) {
@@ -196,6 +199,46 @@ export function createRenderer(opts) {
     outHtml = outHtml.replace(/\u0001(\d+)\u0001/g, (_, i) => saved[+i] || '');
     // 还原 inline math 占位符
     outHtml = outHtml.replace(/\u0003M(\d+)\u0003/g, (_, i) => inlineStore[+i] || '');
+    return outHtml;
+  }
+
+  // --- Markdown 段渲染（**粗体** *斜体* `行内代码` ```代码块``` [链接](url)） ---
+  // 与 renderProse 一致地保护 ref / inline-math 占位符；代码内容先抽出再转义，避免被其它规则破坏。
+  function renderMarkdownProse(text, inlineStore = []) {
+    let s = text;
+    // 1) 保护 render() 注入的 ref 占位符（ REF i  ）
+    const saved = [];
+    s = s.replace(/ REF(\d+) /g, (m) => { saved.push(m); return ` S${saved.length - 1} `; });
+    // 2) 抽出围栏代码块 ```lang\n...```（块级，后续不参与段落/行内规则）
+    const blocks = [];
+    s = s.replace(/```[a-zA-Z0-9_+-]*\n?([\s\S]*?)```/g, (_, code) => {
+      blocks.push(`<pre class="md-code"><code>${escapeHtml(code.replace(/\n$/, ''))}</code></pre>`);
+      return ` B${blocks.length - 1} `;
+    });
+    // 3) 抽出行内代码 `code`
+    const codes = [];
+    s = s.replace(/`([^`\n]+)`/g, (_, code) => {
+      codes.push(`<code class="md-code-inline">${escapeHtml(code)}</code>`);
+      return ` C${codes.length - 1} `;
+    });
+    // 4) 转义其余文本
+    s = escapeHtml(s);
+    // 5) 行内强调与链接（粗体先于斜体；下划线变体一并支持）
+    s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
+    s = s.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+    s = s.replace(/(^|[^_\w])_([^_\n]+)_(?!_)/g, '$1<em>$2</em>');
+    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    // 6) 段落：空行分段；单换行作软换行（空格）
+    s = s.replace(/\n{2,}/g, '');
+    s = s.replace(/\n/g, ' ');
+    const paras = s.split('').map((p) => p.trim()).filter(Boolean);
+    let outHtml = paras.map((p) => (/^ B\d+ $/.test(p) ? p : `<p>${p}</p>`)).join('');
+    // 7) 还原代码块/行内代码、ref、inline-math 占位符
+    outHtml = outHtml.replace(/ B(\d+) /g, (_, i) => blocks[+i] || '');
+    outHtml = outHtml.replace(/ C(\d+) /g, (_, i) => codes[+i] || '');
+    outHtml = outHtml.replace(/ S(\d+) /g, (_, i) => saved[+i] || '');
+    outHtml = outHtml.replace(/M(\d+)/g, (_, i) => inlineStore[+i] || '');
     return outHtml;
   }
 

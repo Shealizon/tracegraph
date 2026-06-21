@@ -18,35 +18,58 @@ export function downloadProject(project) {
   downloadJson(project, `${safeName(project.name || project.id)}.paper-graph-project.json`);
 }
 
+// 为待并入的文档分配在目标项目内唯一的 id（与已有文档冲突时重新生成）
+function uniqueDocs(existingDocs, docs) {
+  const used = new Set((existingDocs || []).map((d) => d.id));
+  return docs.map((d) => {
+    let id = d.id || uniqueId('doc');
+    while (used.has(id)) id = uniqueId('doc');
+    used.add(id);
+    return { ...d, id };
+  });
+}
+
+// 把若干文档并入目标项目：
+//  · 目标已有文档 → 追加（自动唯一化 id、并入启用列表），项目名称/配置以目标为准；
+//  · 目标为空/不存在 → 新建，采用 incomingMeta（导入项目文件时“以原项目信息为准”，
+//    保留其名称与启用/隐藏等配置；空目标无冲突，文档 id 原样保留，配置引用照常有效）。
+async function mergeDocuments(db, currentProject, docs, incomingMeta = null) {
+  const now = new Date().toISOString();
+  if (currentProject && (currentProject.documents?.length || 0) > 0) {
+    const fresh = uniqueDocs(currentProject.documents, docs);
+    return saveProject(db, normalizeProject({
+      ...currentProject,
+      documents: [...currentProject.documents, ...fresh],
+      config: {
+        ...currentProject.config,
+        enabledDocumentIds: [...new Set([...(currentProject.config?.enabledDocumentIds || []), ...fresh.map((d) => d.id)])],
+      },
+    }));
+  }
+  const fresh = uniqueDocs([], docs);
+  const base = incomingMeta || {};
+  return saveProject(db, normalizeProject({
+    id: currentProject?.id || base.id || uniqueId('project'),
+    name: base.name ?? fresh[0]?.name ?? '',
+    createdAt: currentProject?.createdAt || base.createdAt || now,
+    updatedAt: now,
+    config: base.config || { enabledDocumentIds: fresh.map((d) => d.id), disabledNodeIds: [], disabledRelationKeys: [], viewState: {} },
+    documents: fresh,
+  }));
+}
+
 export async function importStructuredJson(db, currentProject = null, file = null) {
   file = file || await pickFile('.json,application/json');
   if (!file) return null;
   const payload = JSON.parse(await file.text());
   if (isProjectPayload(payload)) {
-    const project = normalizeProject({ ...payload, id: payload.id || uniqueId('project') });
-    return saveProject(db, project);
+    // 项目文件：等价于把其中的一个或多个论文文档“依次导入”。
+    // 追加到已有项目时只并入文档；作为新项目导入时保留原项目名称/配置。
+    const incoming = normalizeProject({ ...payload, id: payload.id || uniqueId('project') });
+    return mergeDocuments(db, currentProject, incoming.documents, incoming);
   }
   const doc = graphToDocument(payload, file.name, 'structured-json');
-  if (currentProject) {
-    const project = normalizeProject({
-      ...currentProject,
-      documents: [...currentProject.documents, doc],
-      config: {
-        ...currentProject.config,
-        enabledDocumentIds: [...new Set([...(currentProject.config.enabledDocumentIds || []), doc.id])],
-      },
-    });
-    return saveProject(db, project);
-  }
-  const now = new Date().toISOString();
-  return saveProject(db, {
-    id: uniqueId('project'),
-    name: doc.name,
-    createdAt: now,
-    updatedAt: now,
-    config: { enabledDocumentIds: [doc.id], disabledNodeIds: [], disabledRelationKeys: [], viewState: {} },
-    documents: [doc],
-  });
+  return mergeDocuments(db, currentProject, [doc]);
 }
 
 export async function importFixedTex(db, currentProject = null, texFile = null) {

@@ -321,6 +321,18 @@ export class RefLayer {
         if (!present(l.to)) continue; // 引用方被过滤/隐藏：跳过
         add({ fromNode: node.id, fromLabel: l.fromLabel, toNode: l.to, refEl: null, refKey: `${l.to}:${l.fromLabel}`, mode: 'incoming' });
       }
+
+      // 本卡片作为「引用方(to)」时，按 links 把它依赖的节点也连出来——
+      // 即使正文没有行内 \ref 标记（泛用/markdown 图的 refs 只在 refs[] 数组里，
+      // 不会渲染成 .texref span，上面基于 texref 的 outgoing 收集就会漏掉）。
+      // 这样卡片态的关系线与力导图边、hover 高亮（都由 refs[] 驱动）保持一致：
+      // 对端无论是展开卡片还是收起节点，依赖线都照画。有行内 ref 时由 add() 去重，
+      // texref 版（带精确 refEl 锚点）优先保留。
+      for (const l of this.ctx.graph.links) {
+        if (l.to !== node.id) continue;
+        if (!present(l.from)) continue; // 被引用方被过滤/隐藏：不画到隐形锚点
+        add({ fromNode: l.from, fromLabel: l.fromLabel, toNode: node.id, refEl: null, refKey: `${node.id}:${l.from}`, mode: 'outgoing' });
+      }
     }
     return out;
   }
