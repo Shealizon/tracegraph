@@ -85,9 +85,9 @@ export function buildSidebar(ctx, root) {
   grpMode.appendChild(raise.row);
 
   const actions = el('div', 'side-actions');
-  actions.appendChild(btn('所有卡片折叠为节点', () => ctx.modals.closeAll(), 'collapse'));
+  actions.appendChild(btn('所有卡片折叠为节点', () => ctx.modals.closeAll()));
   const actionRow = el('div', 'side-actions-row');
-  actionRow.appendChild(btn('折叠所有证明', () => ctx.modals.collapseAllProofs(), 'chevronUp'));
+  actionRow.appendChild(btn('折叠所有证明', () => ctx.modals.collapseAllProofs()));
   actionRow.appendChild(btn('重新布局', () => (ctx.relayout ? ctx.relayout() : graph.reheat(0.8)), 'reload'));
   actions.appendChild(actionRow);
   grpMode.appendChild(actions);
