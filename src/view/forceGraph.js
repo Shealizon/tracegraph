@@ -378,6 +378,7 @@ export class ForceGraph {
     if (lod !== this._lod) {
       this._lod = lod;
       if (this.ctx && this.ctx.modals) this.ctx.modals.applyLod(lod); // 展开框高度随 lod 在自然高↔正方形间插值
+      this._positionEdges(); // lod 变化时重算边锚点（内容↔边框平滑切换），即使力学已静止
     }
     // 进入/退出“远景形态”（完全变化点 35% 进入，带迟滞到 40% 退出，避免边界抖动）
     const far = this.lodFar ? k < 0.40 : k < 0.35;
@@ -591,15 +592,16 @@ export class ForceGraph {
   }
   _modalAnchor(node, labelId, kind) {
     const w = node.mw || 100, h = node.mh || 100; // PR4：node.x/y 为左上角
-    // 远景卡片：内容细节被省略，锚点改按「节点规则」落在卡片边框上（label→顶边、refs→底边、
-    // equation→左右边），而不是停留在被隐藏的内容中间。
-    if (this.lodFar) return this._boxAnchorNodeStyle(node, labelId, kind, w, h);
-    // 近景：modal 是 DOM 元素；锚点由 modal 模块登记的相对偏移给出（默认取边缘中点）
-    if (node._anchorResolver) {
-      const p = node._anchorResolver(labelId, kind);
-      if (p) return p;
-    }
-    return kind === 'refs' ? { x: node.x, y: node.y + h / 2 } : { x: node.x + w, y: node.y + h / 2 };
+    const lod = this._lod || 0; // 内容透明度 = 1 - lod；lod 越大越「远景」
+    // 远景端：按「节点规则」锚到卡片边框（label→顶边、refs→底边、equation→左右边）
+    const border = this._boxAnchorNodeStyle(node, labelId, kind, w, h);
+    if (lod >= 1) return border;
+    // 近景端：modal 模块登记的内容内精确锚点（默认取边缘中点）
+    let content = node._anchorResolver && node._anchorResolver(labelId, kind);
+    if (!content) content = kind === 'refs' ? { x: node.x, y: node.y + h / 2 } : { x: node.x + w, y: node.y + h / 2 };
+    if (lod <= 0) return content;
+    // 过渡区：随内容淡出(lod 0→1)，锚点从内容位置平滑移动到边框
+    return { x: content.x + (border.x - content.x) * lod, y: content.y + (border.y - content.y) * lod };
   }
 
   // 把圆节点的锚点规则映射到卡片外接框边上：label→顶边中点，refs→底边中点，

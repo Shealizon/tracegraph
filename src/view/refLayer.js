@@ -338,10 +338,20 @@ export class RefLayer {
     let idx = 0;
 
     for (const r of this.relations) {
+      const lod = this.ctx.graph._lod || 0;
       const p1 = this._labelPoint(r.fromNode, r.fromLabel, rect);
-      const p2 = r.refEl && document.body.contains(r.refEl)
-        ? this._elemPointClamped(r.refEl, this.ctx.modals.open.get(r.toNode)?.el, rect, 'target')
-        : this._refsPoint(r.toNode, rect);
+      let p2;
+      const toRec = this.ctx.modals.open.get(r.toNode);
+      if (r.refEl && document.body.contains(r.refEl)) {
+        const content = this._elemPointClamped(r.refEl, toRec?.el, rect, 'target');
+        if (toRec && lod > 0 && content) {
+          // 远景：箭头落在卡片底边（节点 refs 规则），而非内容里的 ref span
+          const border = this._modalEdgePoint(toRec.el, rect, 'bottom');
+          p2 = lod >= 1 ? border : this._blend(content, border, lod);
+        } else p2 = content;
+      } else {
+        p2 = this._refsPoint(r.toNode, rect);
+      }
       if (!p1 || !p2) continue;
       const active = this.activeNode && (r.fromNode === this.activeNode || r.toNode === this.activeNode);
       const dimmed = this.activeNode && !active;
@@ -397,9 +407,15 @@ export class RefLayer {
 
   _labelPoint(nodeId, labelId, stageRect) {
     const rec = this.ctx.modals.open.get(nodeId);
-    // 远景 LOD-modal：锚点落在边界（顶部），与 node 一致
-    if (rec && this.ctx.graph.lodFar) return this._modalEdgePoint(rec.el, stageRect, 'top');
-    if (rec) return this._anchorPointInModal(rec.el, labelId, nodeId, stageRect, 'source');
+    if (rec) {
+      // 内容随 lod 淡出：lod=1 顶边中点（与节点一致），过渡区从内容位置平滑移到边框
+      const lod = this.ctx.graph._lod || 0;
+      const border = this._modalEdgePoint(rec.el, stageRect, 'top');
+      if (lod >= 1) return border;
+      const content = this._anchorPointInModal(rec.el, labelId, nodeId, stageRect, 'source');
+      if (lod <= 0 || !content) return content || border;
+      return this._blend(content, border, lod);
+    }
     const node = this.ctx.model.nodeById.get(nodeId);
     if (!node) return null;
     const a = this.ctx.graph.anchorPos(node, labelId);
@@ -409,14 +425,22 @@ export class RefLayer {
 
   _refsPoint(nodeId, stageRect) {
     const rec = this.ctx.modals.open.get(nodeId);
-    if (rec && this.ctx.graph.lodFar) return this._modalEdgePoint(rec.el, stageRect, 'bottom');
-    if (rec) return this._elemPointClamped(this._q(rec.el, '.modal-top'), rec.el, stageRect, 'target');
+    if (rec) {
+      const lod = this.ctx.graph._lod || 0;
+      const border = this._modalEdgePoint(rec.el, stageRect, 'bottom');
+      if (lod >= 1) return border;
+      const content = this._elemPointClamped(this._q(rec.el, '.modal-top'), rec.el, stageRect, 'target');
+      if (lod <= 0 || !content) return content || border;
+      return this._blend(content, border, lod);
+    }
     const node = this.ctx.model.nodeById.get(nodeId);
     if (!node) return null;
     const a = this.ctx.graph.refsPos(node);
     const p = this.ctx.graph.worldToScreen(a.x, a.y);
     return { x: p.x, y: p.y };
   }
+
+  _blend(a, b, t) { return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }; }
 
   // 远景：取展开框边框中点（顶/底）作为锚点
   _modalEdgePoint(modalEl, stageRect, edge) {
