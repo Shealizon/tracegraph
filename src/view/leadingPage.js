@@ -57,7 +57,7 @@ export function renderLeadingPage({ db, projects, currentProjectId }) {
     const now = new Date().toISOString();
     const project = normalizeProject({
       id: uniqueId('project'),
-      name: '新项目',
+      name: '', // 留空 = 尚未命名：配置弹窗显示占位名，保存时落实
       createdAt: now,
       updatedAt: now,
       config: { enabledDocumentIds: [], disabledNodeIds: [], disabledRelationKeys: [], viewState: {} },
@@ -145,10 +145,11 @@ function projectCard(project, active) {
   let nodes = 0, rels = 0;
   for (const d of docs) if (enabled.has(d.id)) { nodes += (d.graph?.nodes || []).length; rels += (d.graph?.edges || []).length; }
   const updated = formatDate(project.updatedAt);
+  const displayName = project.name || docs[0]?.name || '新项目'; // 尚未命名时回退到首个文件名/占位
   return `
     <article class="project-card${active ? ' active' : ''}" data-card="${escapeAttr(project.id)}" role="button" tabindex="0" title="打开项目">
       <div class="project-card-top">
-        <h3>${escapeHtml(project.name)}</h3>
+        <h3>${escapeHtml(displayName)}</h3>
       </div>
       <p class="project-card-meta">${nodes} 节点 · ${rels} 关系 · ${docs.length} 文件</p>
       <div class="project-card-foot">

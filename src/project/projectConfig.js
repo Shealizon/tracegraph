@@ -120,9 +120,10 @@ export function openProjectConfigDialog({ db, project, onSaved }) {
   const relationRows = project.documents.flatMap((doc) => (doc.graph?.edges || []).map((e) => ({ doc, edge: e, key: `${e.from}|${e.fromLabel}|${e.to}` })));
   const multiDoc = project.documents.length > 1;
   const docMeta = (doc) => `${(doc.graph?.nodes || []).length} 节点 · ${(doc.graph?.edges || []).length} 关系`;
-  // 项目名：未真正命名时 input 留空、用 placeholder 提示；有文件后 placeholder 用第一个文件名
-  const isDefaultName = !project.name || project.name === '新项目' || project.name === '未命名项目';
-  const phName = (isDefaultName && project.documents.length) ? project.documents[0].name : '新项目';
+  // 项目名：仅当尚未命名（name 为空）时 input 留空、用 placeholder 提示，保存时把 placeholder 落实为名称；
+  // 一旦有了名称（含保存后落实的占位名）则正常回显，不再清空。有文件则 placeholder 用第一个文件名。
+  const named = typeof project.name === 'string' && project.name.trim() !== '';
+  const phName = project.documents.length ? project.documents[0].name : '新项目';
 
   overlay.innerHTML = `
     <div class="project-dialog">
@@ -132,7 +133,7 @@ export function openProjectConfigDialog({ db, project, onSaved }) {
       </div>
       <p class="project-dialog-desc">选择要纳入关系图的文件。展开「高级」可按单条精确开关节点与关系。</p>
       <div class="project-dialog-body">
-        <label class="project-field">项目名称<input data-name value="${isDefaultName ? '' : escapeAttr(project.name)}" placeholder="${escapeAttr(phName)}"></label>
+        <label class="project-field">项目名称<input data-name value="${named ? escapeAttr(project.name) : ''}" placeholder="${escapeAttr(phName)}"></label>
 
         <section class="cfg-section">
           <div class="cfg-section-head">
@@ -237,7 +238,7 @@ export function openProjectConfigDialog({ db, project, onSaved }) {
     const enabledRelationKeys = new Set(checkedValues(overlay, 'relation'));
     const next = normalizeProject({
       ...project,
-      name: $('[data-name]').value.trim() || project.name,
+      name: $('[data-name]').value.trim() || phName,
       config: {
         ...project.config,
         enabledDocumentIds: docIds,

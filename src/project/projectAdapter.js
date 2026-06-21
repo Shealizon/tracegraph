@@ -36,7 +36,8 @@ export function normalizeProject(project) {
   return {
     format: PROJECT_FORMAT,
     id: project?.id || `project-${Date.now()}`,
-    name: project?.name || '未命名项目',
+    // 保留空字符串作为「尚未命名」标记（配置弹窗据此显示占位名并在保存时落实）；仅缺省(undefined)才兜底
+    name: typeof project?.name === 'string' ? project.name : '未命名项目',
     createdAt: project?.createdAt || now,
     updatedAt: project?.updatedAt || now,
     config: {
