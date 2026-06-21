@@ -590,13 +590,34 @@ export class ForceGraph {
     return { x: node.x, y: node.y + node.radius };
   }
   _modalAnchor(node, labelId, kind) {
-    // modal 是 DOM 元素；锚点由 modal 模块登记的相对偏移给出（默认取边缘中点）
+    const w = node.mw || 100, h = node.mh || 100; // PR4：node.x/y 为左上角
+    // 远景卡片：内容细节被省略，锚点改按「节点规则」落在卡片边框上（label→顶边、refs→底边、
+    // equation→左右边），而不是停留在被隐藏的内容中间。
+    if (this.lodFar) return this._boxAnchorNodeStyle(node, labelId, kind, w, h);
+    // 近景：modal 是 DOM 元素；锚点由 modal 模块登记的相对偏移给出（默认取边缘中点）
     if (node._anchorResolver) {
       const p = node._anchorResolver(labelId, kind);
       if (p) return p;
     }
-    const w = node.mw || 100, h = node.mh || 100; // PR4：node.x/y 为左上角
     return kind === 'refs' ? { x: node.x, y: node.y + h / 2 } : { x: node.x + w, y: node.y + h / 2 };
+  }
+
+  // 把圆节点的锚点规则映射到卡片外接框边上：label→顶边中点，refs→底边中点，
+  // 多个 equation 锚点分布在左右两边（与 anchorPos 的圆形分布一致）。
+  _boxAnchorNodeStyle(node, labelId, kind, w, h) {
+    const cx = node.x + w / 2;
+    if (kind === 'refs') return { x: cx, y: node.y + h };
+    const lab = node.labels.find((l) => l.id === labelId) || node.labels[0];
+    if (!lab || lab.id === node.id || lab.kind !== 'equation') return { x: cx, y: node.y };
+    const equations = node.labels.filter((l) => l.kind === 'equation');
+    const i = Math.max(0, equations.findIndex((l) => l.id === lab.id));
+    const side = i % 2 === 0 ? -1 : 1;
+    const sideIndex = Math.floor(i / 2);
+    const countSide = Math.ceil(equations.length / 2);
+    const span = h * 0.6;
+    const cy = node.y + h / 2;
+    const y = cy - span / 2 + (countSide <= 1 ? span / 2 : (sideIndex / (countSide - 1)) * span);
+    return { x: side < 0 ? node.x : node.x + w, y };
   }
 
   // ---- 边渲染 ----
