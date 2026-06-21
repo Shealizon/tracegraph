@@ -1,4 +1,5 @@
 import { normalizeProject, uniqueId } from '../project/projectAdapter.js';
+import { edgeCountOf } from '../data/adapter.js';
 import { deleteProject, listProjects, saveProject, setCurrentProjectId } from '../project/store.js';
 import { downloadProject, importGenericTex, importStructuredJson, openProjectConfigDialog, projectMainUrl } from '../project/projectConfig.js';
 import { ICON } from '../ui/icons.js';
@@ -143,7 +144,7 @@ function projectCard(project, active) {
   const docs = project.documents || [];
   const enabled = new Set(project.config?.enabledDocumentIds || docs.map((d) => d.id));
   let nodes = 0, rels = 0;
-  for (const d of docs) if (enabled.has(d.id)) { nodes += (d.graph?.nodes || []).length; rels += (d.graph?.edges || []).length; }
+  for (const d of docs) if (enabled.has(d.id)) { nodes += (d.graph?.nodes || []).length; rels += edgeCountOf(d.graph); }
   const updated = formatDate(project.updatedAt);
   const displayName = project.name || docs[0]?.name || '新项目'; // 尚未命名时回退到首个文件名/占位
   return `
@@ -236,7 +237,7 @@ function showDocTip(anchor, project) {
   tip.innerHTML = docs.length
     ? docs.map((d) => {
       const n = (d.graph?.nodes || []).length;
-      const e = (d.graph?.edges || []).length;
+      const e = edgeCountOf(d.graph);
       return `<div class="doc-tip-row${enabled.has(d.id) ? '' : ' off'}"><span class="dt-name">${escapeHtml(d.name)}</span><span class="dt-meta">${n}·${e}</span></div>`;
     }).join('')
     : '<div class="doc-tip-row">无文档</div>';

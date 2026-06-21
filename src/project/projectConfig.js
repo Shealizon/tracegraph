@@ -2,6 +2,7 @@ import { graphToDocument, normalizeProject, uniqueId } from './projectAdapter.js
 import { isProjectPayload, saveProject } from './store.js';
 import { extractFixedTexGraph } from '../import/texExtract.js';
 import { extractGenericTexGraph } from '../import/texGeneric.js';
+import { edgeCountOf } from '../data/adapter.js';
 import { ICON } from '../ui/icons.js';
 import { toast, confirmDialog } from '../ui/feedback.js';
 
@@ -119,7 +120,7 @@ export function openProjectConfigDialog({ db, project, onSaved }) {
   const nodeRows = project.documents.flatMap((doc) => (doc.graph?.nodes || []).map((n) => ({ doc, node: n })));
   const relationRows = project.documents.flatMap((doc) => (doc.graph?.edges || []).map((e) => ({ doc, edge: e, key: `${e.from}|${e.fromLabel}|${e.to}` })));
   const multiDoc = project.documents.length > 1;
-  const docMeta = (doc) => `${(doc.graph?.nodes || []).length} 节点 · ${(doc.graph?.edges || []).length} 关系`;
+  const docMeta = (doc) => `${(doc.graph?.nodes || []).length} 节点 · ${edgeCountOf(doc.graph)} 关系`;
   // 项目名：仅当尚未命名（name 为空）时 input 留空、用 placeholder 提示，保存时把 placeholder 落实为名称；
   // 一旦有了名称（含保存后落实的占位名）则正常回显，不再清空。有文件则 placeholder 用第一个文件名。
   const named = typeof project.name === 'string' && project.name.trim() !== '';

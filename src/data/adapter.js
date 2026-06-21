@@ -55,6 +55,18 @@ export function compileGraph(raw) {
   return compileGeneric(raw);
 }
 
+// 单个文档的「关系」数：通用 schema 的边是运行时由 refs 派生的（graph.edges 为空），
+// 直接读 graph.edges 会显示 0。这里按需编译得到真实派生边数；按 graph 对象缓存避免重复编译。
+const _edgeCountCache = new WeakMap();
+export function edgeCountOf(graph) {
+  if (!graph || typeof graph !== 'object') return 0;
+  if (_edgeCountCache.has(graph)) return _edgeCountCache.get(graph);
+  let n;
+  try { n = compileGraph(graph).edges.length; } catch { n = (graph.edges || []).length; }
+  _edgeCountCache.set(graph, n);
+  return n;
+}
+
 // -----------------------------------------------------------------------------
 // 已编译（论文）格式：仅做防御性补全，保证视图层所需字段存在。
 // -----------------------------------------------------------------------------
