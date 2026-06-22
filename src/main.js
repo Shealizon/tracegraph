@@ -236,6 +236,9 @@ function startMain(db, project) {
   };
   // 打标模式：氛围（页面变化）+ 底部提示 + Enter 完成
   ctx.setTagEditing = (tagId, insertAt = null) => {
+    const wasOff = !ctx.tagEditing;
+    if (tagId && wasOff) ctx._tagSnapshot = (ctx.graph.getTags() || []).map((t) => ({ ...t, members: [...t.members] })); // 进入时快照，供「取消」回滚
+    if (!tagId) ctx._tagSnapshot = null;
     ctx.tagEditing = tagId || null;
     ctx.tagInsertAt = tagId ? insertAt : null;
     const appEl = document.getElementById('app');
@@ -243,14 +246,28 @@ function startMain(db, project) {
     if (ctx._tagHint) { ctx._tagHint.remove(); ctx._tagHint = null; }
     if (tagId) {
       const t = (ctx.graph.getTags() || []).find((x) => x.id === tagId);
-      const mode = insertAt != null ? `在第 ${insertAt} 项后插入：依次点击节点` : `点击节点 / 卡片加入或移出${t?.kind === 'ordered' ? '（顺序＝点击次序）' : ''}`;
+      const mode = insertAt != null ? `第 ${insertAt} 项后插入` : '点节点 / 卡片增删';
       const hint = document.createElement('div');
       hint.className = 'tag-edit-hint';
-      hint.innerHTML = `<span>正在为「${escapeHtml(t?.label || '')}」打标：${mode}</span><kbd>Enter</kbd><span>完成</span>`;
+      hint.innerHTML = `<span>「${escapeHtml(t?.label || '')}」${mode}</span>`;
+      const done = document.createElement('button'); done.className = 'teh-btn teh-done'; done.textContent = '完成';
+      done.addEventListener('click', () => ctx.setTagEditing(null));
+      const cancel = document.createElement('button'); cancel.className = 'teh-btn teh-cancel'; cancel.textContent = '取消';
+      cancel.addEventListener('click', () => ctx.cancelTagEditing());
+      hint.appendChild(done); hint.appendChild(cancel);
       appEl.appendChild(hint);
       ctx._tagHint = hint;
     }
     ctx.rebuildTagPanel && ctx.rebuildTagPanel();
+  };
+  // 取消：回滚到进入打标前的快照并退出
+  ctx.cancelTagEditing = () => {
+    const snap = ctx._tagSnapshot;
+    ctx._tagSnapshot = null;
+    ctx.tagEditing = null; ctx.tagInsertAt = null;
+    document.getElementById('app').classList.remove('tag-editing-mode');
+    if (ctx._tagHint) { ctx._tagHint.remove(); ctx._tagHint = null; }
+    if (snap) ctx.persistTags(snap); else ctx.rebuildTagPanel && ctx.rebuildTagPanel();
   };
   // 打标模式下点击卡片（非按钮/引用）也能加入/移出
   overlayEl.addEventListener('click', (e) => {
@@ -260,10 +277,17 @@ function startMain(db, project) {
       if (rec.el.contains(e.target)) { e.stopPropagation(); e.preventDefault(); ctx.toggleNodeTag(ctx.tagEditing, nodeId); return; }
     }
   }, true);
-  // Enter 完成打标（输入框聚焦时不触发）
+  // Enter 完成 / Esc 取消（输入框聚焦时不触发）
   window.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter' || !ctx.tagEditing) return;
+    if (!ctx.tagEditing) return;
     if (/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+    if (e.key === 'Enter') { e.preventDefault(); ctx.setTagEditing(null); }
+    else if (e.key === 'Escape') { e.preventDefault(); ctx.cancelTagEditing(); }
+  });
+  // 双击页面空白处（非节点/卡片/贴片）→ 完成并退出打标
+  stageEl.addEventListener('dblclick', (e) => {
+    if (!ctx.tagEditing) return;
+    if (e.target.closest('#nodes-layer .node, #overlay-layer > *, #tag-layer .tag-chip-cluster')) return;
     e.preventDefault();
     ctx.setTagEditing(null);
   });

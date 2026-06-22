@@ -395,16 +395,6 @@ function renderTagPanel(ctx, body) {
   if (!tags.length) { const e = el('div', 'tag-empty'); e.textContent = '暂无标签。新建后点「打标」选节点。'; body.appendChild(e); }
   tags.forEach((tag) => body.appendChild(buildTagRow(ctx, tag)));
 
-  if (ctx.tagEditing) {
-    const t = tags.find((x) => x.id === ctx.tagEditing);
-    const banner = el('div', 'tag-edit-banner');
-    banner.innerHTML = `<span>正在为「${escapeHtml(t?.label || '')}」打标：点节点加入/移出${t?.kind === 'ordered' ? '（顺序=点击次序）' : ''}</span>`;
-    const done = el('button', 'btn btn--sm'); done.type = 'button'; done.textContent = '完成';
-    done.addEventListener('click', () => ctx.setTagEditing(null));
-    banner.appendChild(done);
-    body.appendChild(banner);
-  }
-
   const add = el('div', 'side-actions-row');
   add.appendChild(btn('+ 主线/有序', () => createTag(ctx, 'ordered')));
   add.appendChild(btn('+ 标签/无序', () => createTag(ctx, 'unordered')));

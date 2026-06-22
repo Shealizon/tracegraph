@@ -443,13 +443,10 @@ body {
 .tag-ic:hover { background: var(--bg); color: var(--text); }
 .tag-ic.on { color: #fff; background: var(--tc, var(--accent)); }
 .tag-ic svg { width: 14px; height: 14px; }
-.tag-edit-banner { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text); background: color-mix(in srgb, var(--accent, #ff9e64) 12%, transparent); border: 1px solid var(--accent-line, var(--line)); border-radius: 8px; padding: 6px 8px; }
-.tag-edit-banner span { flex: 1 1 auto; }
-
 /* 标签框 + 成员列表 */
 .tag-box { display: flex; flex-direction: column; }
 /* 展开后的操作行：统计 + 添加 + 删除(红) */
-.tag-subrow { display: flex; align-items: center; gap: 4px; padding: 4px 6px 2px 26px; }
+.tag-subrow { display: flex; align-items: center; gap: 4px; padding: 4px 6px 2px; }
 .tag-stat { font-size: 11px; color: var(--text-dim); }
 .tag-sub-gap { flex: 1 1 auto; }
 .tag-ic.tag-del:hover { background: color-mix(in srgb, #e3556a 22%, transparent); color: #e3556a; }
@@ -472,11 +469,21 @@ body {
 .tag-insert:hover span, .tag-insert.on span { background: var(--tc, var(--accent)); height: 3px; }
 .tag-insert.on { height: 6px; }
 
-/* 打标模式氛围 + 底部提示 */
-#app.tag-editing-mode #stage { box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--accent, #ff9e64) 70%, transparent); }
+/* 打标模式氛围：一定宽度的边框渐变模糊遮罩（多层 inset 由强到弱向内晕开，非单一框线） */
+#app.tag-editing-mode #stage::after {
+  content: ''; position: absolute; inset: 0; z-index: 26; pointer-events: none; border-radius: inherit;
+  box-shadow:
+    inset 0 0 16px 2px color-mix(in srgb, var(--accent, #ff9e64) 42%, transparent),
+    inset 0 0 44px 10px color-mix(in srgb, var(--accent, #ff9e64) 30%, transparent),
+    inset 0 0 96px 28px color-mix(in srgb, var(--accent, #ff9e64) 18%, transparent);
+  animation: tagEditPulse 2.6s ease-in-out infinite;
+}
+@keyframes tagEditPulse { 0%, 100% { opacity: .78; } 50% { opacity: 1; } }
 #app.tag-editing-mode #nodes-layer .node { cursor: copy; }
-.tag-edit-hint { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: var(--bg-modal-solid, #1c1d24); border: 1px solid var(--accent-line, var(--line)); box-shadow: var(--shadow-pop, 0 6px 20px rgba(0,0,0,.4)); font-size: 12.5px; color: var(--text); pointer-events: none; }
-.tag-edit-hint kbd { font: inherit; font-size: 11px; padding: 1px 7px; border-radius: 5px; background: var(--accent, #ff9e64); color: #fff; font-weight: 700; }
+.tag-edit-hint { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 14px; border-radius: 999px; background: var(--bg-modal-solid, #1c1d24); border: 1px solid var(--accent-line, var(--line)); box-shadow: var(--shadow-pop, 0 6px 20px rgba(0,0,0,.4)); font-size: 12.5px; color: var(--text); pointer-events: auto; }
+.teh-btn { font: inherit; font-size: 12px; font-weight: 600; padding: 3px 12px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--text); cursor: pointer; }
+.teh-btn.teh-done { background: var(--accent, #ff9e64); border-color: var(--accent, #ff9e64); color: #fff; }
+.teh-btn:hover { filter: brightness(1.08); }
 
 .zoom-control {
   position: absolute;
