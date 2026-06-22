@@ -16,6 +16,7 @@
 
 import * as d3 from 'd3';
 import { isLeafNode, nodeTag, typeColor } from '../data/schema.js';
+import { ICON } from '../ui/icons.js';
 
 // 缩放范围与空间边界：最小 10%；世界边界 = 15% 缩放时铺满当前视口的范围（隐藏的硬墙）
 const MIN_K = 0.10;
@@ -23,12 +24,15 @@ const MAX_K = 2.6;
 const BOUND_ZOOM = 0.15;
 
 export class ForceGraph {
-  constructor(model, { stageEl, svgEl, nodesEl, overlayEl, onNodeActivate, onAnchorEnter, onAnchorLeave, storageKey, initialTransform }) {
+  constructor(model, { stageEl, svgEl, nodesEl, overlayEl, tagsEl, onNodeActivate, onAnchorEnter, onAnchorLeave, storageKey, initialTransform }) {
     this.model = model;
     this.stageEl = stageEl;
     this.svg = d3.select(svgEl);
     this.nodesEl = nodesEl;
     this.overlayEl = overlayEl;
+    this.tagsEl = tagsEl || null;
+    this._tags = Array.isArray(model.tags) ? model.tags : [];
+    this._tagChipEls = new Map(); // nodeId -> chip 容器 div
     this.onNodeActivate = onNodeActivate || (() => {});
     this.onAnchorEnter = onAnchorEnter || (() => {});
     this.onAnchorLeave = onAnchorLeave || (() => {});
@@ -51,15 +55,19 @@ export class ForceGraph {
     window.addEventListener('pagehide', () => this._savePositions());
     document.addEventListener('visibilitychange', () => { if (document.hidden) this._savePositions(); });
     this._resize();
+    this._renderTagChips();
+    this._renderMainpath();
   }
 
   // ---- SVG 结构 ----
   _initSvg() {
     const root = this.svg.append('g').attr('class', 'zoom-g');
     this.gEdges = root.append('g').attr('class', 'edges');
+    this.gMainpath = root.append('g').attr('class', 'mainpath'); // 主线双线连接（在普通边之上、锚点之下）
     this.gArrows = root.append('g').attr('class', 'arrows');
     this.gAnchors = root.append('g').attr('class', 'anchors');
     this.zoomG = root;
+    this.mainpathSel = this.gMainpath.selectAll('path');
 
     this.edgeSel = this.gEdges.selectAll('path');
     this.arrowSel = this.gArrows.selectAll('polygon');
@@ -363,6 +371,7 @@ export class ForceGraph {
     const css = `translate(${t.x}px, ${t.y}px) scale(${t.k})`;
     this.nodesEl.style.transform = css;
     this.overlayEl.style.transform = css;
+    this._positionTags();
     this._notifyOverlay && this._notifyOverlay();
     this._notifyZoom && this._notifyZoom(t.k);
     this._updateLod(t.k);
@@ -414,8 +423,35 @@ export class ForceGraph {
     d3.select(this.stageEl).transition().duration(120).call(this.zoom.transform, t);
   }
   // 适应视图：把所有可见元素的外接矩形居中，并约占视口 fraction（默认 80%），平滑过渡
-  fitView(fraction = 0.8) {
-    const present = this.nodes.filter((n) => this.isNodePresent(n));
+  // 按主线（有序标签）依次排列：蛇形布局 + pin 住 + 居中适配
+  arrangeMainPath(tagId) {
+    const tag = (this._tags || []).find((t) => t.kind === 'ordered' && (!tagId || t.id === tagId) && (t.members || []).length)
+      || this._orderedVisibleTags()[0];
+    if (!tag) return false;
+    const members = tag.members.map((id) => this.model.nodeById.get(id)).filter((n) => n && !n._userHidden);
+    if (!members.length) return false;
+    const Rmax = Math.max(30, ...members.map((n) => n.radius || 30));
+    const dx = 2 * Rmax + 96, dy = 2 * Rmax + 120;
+    const perRow = Math.max(3, Math.round(Math.sqrt(members.length * (this.W / Math.max(1, this.H)))));
+    const rows = Math.ceil(members.length / perRow);
+    const x0 = -((perRow - 1) * dx) / 2, y0 = -((rows - 1) * dy) / 2;
+    members.forEach((n, i) => {
+      const row = Math.floor(i / perRow);
+      let col = i % perRow;
+      if (row % 2 === 1) col = perRow - 1 - col; // 蛇形：奇数行反向，连线连续
+      const x = x0 + col * dx, y = y0 + row * dy;
+      n.fx = n.x = x; n.fy = n.y = y; n.pinned = true;
+      if (this.ctx && this.ctx.modals && this.ctx.modals.reflectPin) this.ctx.modals.reflectPin(n); // pin 按钮 + 光晕同步
+    });
+    this._renderMainpath();
+    this._positionTags();
+    this.reheat(0.2);
+    this.fitView(0.8, members);
+    return true;
+  }
+
+  fitView(fraction = 0.8, subset = null) {
+    const present = (subset && subset.length ? subset : this.nodes).filter((n) => this.isNodePresent(n));
     if (!present.length) return;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const n of present) {
@@ -435,6 +471,130 @@ export class ForceGraph {
   setTransform(k, x, y) {
     const t = this._constrain(d3.zoomIdentity.translate(x || 0, y || 0).scale(clamp(k, MIN_K, MAX_K)));
     d3.select(this.stageEl).call(this.zoom.transform, t);
+  }
+
+  // ========== 标签层（缩放不变的 Step / 标签贴片 + 主线双线连接） ==========
+  setTags(tags) {
+    this._tags = Array.isArray(tags) ? tags : [];
+    this._renderTagChips();
+    this._renderMainpath();
+  }
+  getTags() { return this._tags; }
+
+  // 取所有可见有序标签（主线/章节…）
+  _orderedVisibleTags() { return (this._tags || []).filter((t) => t.kind === 'ordered' && t.visible !== false && (t.members || []).length); }
+
+  // 每节点的贴片集合：有序→Step N；无序→图标
+  _renderTagChips() {
+    if (!this.tagsEl) return;
+    const perNode = new Map();
+    const push = (id, chip) => { if (!this.model.nodeById.has(id)) return; (perNode.get(id) || perNode.set(id, []).get(id)).push(chip); };
+    for (const tag of this._tags || []) {
+      if (tag.visible === false) continue;
+      if (tag.kind === 'ordered') tag.members.forEach((mid, i) => push(mid, { type: 'step', label: `Step ${i + 1}`, color: tag.color }));
+      else tag.members.forEach((mid) => push(mid, { type: 'mark', icon: tag.icon, color: tag.color, label: tag.label }));
+    }
+    this.tagsEl.textContent = '';
+    this._tagChipEls = new Map();
+    for (const [nodeId, chips] of perNode) {
+      const wrap = document.createElement('div');
+      wrap.className = 'tag-chip-cluster';
+      for (const c of chips) {
+        const pill = document.createElement('div');
+        pill.className = c.type === 'step' ? 'tag-pill tag-step' : 'tag-pill tag-mark';
+        pill.style.setProperty('--tc', c.color || '#ff9e64');
+        if (c.type === 'step') pill.textContent = c.label;
+        else pill.innerHTML = ICON[c.icon] || ICON.tag;
+        if (c.label) pill.title = c.label;
+        wrap.appendChild(pill);
+      }
+      this.tagsEl.appendChild(wrap);
+      this._tagChipEls.set(nodeId, wrap);
+    }
+    this._positionTags();
+  }
+
+  _positionTags() {
+    if (!this.tagsEl || !this._tagChipEls || !this._tagChipEls.size) return;
+    const k = this.transform.k;
+    for (const [nodeId, wrap] of this._tagChipEls) {
+      const n = this.model.nodeById.get(nodeId);
+      if (!n || !this.isNodePresent(n)) { wrap.style.display = 'none'; continue; }
+      const ax = n.isModal ? n.x + (n.mw || 0) / 2 : n.x;
+      const top = n.isModal ? n.y : n.y - (n.radius || 0);
+      const s = this.worldToScreen(ax, top);
+      wrap.style.display = '';
+      wrap.style.left = `${s.x}px`;
+      wrap.style.top = `${s.y}px`;
+      // 与节点状态同步：hover 变灰时贴片同步变灰；pin 时贴片高光
+      const circle = this.nodeEls.get(nodeId);
+      const dim = circle ? circle.classList.contains('dimmed') : false;
+      wrap.classList.toggle('chip-dim', dim);
+      wrap.classList.toggle('chip-pin', !!n.pinned);
+    }
+  }
+
+  // 主线分段：每个可见有序标签的相邻成员（均在场）连一段
+  _mainpathSegments() {
+    const segs = [];
+    for (const tag of this._orderedVisibleTags()) {
+      const present = tag.members.filter((id) => { const n = this.model.nodeById.get(id); return n && this.isNodePresent(n); });
+      for (let i = 0; i < present.length - 1; i += 1) segs.push({ from: present[i], to: present[i + 1], color: tag.color || '#ff9e64', key: `${tag.id}:${present[i]}>${present[i + 1]}` });
+    }
+    return segs;
+  }
+
+  _renderMainpath() {
+    if (!this.gMainpath) return;
+    const segs = this._mainpathSegments();
+    const key = (d) => d.key;
+    const outer = this.gMainpath.selectAll('path.mp-outer').data(segs, key);
+    outer.exit().remove(); outer.enter().append('path').attr('class', 'mp-outer');
+    const inner = this.gMainpath.selectAll('path.mp-inner').data(segs, key);
+    inner.exit().remove(); inner.enter().append('path').attr('class', 'mp-inner');
+    const arr = this.gMainpath.selectAll('polygon.mp-arrow').data(segs, key);
+    arr.exit().remove(); arr.enter().append('polygon').attr('class', 'mp-arrow');
+    this.gMainpath.selectAll('path.mp-outer').attr('stroke', (d) => d.color);
+    this.gMainpath.selectAll('polygon.mp-arrow').attr('fill', (d) => d.color);
+    this._positionMainpath();
+  }
+
+  _positionMainpath() {
+    if (!this.gMainpath) return;
+    const self = this;
+    // 锚点落在端点边界（圆→半径；卡片→矩形边），沿指向对端方向外推 pad
+    const anchorOn = (node, ux, uy, pad) => {
+      const cx = node.isModal ? node.x + (node.mw || 0) / 2 : node.x;
+      const cy = node.isModal ? node.y + (node.mh || 0) / 2 : node.y;
+      if (node.isModal) {
+        const hw = (node.mw || 0) / 2, hh = (node.mh || 0) / 2;
+        const tx = ux !== 0 ? hw / Math.abs(ux) : Infinity;
+        const ty = uy !== 0 ? hh / Math.abs(uy) : Infinity;
+        const t = Math.min(tx, ty);
+        return { x: cx + ux * (t + pad), y: cy + uy * (t + pad) };
+      }
+      const r = (node.radius || 0) + pad;
+      return { x: cx + ux * r, y: cy + uy * r };
+    };
+    const ends = (d) => {
+      const a = self.model.nodeById.get(d.from); const b = self.model.nodeById.get(d.to);
+      if (!a || !b) return null;
+      const acx = a.isModal ? a.x + (a.mw || 0) / 2 : a.x; const acy = a.isModal ? a.y + (a.mh || 0) / 2 : a.y;
+      const bcx = b.isModal ? b.x + (b.mw || 0) / 2 : b.x; const bcy = b.isModal ? b.y + (b.mh || 0) / 2 : b.y;
+      const dx = bcx - acx, dy = bcy - acy; const len = Math.hypot(dx, dy) || 1; const ux = dx / len, uy = dy / len;
+      const p1 = anchorOn(a, ux, uy, 2);
+      const p2 = anchorOn(b, -ux, -uy, 9);
+      return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, ux, uy };
+    };
+    const path = (d) => { const e = ends(d); if (!e) return ''; return `M${e.x1},${e.y1} L${e.x2},${e.y2}`; };
+    this.gMainpath.selectAll('path.mp-outer').attr('d', path);
+    this.gMainpath.selectAll('path.mp-inner').attr('d', path);
+    this.gMainpath.selectAll('polygon.mp-arrow').attr('points', (d) => {
+      const e = ends(d); if (!e) return '';
+      const s = 9; const a = Math.atan2(e.uy, e.ux);
+      const tx = e.x2, ty = e.y2;
+      return `${tx},${ty} ${tx - Math.cos(a - 0.42) * s},${ty - Math.sin(a - 0.42) * s} ${tx - Math.cos(a + 0.42) * s},${ty - Math.sin(a + 0.42) * s}`;
+    });
   }
 
   _resize() {
@@ -519,6 +679,8 @@ export class ForceGraph {
     }
     this.refreshCollision();
     this._renderEdges();
+    this._renderMainpath();   // 可见性变化 → 重算主线分段（隐藏成员的连线随之消失，避免残留箭头）
+    this._renderTagChips();   // 重建贴片（隐藏节点的贴片随之移除）
     this.ctx && this.ctx.refLayer && this.ctx.refLayer.refreshRelations();
   }
 
@@ -569,6 +731,8 @@ export class ForceGraph {
       el.style.transform = `translate(${n.x - r}px, ${n.y - r}px)`;
     }
     this._positionEdges();
+    this._positionMainpath();
+    this._positionTags();
     this._notifyOverlay && this._notifyOverlay();
   }
 
@@ -757,6 +921,7 @@ export class ForceGraph {
       this._dimModals(false);
       this.links.forEach((l) => { l._hi = false; l._dim = false; });
       this._renderEdges();
+      this._positionTags();
       return;
     }
     const alt = this._altHeld(); // 按住 Alt：保留关联高亮但不把无关元素变灰（PR2）
@@ -770,6 +935,7 @@ export class ForceGraph {
       l._dim = alt ? false : !(keep.has(l.from) && keep.has(l.to));
     });
     this._renderEdges();
+    this._positionTags(); // 贴片随节点变灰/高亮同步
   }
   _altHeld() { const a = this._appEl || (this._appEl = document.getElementById('app')); return !!a && a.classList.contains('alt-pan'); }
 

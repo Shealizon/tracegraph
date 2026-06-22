@@ -3,6 +3,7 @@
 // =============================================================================
 import { ICON } from './icons.js';
 import { nodeTag, typeColor } from '../data/schema.js';
+import { confirmDialog } from './feedback.js';
 
 const THEME_MODES = [
   { mode: 'dark', icon: 'moon', title: '深色' },
@@ -120,6 +121,14 @@ export function buildSidebar(ctx, root) {
     }
   }
 
+  // ---- 标签（主线/有序 + 无序）----
+  ctx.applyTagFilter = () => applyFilter(ctx);
+  const grpTags = group(root, '标签');
+  const tagBody = el('div', 'tag-panel');
+  grpTags.appendChild(tagBody);
+  ctx.rebuildTagPanel = () => renderTagPanel(ctx, tagBody);
+  ctx.rebuildTagPanel();
+
   // ---- 已隐藏（仅在有内容时展开） ----
   const hasHidden = (ctx.hidden && ctx.hidden.size > 0);
   const grpHidden = section(root, '已隐藏', 'hidden', !hasHidden);
@@ -210,6 +219,16 @@ export function buildZoomControl(ctx, stageEl) {
   home.innerHTML = ICON.home;
   home.title = '适应视图（全部元素居中、约 80%）';
   home.addEventListener('click', () => ctx.graph.fitView(0.8));
+  // 按主线排列：仅当存在有序标签（主线/章节）时显示
+  const mainpath = el('button', 'zoom-home zoom-mainpath');
+  mainpath.innerHTML = ICON.route;
+  mainpath.title = '按主线排列（依次铺开、pin 住并居中）';
+  ctx.refreshMainpathButton = () => {
+    const has = (ctx.graph.getTags ? ctx.graph.getTags() : []).some((t) => t.kind === 'ordered' && (t.members || []).length);
+    mainpath.style.display = has ? '' : 'none';
+  };
+  ctx.refreshMainpathButton();
+  mainpath.addEventListener('click', () => ctx.graph.arrangeMainPath());
   const lock = el('button', 'zoom-lock');
   lock.innerHTML = LOCK;
   lock.title = '锁定滚轮缩放（防止误触）';
@@ -230,6 +249,7 @@ export function buildZoomControl(ctx, stageEl) {
   top.appendChild(input);
   top.appendChild(lock);
   top.appendChild(home);
+  top.appendChild(mainpath);
   panel.appendChild(top);
   panel.appendChild(val);
   stageEl.appendChild(panel);
@@ -312,7 +332,19 @@ function buildPaperFolder(parent, ctx, doc, typeList) {
 
 function applyFilter(ctx) {
   const { graph, model } = ctx;
-  for (const n of model.nodes) n._hidden = !ctx.filterActive.has(filterKeyFor(ctx, n));
+  // 标签筛选：若启用了「仅看此标签」，只保留这些标签成员的并集
+  let tagMembers = null;
+  if (ctx.tagFilter && ctx.tagFilter.size) {
+    tagMembers = new Set();
+    for (const t of (graph.getTags ? graph.getTags() : [])) {
+      if (ctx.tagFilter.has(t.id)) for (const m of t.members) tagMembers.add(m);
+    }
+  }
+  for (const n of model.nodes) {
+    const typeHidden = !ctx.filterActive.has(filterKeyFor(ctx, n));
+    const tagHidden = tagMembers ? !tagMembers.has(n.id) : false;
+    n._hidden = typeHidden || tagHidden;
+  }
   graph.updateVisibility();
   ctx.refLayer && ctx.refLayer.refreshRelations();
 }
@@ -353,6 +385,173 @@ function renderSearch(ctx, q, container) {
     });
     container.appendChild(item);
   }
+}
+
+// ---- 标签面板 ----
+function renderTagPanel(ctx, body) {
+  body.innerHTML = '';
+  const tags = ctx.graph.getTags ? ctx.graph.getTags() : [];
+  ctx.tagFilter = ctx.tagFilter || new Set();
+  if (!tags.length) { const e = el('div', 'tag-empty'); e.textContent = '暂无标签。新建后点「打标」选节点。'; body.appendChild(e); }
+  tags.forEach((tag) => body.appendChild(buildTagRow(ctx, tag)));
+
+  if (ctx.tagEditing) {
+    const t = tags.find((x) => x.id === ctx.tagEditing);
+    const banner = el('div', 'tag-edit-banner');
+    banner.innerHTML = `<span>正在为「${escapeHtml(t?.label || '')}」打标：点节点加入/移出${t?.kind === 'ordered' ? '（顺序=点击次序）' : ''}</span>`;
+    const done = el('button', 'btn btn--sm'); done.type = 'button'; done.textContent = '完成';
+    done.addEventListener('click', () => ctx.setTagEditing(null));
+    banner.appendChild(done);
+    body.appendChild(banner);
+  }
+
+  const add = el('div', 'side-actions-row');
+  add.appendChild(btn('+ 主线/有序', () => createTag(ctx, 'ordered')));
+  add.appendChild(btn('+ 标签/无序', () => createTag(ctx, 'unordered')));
+  body.appendChild(add);
+}
+
+function buildTagRow(ctx, tag) {
+  const box = el('div', 'tag-box');
+  box.style.setProperty('--tc', tag.color || '#ff9e64');
+  const row = el('div', 'tag-row');
+  if (tag.visible === false) row.classList.add('tag-vis-off');
+  if (ctx.tagEditing === tag.id) row.classList.add('tag-editing');
+
+  ctx._tagExpanded = ctx._tagExpanded || new Set();
+  const expanded = ctx._tagExpanded.has(tag.id);
+  const caret = mkIc('chevronDown', expanded ? '收起' : '展开', () => {
+    if (ctx._tagExpanded.has(tag.id)) ctx._tagExpanded.delete(tag.id); else ctx._tagExpanded.add(tag.id);
+    ctx.rebuildTagPanel();
+  });
+  caret.classList.add('tag-caret');
+  if (expanded) caret.classList.add('open');
+
+  const eye = mkIc(tag.visible === false ? 'eyeOff' : 'eye', tag.visible === false ? '显示贴片' : '隐藏贴片', () => {
+    ctx.persistTags(ctx.graph.getTags().map((t) => (t.id === tag.id ? { ...t, visible: !(t.visible !== false) } : t)));
+  });
+
+  // 颜色点 + 名称（点击名称内联重命名，无原生弹框）
+  const name = el('div', 'tag-name');
+  name.innerHTML = `<span class="tag-dot" style="background:${tag.color}"></span><span class="tag-label" title="点击重命名">${escapeHtml(tag.label)}</span>`;
+  name.querySelector('.tag-label').addEventListener('click', (e) => { e.stopPropagation(); startInlineRename(ctx, tag, name.querySelector('.tag-label')); });
+
+  const filterOn = ctx.tagFilter.has(tag.id);
+  const filt = mkIc('search', filterOn ? '取消筛选' : '仅看此标签', () => {
+    if (ctx.tagFilter.has(tag.id)) ctx.tagFilter.delete(tag.id); else ctx.tagFilter.add(tag.id);
+    ctx.applyTagFilter(); ctx.rebuildTagPanel();
+  });
+  if (filterOn) filt.classList.add('on');
+
+  const acts = el('div', 'tag-acts');
+  acts.appendChild(filt);
+  if (tag.kind === 'ordered') acts.appendChild(mkIc('route', '按此排列', () => ctx.graph.arrangeMainPath(tag.id)));
+
+  row.appendChild(caret); row.appendChild(eye); row.appendChild(name); row.appendChild(acts);
+  box.appendChild(row);
+
+  // 展开：统计 + 添加成员 + 删除（红）一行，下接成员列表
+  if (expanded) {
+    const sub = el('div', 'tag-subrow');
+    const stat = el('span', 'tag-stat'); stat.textContent = `${tag.kind === 'ordered' ? '有序' : '无序'} · ${tag.members.length}`;
+    const editing = ctx.tagEditing === tag.id;
+    const add = mkIc('plus', editing ? '完成添加' : '添加成员（点节点）', () => ctx.setTagEditing(editing ? null : tag.id));
+    if (editing) add.classList.add('on');
+    const del = mkIc('trash', '删除标签', async () => {
+      const ok = await confirmDialog({ title: '删除标签', message: `删除「${tag.label}」？此操作仅移除标签，不影响节点。`, okText: '删除', danger: true });
+      if (!ok) return;
+      if (ctx.tagEditing === tag.id) ctx.setTagEditing(null);
+      ctx.tagFilter.delete(tag.id);
+      ctx.persistTags(ctx.graph.getTags().filter((t) => t.id !== tag.id));
+    });
+    del.classList.add('tag-del');
+    sub.appendChild(stat);
+    sub.appendChild(el('span', 'tag-sub-gap'));
+    sub.appendChild(add);
+    sub.appendChild(del);
+    box.appendChild(sub);
+    box.appendChild(buildMemberList(ctx, tag));
+  }
+  return box;
+}
+
+// 内联重命名：把名称替换为输入框，Enter/失焦保存，Esc 取消（不用原生 prompt）
+function startInlineRename(ctx, tag, span) {
+  const input = el('input', 'tag-rename-input');
+  input.value = tag.label;
+  span.replaceWith(input);
+  input.focus(); input.select();
+  let done = false;
+  const commit = (save) => {
+    if (done) return; done = true;
+    const nv = input.value.trim();
+    if (save && nv && nv !== tag.label) ctx.persistTags(ctx.graph.getTags().map((t) => (t.id === tag.id ? { ...t, label: nv } : t)));
+    else ctx.rebuildTagPanel();
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); commit(false); }
+  });
+  input.addEventListener('blur', () => commit(true));
+}
+
+// 成员列表：可删除、（有序）相邻间悬停显出「插入」长条，点击进入该处插入模式
+function buildMemberList(ctx, tag) {
+  const wrap = el('div', 'tag-members');
+  const ordered = tag.kind === 'ordered';
+  const mkInsert = (idx) => {
+    if (!ordered) return null;
+    const bar = el('button', 'tag-insert'); bar.type = 'button';
+    bar.title = '在此插入：点击后依次点节点插到这里';
+    bar.innerHTML = '<span></span>';
+    if (ctx.tagEditing === tag.id && ctx.tagInsertAt === idx) bar.classList.add('on');
+    bar.addEventListener('click', () => ctx.setTagEditing(tag.id, idx));
+    return bar;
+  };
+  if (ordered) { const b = mkInsert(0); if (b) wrap.appendChild(b); }
+  if (!tag.members.length) { const e = el('div', 'tag-members-empty'); e.textContent = '（空）点「打标」后点击节点添加'; wrap.appendChild(e); }
+  tag.members.forEach((mid, i) => {
+    const n = ctx.model.nodeById.get(mid);
+    const mrow = el('div', 'tag-member');
+    mrow.innerHTML = `${ordered ? `<span class="tm-idx">${i + 1}</span>` : '<span class="tm-dot" style="background:' + tag.color + '"></span>'}<span class="tm-label">${escapeHtml(n ? (n.title || n.id) : mid)}</span>`;
+    mrow.title = '点击聚焦该节点';
+    const del = el('button', 'tm-del'); del.type = 'button'; del.textContent = '×'; del.title = '移出';
+    del.addEventListener('click', (e) => { e.stopPropagation(); ctx.persistTags(ctx.graph.getTags().map((t) => (t.id === tag.id ? { ...t, members: t.members.filter((m) => m !== mid) } : t))); });
+    mrow.appendChild(del);
+    // 点击成员：把该节点居中（保持当前缩放）
+    mrow.addEventListener('click', () => {
+      if (!n) return;
+      if (n._userHidden) ctx.unhideNode(mid);
+      ctx.graph.focusNode(mid, ctx.graph.getZoomScale());
+      const e2 = ctx.graph.nodeEls.get(mid);
+      if (e2) { e2.classList.add('search-hit'); setTimeout(() => e2.classList.remove('search-hit'), 1500); }
+    });
+    wrap.appendChild(mrow);
+    if (ordered) { const b = mkInsert(i + 1); if (b) wrap.appendChild(b); }
+  });
+  return wrap;
+}
+
+function createTag(ctx, kind) {
+  const tags = ctx.graph.getTags() || [];
+  const existing = new Set(tags.map((t) => t.id));
+  let id = kind === 'ordered' ? 'mainpath' : 'tag';
+  if (existing.has(id)) { let k = 2; while (existing.has(`${id}-${k}`)) k += 1; id = `${id}-${k}`; }
+  const palette = ['#ff9e64', '#c39bff', '#7dd3a8', '#5bb1c9', '#e3879e', '#e0c068'];
+  // 取调色板里首个未被占用的颜色（删除标签后不会与现存标签撞色）；全用尽再按数量回绕
+  const used = new Set(tags.map((t) => t.color));
+  const color = palette.find((c) => !used.has(c)) || palette[tags.length % palette.length];
+  const label = kind === 'ordered' ? (existing.has('mainpath') ? '新主线' : '主线') : '新标签';
+  const tag = { id, label, kind, icon: kind === 'ordered' ? 'route' : 'tag', color, visible: true, members: [] };
+  ctx.persistTags([...tags, tag]);
+  ctx.setTagEditing(id);
+}
+
+function mkIc(icon, title, onClick) {
+  const b = el('button', 'tag-ic'); b.type = 'button'; b.title = title;
+  b.innerHTML = ICON[icon] || ICON.tag;
+  b.addEventListener('click', onClick);
+  return b;
 }
 
 // ---- 控件工厂 ----

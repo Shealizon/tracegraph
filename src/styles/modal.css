@@ -23,11 +23,11 @@
 #app.render-sharp .modal { will-change: auto; }
 
 /* 远景 LOD：展开框尺寸不变，原内容随 --lod 连续淡出，叠加“大号节点”正面（编号+标题大字居中） */
-.modal-top, .modal-body, .modal-foot { transition: opacity .12s linear; }
-#app .modal-top, #app .modal-body, #app .modal-foot { opacity: calc(1 - var(--lod, 0)); }
+.modal-top, .m-sub, .modal-body, .modal-foot { transition: opacity .12s linear; }
+#app .modal-top, #app .m-sub, #app .modal-body, #app .modal-foot { opacity: calc(1 - var(--lod, 0)); }
 #app.lod-far .modal { cursor: grab; }
 #app.lod-far .modal.dragging { cursor: grabbing; }
-#app.lod-far .modal-top, #app.lod-far .modal-body, #app.lod-far .modal-foot { pointer-events: none; }
+#app.lod-far .modal-top, #app.lod-far .m-sub, #app.lod-far .modal-body, #app.lod-far .modal-foot { pointer-events: none; }
 .modal { transition: height .12s ease; }
 .modal.dragging { transition: none; }
 /* 关联高亮：无关展开框变灰 */

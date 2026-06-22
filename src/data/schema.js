@@ -67,6 +67,42 @@ export const PROFILES = {
 
 export const DEFAULT_PROFILE = PAPER_PROFILE;
 
+// =============================================================================
+// 标签（Tag）：有序（主线/章节/步骤）与无序（喜爱/已看过…）共用同一结构。
+// 详见 docs/TAGS-DESIGN.md。
+// =============================================================================
+export const TAG_COLORS = ['#ff9e64', '#c39bff', '#7dd3a8', '#5bb1c9', '#e3879e', '#e0c068'];
+export const MAINPATH_TAG_ID = 'mainpath';
+
+export function normalizeTag(t, i = 0) {
+  const kind = t?.kind === 'ordered' ? 'ordered' : 'unordered';
+  const members = Array.isArray(t?.members) ? t.members.filter((m) => typeof m === 'string') : [];
+  return {
+    id: t?.id || (kind === 'ordered' ? MAINPATH_TAG_ID : `tag-${i + 1}`),
+    label: t?.label || (kind === 'ordered' ? '主线' : '标签'),
+    kind,
+    icon: t?.icon || (kind === 'ordered' ? 'route' : 'tag'),
+    color: t?.color || TAG_COLORS[i % TAG_COLORS.length],
+    visible: t?.visible !== false,
+    members: [...new Set(members)], // 去重，保序
+  };
+}
+
+export function normalizeTags(tags) {
+  if (!Array.isArray(tags)) return [];
+  const seen = new Set();
+  const out = [];
+  tags.forEach((t, i) => {
+    const nt = normalizeTag(t, i);
+    if (seen.has(nt.id)) return;
+    seen.add(nt.id);
+    out.push(nt);
+  });
+  return out;
+}
+
+export const isOrderedTag = (t) => t?.kind === 'ordered';
+
 // 把 profile 规整为带索引、可直接消费的形态。
 export function mergeProfile(p) {
   const base = p || DEFAULT_PROFILE;

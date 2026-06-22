@@ -117,6 +117,7 @@ export function buildModel(input = rawInput) {
     meta: raw.meta,
     nodes,
     edges,
+    tags: raw.tags || raw.meta?.tags || [],
     nodeById,
     labelIndex,
     deps, // n -> 依赖集合

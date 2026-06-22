@@ -67,9 +67,11 @@ function startMain(db, project) {
   const svgEl = document.getElementById('edges-layer');
   const nodesEl = document.getElementById('nodes-layer');
   const overlayEl = document.getElementById('overlay-layer');
+  const tagsEl = document.getElementById('tag-layer');
   svgEl.innerHTML = '';
   nodesEl.innerHTML = '';
   overlayEl.innerHTML = '';
+  if (tagsEl) tagsEl.innerHTML = '';
 
   let saveTimer = null;
   const scheduleProjectStateSave = () => {
@@ -200,14 +202,81 @@ function startMain(db, project) {
     ctx.writeHash && ctx.writeHash();
   };
 
+  // ---- 标签（持久化 + 打标模式 + 标签筛选）----
+  ctx.tagEditing = null;       // 正在编辑成员的 tagId（打标模式）
+  ctx.tagFilter = new Set();   // 启用了「仅看此标签」的 tagId 集合
+  ctx.persistTags = (tags) => {
+    project.config = { ...(project.config || {}), tags };
+    ctx.graph && ctx.graph.setTags(tags);
+    saveProject(db, project).catch((e) => console.warn('save tags failed', e));
+    ctx.rebuildTagPanel && ctx.rebuildTagPanel();
+    ctx.refreshMainpathButton && ctx.refreshMainpathButton();
+    ctx.applyTagFilter && ctx.applyTagFilter();
+  };
+  ctx.tagInsertAt = null; // 插入模式：在该下标处插入后续点击的节点（3->[a,b,c]->4）
+  ctx.toggleNodeTag = (tagId, nodeId) => {
+    const tags = (ctx.graph.getTags() || []).map((t) => ({ ...t, members: [...t.members] }));
+    const t = tags.find((x) => x.id === tagId);
+    if (!t) return;
+    const i = t.members.indexOf(nodeId);
+    if (ctx.tagInsertAt != null && ctx.tagEditing === tagId) {
+      // 插入模式：移到指定位置（已存在则先移除），下次插入位置 +1，实现连续插入
+      let at = ctx.tagInsertAt;
+      if (i >= 0) { t.members.splice(i, 1); if (i < at) at -= 1; }
+      at = Math.max(0, Math.min(at, t.members.length));
+      t.members.splice(at, 0, nodeId);
+      ctx.tagInsertAt = at + 1;
+    } else if (i >= 0) t.members.splice(i, 1);
+    else t.members.push(nodeId); // 追加：点击顺序即步骤顺序
+    ctx.persistTags(tags);
+  };
+  ctx.activateNode = (n) => {
+    if (ctx.tagEditing) { ctx.toggleNodeTag(ctx.tagEditing, n.id); return; }
+    ctx.modals.openFromNode(n);
+  };
+  // 打标模式：氛围（页面变化）+ 底部提示 + Enter 完成
+  ctx.setTagEditing = (tagId, insertAt = null) => {
+    ctx.tagEditing = tagId || null;
+    ctx.tagInsertAt = tagId ? insertAt : null;
+    const appEl = document.getElementById('app');
+    appEl.classList.toggle('tag-editing-mode', !!tagId);
+    if (ctx._tagHint) { ctx._tagHint.remove(); ctx._tagHint = null; }
+    if (tagId) {
+      const t = (ctx.graph.getTags() || []).find((x) => x.id === tagId);
+      const mode = insertAt != null ? `在第 ${insertAt} 项后插入：依次点击节点` : `点击节点 / 卡片加入或移出${t?.kind === 'ordered' ? '（顺序＝点击次序）' : ''}`;
+      const hint = document.createElement('div');
+      hint.className = 'tag-edit-hint';
+      hint.innerHTML = `<span>正在为「${escapeHtml(t?.label || '')}」打标：${mode}</span><kbd>Enter</kbd><span>完成</span>`;
+      appEl.appendChild(hint);
+      ctx._tagHint = hint;
+    }
+    ctx.rebuildTagPanel && ctx.rebuildTagPanel();
+  };
+  // 打标模式下点击卡片（非按钮/引用）也能加入/移出
+  overlayEl.addEventListener('click', (e) => {
+    if (!ctx.tagEditing || !ctx.modals) return;
+    if (e.target.closest('.m-btn, button, a, input, .texref, .m-sub')) return;
+    for (const [nodeId, rec] of ctx.modals.open) {
+      if (rec.el.contains(e.target)) { e.stopPropagation(); e.preventDefault(); ctx.toggleNodeTag(ctx.tagEditing, nodeId); return; }
+    }
+  }, true);
+  // Enter 完成打标（输入框聚焦时不触发）
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || !ctx.tagEditing) return;
+    if (/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+    e.preventDefault();
+    ctx.setTagEditing(null);
+  });
+
   const graph = new ForceGraph(model, {
     stageEl,
     svgEl,
     nodesEl,
     overlayEl,
+    tagsEl,
     storageKey: `hg-pos-${project.id}`,
     initialTransform: initialState.zoom, // 首帧即用保存的视角，避免先默认缩放再跳转
-    onNodeActivate: (n) => ctx.modals.openFromNode(n),
+    onNodeActivate: (n) => ctx.activateNode(n),
   });
   ctx.graph = graph;
   graph.ctx = ctx;

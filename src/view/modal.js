@@ -111,6 +111,8 @@ export class ModalManager {
     const rec = this.open.get(node.id);
     if (rec) rec.el.classList.toggle('pinned', !!node.pinned);
   }
+  // 程序化 pin（如「按主线排列」）后同步按钮高亮 + 光晕
+  reflectPin(node) { this._syncPinUI(node); this._applyPinClass(node); }
 
   // 远景 LOD：把每个展开框高度在「自然高度」与「正方形(边长=宽度)」之间按 lod 插值，
   // 过渡区间随缩放连续动画；lod=1 时为正方形 LOD-modal。
@@ -144,6 +146,7 @@ export class ModalManager {
 
     const rec = this._createModal(node);
     this.open.set(node.id, rec);
+    this.reflectPin(node); // 初次挂载即同步 pin 按钮高亮 + 光晕（节点可能已被排列/手动 pin）
 
     node.isModal = true;
     node.mw = CUR_W;

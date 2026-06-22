@@ -7,6 +7,15 @@ const S = (paths, extra = '') =>
 export const ICON = {
   // 切回节点（圆）
   circle: S('<circle cx="12" cy="12" r="7"/>'),
+  // 标签相关
+  eye: S('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>'),
+  route: S('<circle cx="6" cy="19" r="2.4"/><circle cx="18" cy="5" r="2.4"/><path d="M8.4 19H14a3 3 0 0 0 0-6H10a3 3 0 0 1 0-6h5.6"/>'),
+  tag: S('<path d="M3 11.5 11.5 3H20a1 1 0 0 1 1 1v8.5L12.5 21a1 1 0 0 1-1.4 0L3 12.9a1 1 0 0 1 0-1.4Z"/><circle cx="16.5" cy="7.5" r="1.3" fill="currentColor" stroke="none"/>'),
+  star: S('<polygon points="12 3 14.7 8.6 21 9.3 16.5 13.6 17.6 19.8 12 16.8 6.4 19.8 7.5 13.6 3 9.3 9.3 8.6"/>'),
+  heart: S('<path d="M12 20s-7-4.3-9.2-8.4C1.4 8.9 2.6 5.8 5.6 5.2 7.7 4.8 9.7 6 12 8.6c2.3-2.6 4.3-3.8 6.4-3.4 3 .6 4.2 3.7 2.8 6.4C19 15.7 12 20 12 20Z"/>'),
+  bookmark: S('<path d="M6 4h12a1 1 0 0 1 1 1v15l-7-4-7 4V5a1 1 0 0 1 1-1Z"/>'),
+  flag: S('<path d="M5 21V4"/><path d="M5 4h11l-1.5 3.5L16 11H5"/>'),
+  listOrdered: S('<line x1="10" y1="6" x2="20" y2="6"/><line x1="10" y1="12" x2="20" y2="12"/><line x1="10" y1="18" x2="20" y2="18"/><path d="M4 6h2v4M4 10h3" stroke-width="1.6"/>'),
   // 展开"使用本结论者"（向右上箭头）
   arrowUpRight: S('<line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/>'),
   // 展开"依赖"（向左下箭头）

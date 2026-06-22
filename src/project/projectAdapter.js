@@ -1,5 +1,5 @@
 import { compileGraph } from '../data/adapter.js';
-import { mergeProfile } from '../data/schema.js';
+import { mergeProfile, normalizeTags } from '../data/schema.js';
 
 export const PROJECT_FORMAT = 'paper-graph-project@1';
 
@@ -44,6 +44,7 @@ export function normalizeProject(project) {
       enabledDocumentIds: enabled,
       disabledNodeIds: project?.config?.disabledNodeIds || [],
       disabledRelationKeys: project?.config?.disabledRelationKeys || [],
+      tags: Array.isArray(project?.config?.tags) ? project.config.tags : [],
       viewState: project?.config?.viewState || {},
     },
     documents: docs.map((doc, i) => ({
@@ -84,6 +85,8 @@ export function compileProject(project) {
   // 这里为冲突的 id 重命名，同时把解析用的 owner 仍以“原始 id”登记，保证引用照常解析。
   const usedNodeIds = new Set();
   const usedLabelIds = new Set();
+  // (docId -> Map(原始 node id -> 唯一化后 id))，用于把图级标签的 members 重映射
+  const docNodeIdMap = new Map();
   const uniqueId2 = (orig, docId, used) => {
     if (!used.has(orig)) return orig;
     let k = 2, cand = `${orig}#${docId}`;
@@ -96,6 +99,7 @@ export function compileProject(project) {
     docAlias.set(doc.name, doc.id);
     docAlias.set(slug(doc.name), doc.id);
     docLabelOwner.set(doc.id, new Map());
+    docNodeIdMap.set(doc.id, new Map());
     const compiled = compileGraph(doc.graph);
     docMetas.push(compiled.meta);
     for (const rawNode of compiled.nodes || []) {
@@ -103,6 +107,7 @@ export function compileProject(project) {
       const origId = rawNode.id;
       const newId = uniqueId2(origId, doc.id, usedNodeIds);
       usedNodeIds.add(newId);
+      docNodeIdMap.get(doc.id).set(origId, newId);
 
       // 标签：自锚点（id === 节点原 id）跟随新节点 id；其余锚点按需唯一化。
       // _origId 记录原始 id，供下面以“原始 id”登记 owner（引用用原始 target 解析）。
@@ -177,6 +182,22 @@ export function compileProject(project) {
     : undefined;
   const isLeafType = (type) => !!profileResolved?.typeById?.[type]?.leaf || type === 'bib';
 
+  // 标签合并：config.tags（用户编辑，成员已是唯一化后的 id）为准；
+  // 各文档图级 graph.tags（导入/prompt 生成，成员为原始 id）按文档重映射后作为 seed 追加。
+  const tagById = new Map();
+  for (const t of normalizeTags(normalized.config.tags)) {
+    tagById.set(t.id, { ...t, members: t.members.filter((m) => nodeById.has(m)) });
+  }
+  for (const doc of docs) {
+    const map = docNodeIdMap.get(doc.id) || new Map();
+    for (const t of normalizeTags(doc.graph?.tags)) {
+      if (tagById.has(t.id)) continue; // 已被 config 覆盖
+      const members = t.members.map((m) => map.get(m) || m).filter((m) => nodeById.has(m));
+      tagById.set(t.id, { ...t, members });
+    }
+  }
+  const tags = [...tagById.values()];
+
   return {
     meta: {
       ...firstMeta,
@@ -187,6 +208,7 @@ export function compileProject(project) {
       documents: docs.map((d) => ({ id: d.id, name: d.name, sourceType: d.sourceType })),
       labelAliases,
       profileResolved, // 合并后的 profile，覆盖首篇单独的 profileResolved
+      tags,
       counts: {
         statements: nodes.filter((n) => !isLeafType(n.type)).length,
         bib: nodes.filter((n) => isLeafType(n.type)).length,
@@ -197,6 +219,7 @@ export function compileProject(project) {
     types: mergedTypes.length ? mergedTypes : baseProfile?.types,
     nodes,
     edges,
+    tags,
   };
 }
 
