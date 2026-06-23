@@ -35,7 +35,7 @@
 // 语义直接透传（视为已是运行时格式）。
 // =============================================================================
 
-import { DEFAULT_PROFILE, PROFILES, mergeProfile, normalizeTags } from './schema.js';
+import { DEFAULT_PROFILE, PROFILES, mergeProfile, normalizeTags, memberNode } from './schema.js';
 
 // 判断是否“通用 schema”输入（需要编译），否则按已编译运行时格式透传。
 export function isGenericSchema(raw) {
@@ -161,7 +161,7 @@ function compileGeneric(raw) {
 
   // 图级标签（导入文件 / prompt 生成）：仅保留指向存在节点的成员
   const nodeIds = new Set(nodes.map((n) => n.id));
-  const tags = normalizeTags(raw.tags).map((t) => ({ ...t, members: t.members.filter((m) => nodeIds.has(m)) }));
+  const tags = normalizeTags(raw.tags).map((t) => ({ ...t, members: t.members.filter((m) => nodeIds.has(memberNode(m))) }));
   meta.tags = tags;
 
   return { meta, nodes, edges, tags };

@@ -8,7 +8,7 @@
 // =============================================================================
 import { buildModalShell, applyHeightCap } from './modal.js';
 import { ICON } from '../ui/icons.js';
-import { isLeafNode, nodeTag, paperName, typeColor } from '../data/schema.js';
+import { isLeafNode, nodeTag, paperName, typeColor, memberNode, memberType } from '../data/schema.js';
 
 const HOVER_CLOSE_DELAY = 180;
 const HIT_PAD = 12; // hit-test 容差，便于从 ref 移动到预览
@@ -54,8 +54,16 @@ export class RefLayer {
     shell.style.setProperty('--node-color', typeColor(this.ctx.model, node.type));
     const num = nodeTag(this.ctx.model, node);
     const paper = paperName(this.ctx.model, node);
+    // 该元素所属的全部标签标记（有序：marker+序号；无序：图标+marker）
+    const tags = (this.ctx.graph && this.ctx.graph.getTags ? this.ctx.graph.getTags() : []).filter((t) => (t.members || []).some((m) => memberNode(m) === node.id));
+    const tagHTML = tags.map((t) => {
+      const mk = (t.marker || '').trim();
+      if (t.kind === 'ordered') { const i = t.members.findIndex((m) => memberType(m) === 'node' && memberNode(m) === node.id); return `<span class="tip-tag" style="--tc:${t.color}">${mk ? escapeHtml(mk) + ' ' : ''}${i + 1}</span>`; }
+      return `<span class="tip-tag" style="--tc:${t.color}">${ICON[t.icon] || ICON.tag}${mk ? `<span>${escapeHtml(mk)}</span>` : ''}</span>`;
+    }).join('');
     shell.innerHTML = `<span class="tip-num">${escapeHtml(num)}</span>${escapeHtml(node.title || node.id)}`
-      + (paper ? `<span class="tip-paper">${ICON.fileText}${escapeHtml(paper)}</span>` : '');
+      + (paper ? `<span class="tip-paper">${ICON.fileText}${escapeHtml(paper)}</span>` : '')
+      + (tagHTML ? `<span class="tip-tags">${tagHTML}</span>` : '');
     shell.style.position = 'fixed';
     document.body.appendChild(shell);
     this._placePreview(shell, anchorEl, 12);
@@ -202,7 +210,7 @@ export class RefLayer {
   }
 
   _buildPreview(info, ownerNode) {
-    const pinBtn = [{ act: 'pin', title: '展开为并排卡片', icon: 'plus' }];
+    const pinBtn = [{ act: 'pin', title: '打开为卡片', icon: 'plus' }];
     if (info.cmd === 'cite' || (ownerNode && isLeafNode(this.ctx.model, ownerNode))) {
       const bib = ownerNode || this.ctx.model.nodeById.get(info.target);
       return buildModalShell({ type: bib?.type || 'source', color: bib ? typeColor(this.ctx.model, bib.type) : undefined, preview: true, buttons: pinBtn,

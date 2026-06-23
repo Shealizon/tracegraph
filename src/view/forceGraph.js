@@ -15,7 +15,7 @@
 // =============================================================================
 
 import * as d3 from 'd3';
-import { isLeafNode, nodeTag, typeColor } from '../data/schema.js';
+import { isLeafNode, nodeTag, typeColor, memberNode, memberType, memberKey } from '../data/schema.js';
 import { ICON } from '../ui/icons.js';
 
 // 缩放范围与空间边界：最小 10%；世界边界 = 15% 缩放时铺满当前视口的范围（隐藏的硬墙）
@@ -372,6 +372,7 @@ export class ForceGraph {
     this.nodesEl.style.transform = css;
     this.overlayEl.style.transform = css;
     this._positionTags();
+    this._positionMainpath(); // 缩放变化时刷新主线线宽/箭头（缩放不变）
     this._notifyOverlay && this._notifyOverlay();
     this._notifyZoom && this._notifyZoom(t.k);
     this._updateLod(t.k);
@@ -416,31 +417,39 @@ export class ForceGraph {
   getZoomScale() { return this.transform.k; }
   setZoomScale(k) {
     const next = clamp(k, MIN_K, MAX_K);
-    const cx = this.W / 2;
+    const inset = this._leftInset();
+    const cx = inset + (this.W - inset) / 2; // 围绕可见区中心缩放
     const cy = this.H / 2;
     const w = this.screenToWorld(cx, cy);
     const t = this._constrain(d3.zoomIdentity.translate(cx - w.x * next, cy - w.y * next).scale(next));
     d3.select(this.stageEl).transition().duration(120).call(this.zoom.transform, t);
   }
   // 适应视图：把所有可见元素的外接矩形居中，并约占视口 fraction（默认 80%），平滑过渡
-  // 按主线（有序标签）依次排列：蛇形布局 + pin 住 + 居中适配
+  // 全览：把某标签的所有成员蛇形铺开 + pin + 居中适配（有序/无序通用；有序额外有双线连接）
+  arrangeTag(tagId) { return this.arrangeMainPath(tagId); }
   arrangeMainPath(tagId) {
-    const tag = (this._tags || []).find((t) => t.kind === 'ordered' && (!tagId || t.id === tagId) && (t.members || []).length)
-      || this._orderedVisibleTags()[0];
+    const tag = (this._tags || []).find((t) => t.id === tagId && (t.members || []).length)
+      || (this._tags || []).find((t) => (t.members || []).length);
     if (!tag) return false;
-    const members = tag.members.map((id) => this.model.nodeById.get(id)).filter((n) => n && !n._userHidden);
+    const members = [...new Set(tag.members.map(memberNode))].map((id) => this.model.nodeById.get(id)).filter((n) => n && !n._userHidden);
     if (!members.length) return false;
-    const Rmax = Math.max(30, ...members.map((n) => n.radius || 30));
-    const dx = 2 * Rmax + 96, dy = 2 * Rmax + 120;
+    // 通用：按每个元素的实际外形（圆=直径 / 卡片=mw·mh）取格子尺寸，混排节点与卡片也不重叠
+    const fw = (n) => (n.isModal ? (n.mw || 320) : (n.radius || 30) * 2);
+    const fh = (n) => (n.isModal ? (n.mh || 200) : (n.radius || 30) * 2);
+    const cellW = Math.max(...members.map(fw)) + 90;
+    const cellH = Math.max(...members.map(fh)) + 90;
     const perRow = Math.max(3, Math.round(Math.sqrt(members.length * (this.W / Math.max(1, this.H)))));
     const rows = Math.ceil(members.length / perRow);
-    const x0 = -((perRow - 1) * dx) / 2, y0 = -((rows - 1) * dy) / 2;
+    const x0 = -((perRow - 1) * cellW) / 2, y0 = -((rows - 1) * cellH) / 2;
     members.forEach((n, i) => {
       const row = Math.floor(i / perRow);
       let col = i % perRow;
       if (row % 2 === 1) col = perRow - 1 - col; // 蛇形：奇数行反向，连线连续
-      const x = x0 + col * dx, y = y0 + row * dy;
-      n.fx = n.x = x; n.fy = n.y = y; n.pinned = true;
+      const cx = x0 + col * cellW, cy = y0 + row * cellH; // 格子中心
+      // 卡片以左上角定位 → 由中心换算；圆以中心定位
+      if (n.isModal) { n.x = n.fx = cx - (n.mw || 0) / 2; n.y = n.fy = cy - (n.mh || 0) / 2; }
+      else { n.x = n.fx = cx; n.y = n.fy = cy; }
+      n.pinned = true;
       if (this.ctx && this.ctx.modals && this.ctx.modals.reflectPin) this.ctx.modals.reflectPin(n); // pin 按钮 + 光晕同步
     });
     this._renderMainpath();
@@ -448,6 +457,17 @@ export class ForceGraph {
     this.reheat(0.2);
     this.fitView(0.8, members);
     return true;
+  }
+
+  // 取消所有固定（pin）：圆节点释放 fx/fy；卡片保留位置但解除 pin（可再被力学推动）
+  unpinAll() {
+    for (const n of this.nodes) {
+      if (!n.pinned) continue;
+      n.pinned = false;
+      if (!n.isModal) { n.fx = null; n.fy = null; }
+      if (this.ctx && this.ctx.modals && this.ctx.modals.reflectPin) this.ctx.modals.reflectPin(n);
+    }
+    this.reheat(0.4);
   }
 
   fitView(fraction = 0.8, subset = null) {
@@ -462,9 +482,20 @@ export class ForceGraph {
     }
     const bw = Math.max(1, x1 - x0), bh = Math.max(1, y1 - y0);
     const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-    const k = clamp(fraction * Math.min(this.W / bw, this.H / bh), MIN_K, MAX_K);
-    const t = this._constrain(d3.zoomIdentity.translate(this.W / 2 - cx * k, this.H / 2 - cy * k).scale(k));
+    // 居中到「可见区」（扣除侧栏覆盖的左侧）：用可见宽度算缩放，中心右移到可见区中点
+    const inset = this._leftInset();
+    const availW = Math.max(1, this.W - inset);
+    const k = clamp(fraction * Math.min(availW / bw, this.H / bh), MIN_K, MAX_K);
+    const t = this._constrain(d3.zoomIdentity.translate(inset + availW / 2 - cx * k, this.H / 2 - cy * k).scale(k));
     d3.select(this.stageEl).transition().duration(460).ease(d3.easeCubicInOut).call(this.zoom.transform, t);
+  }
+
+  // 侧栏（固定覆盖在舞台左侧）当前遮挡的左侧宽度；收起时移出视口 → 0
+  _leftInset() {
+    const sb = document.getElementById('sidebar');
+    if (!sb || !this.stageEl) return 0;
+    const inset = sb.getBoundingClientRect().right - this.stageEl.getBoundingClientRect().left;
+    return Math.max(0, Math.min(inset, this.W * 0.6));
   }
 
   // 即时设置完整视角变换（用于 deep-link 恢复，无动画）
@@ -491,8 +522,10 @@ export class ForceGraph {
     const push = (id, chip) => { if (!this.model.nodeById.has(id)) return; (perNode.get(id) || perNode.set(id, []).get(id)).push(chip); };
     for (const tag of this._tags || []) {
       if (tag.visible === false) continue;
-      if (tag.kind === 'ordered') tag.members.forEach((mid, i) => push(mid, { type: 'step', label: `Step ${i + 1}`, color: tag.color }));
-      else tag.members.forEach((mid) => push(mid, { type: 'mark', icon: tag.icon, color: tag.color, label: tag.label }));
+      const mk = (tag.marker || '').trim();
+      // 仅「整卡片(node)」成员渲染为节点贴片；span/pos 成员在卡片内单独渲染（见 span/pos 层）
+      if (tag.kind === 'ordered') tag.members.forEach((m, i) => { if (memberType(m) !== 'node') return; push(memberNode(m), { type: 'step', text: (mk ? `${mk} ` : '') + (i + 1), color: tag.color, title: tag.label, tagId: tag.id, kind: 'ordered' }); });
+      else tag.members.forEach((m) => { if (memberType(m) !== 'node') return; push(memberNode(m), { type: 'mark', icon: tag.icon, marker: mk, color: tag.color, title: tag.label, tagId: tag.id, kind: 'unordered' }); });
     }
     this.tagsEl.textContent = '';
     this._tagChipEls = new Map();
@@ -503,15 +536,86 @@ export class ForceGraph {
         const pill = document.createElement('div');
         pill.className = c.type === 'step' ? 'tag-pill tag-step' : 'tag-pill tag-mark';
         pill.style.setProperty('--tc', c.color || '#ff9e64');
-        if (c.type === 'step') pill.textContent = c.label;
-        else pill.innerHTML = ICON[c.icon] || ICON.tag;
-        if (c.label) pill.title = c.label;
+        if (c.type === 'step') pill.textContent = c.text;
+        else pill.innerHTML = (ICON[c.icon] || ICON.tag) + (c.marker ? `<span class="tag-mark-txt">${c.marker.replace(/[&<>]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]))}</span>` : '');
+        if (c.title) pill.title = c.title;
+        this._attachChipGesture(pill, { tagId: c.tagId, kind: c.kind, nodeId });
         wrap.appendChild(pill);
       }
       this.tagsEl.appendChild(wrap);
       this._tagChipEls.set(nodeId, wrap);
     }
     this._positionTags();
+  }
+
+  // 长按贴片 → 周围弹出按钮（全览 / 有序的 左·右 聚焦），拖到按钮上松手执行
+  _attachChipGesture(pill, info) {
+    pill.style.touchAction = 'none';
+    pill.addEventListener('pointerdown', (ev) => {
+      ev.stopPropagation();
+      ev.preventDefault();
+      try { pill.setPointerCapture(ev.pointerId); } catch { /* ignore */ } // 捕获指针：拖动期间舞台不被平移
+      const sx = ev.clientX, sy = ev.clientY;
+      let fired = false;
+      const timer = setTimeout(() => { fired = true; this._openChipMenu(pill, info); }, 320);
+      const onMove = (e) => {
+        if (!fired) { if (Math.hypot(e.clientX - sx, e.clientY - sy) > 8) { clearTimeout(timer); cleanup(); } return; }
+        e.preventDefault();
+        this._chipMenuHover(e.clientX, e.clientY);
+      };
+      const onUp = (e) => { clearTimeout(timer); if (fired) this._chipMenuRelease(e.clientX, e.clientY, info); cleanup(); };
+      const cleanup = () => { try { pill.releasePointerCapture(ev.pointerId); } catch { /* ignore */ } window.removeEventListener('pointermove', onMove, true); window.removeEventListener('pointerup', onUp, true); };
+      window.addEventListener('pointermove', onMove, true);
+      window.addEventListener('pointerup', onUp, true);
+    });
+  }
+  _openChipMenu(pill, info) {
+    this._closeChipMenu();
+    const tag = (this._tags || []).find((t) => t.id === info.tagId);
+    const r = pill.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const menu = document.createElement('div');
+    menu.className = 'chip-gmenu';
+    menu.style.setProperty('--tc', tag?.color || '#ff9e64'); // 按钮用标签色，样式与贴片一致
+    const mk = (html, key, dx, dy, cls = '') => { const b = document.createElement('div'); b.className = `cg-btn${cls ? ` ${cls}` : ''}`; b.dataset.key = key; b.innerHTML = html; b.style.left = `${cx + dx}px`; b.style.top = `${cy + dy}px`; menu.appendChild(b); };
+    mk(ICON.route, 'overview', 0, -28, 'cg-icon'); // 全览：用 route 图标
+    if (info.kind === 'ordered') { mk('◀', 'prev', -29, 0); mk('▶', 'next', 29, 0); }
+    document.body.appendChild(menu);
+    this._chipMenu = { el: menu, info };
+  }
+  _chipMenuHover(x, y) {
+    if (!this._chipMenu) return;
+    for (const b of this._chipMenu.el.children) {
+      const r = b.getBoundingClientRect();
+      b.classList.toggle('hot', x >= r.left && x <= r.right && y >= r.top && y <= r.bottom);
+    }
+  }
+  _chipMenuRelease(x, y, info) {
+    if (!this._chipMenu) return;
+    let key = null;
+    for (const b of this._chipMenu.el.children) {
+      const r = b.getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) key = b.dataset.key;
+    }
+    this._closeChipMenu();
+    if (key) this._runChipAction(key, info);
+  }
+  _closeChipMenu() { if (this._chipMenu) { this._chipMenu.el.remove(); this._chipMenu = null; } }
+  _runChipAction(key, info) {
+    const tag = (this._tags || []).find((t) => t.id === info.tagId);
+    if (!tag || !(tag.members || []).length) return;
+    if (key === 'overview') { this.arrangeTag(info.tagId); return; }
+    // 左/右：聚焦前/后一个成员（首尾循环）；span/pos 贴片用 memberKey 精确定位
+    const m = tag.members, n = m.length;
+    const i = info.memberKey ? m.findIndex((x) => memberKey(x) === info.memberKey) : m.findIndex((x) => memberType(x) === 'node' && memberNode(x) === info.nodeId);
+    if (i < 0) return;
+    const target = m[key === 'prev' ? (i - 1 + n) % n : (i + 1) % n];
+    if (this.ctx && this.ctx.jumpToMember) { this.ctx.jumpToMember(target); return; } // span/pos 滚动定位；node 聚焦
+    const tid = memberNode(target);
+    if (this.model.nodeById.get(tid)?._userHidden && this.ctx?.unhideNode) this.ctx.unhideNode(tid);
+    this.focusNode(tid, this.getZoomScale());
+    const e = this.nodeEls.get(tid);
+    if (e) { e.classList.add('search-hit'); setTimeout(() => e.classList.remove('search-hit'), 1500); }
   }
 
   _positionTags() {
@@ -538,7 +642,8 @@ export class ForceGraph {
   _mainpathSegments() {
     const segs = [];
     for (const tag of this._orderedVisibleTags()) {
-      const present = tag.members.filter((id) => { const n = this.model.nodeById.get(id); return n && this.isNodePresent(n); });
+      // 连接相邻的「整卡片」成员节点（span/pos 暂不参与连线）
+      const present = tag.members.filter((m) => memberType(m) === 'node').map(memberNode).filter((id) => { const n = this.model.nodeById.get(id); return n && this.isNodePresent(n); });
       for (let i = 0; i < present.length - 1; i += 1) segs.push({ from: present[i], to: present[i + 1], color: tag.color || '#ff9e64', key: `${tag.id}:${present[i]}>${present[i + 1]}` });
     }
     return segs;
@@ -576,24 +681,26 @@ export class ForceGraph {
       const r = (node.radius || 0) + pad;
       return { x: cx + ux * r, y: cy + uy * r };
     };
+    // 缩放不变：线宽/箭头/端点间隙都按 1/k 反向缩放，保持屏幕恒定尺寸；箭头加大
+    const k = this.transform.k || 1;
     const ends = (d) => {
       const a = self.model.nodeById.get(d.from); const b = self.model.nodeById.get(d.to);
       if (!a || !b) return null;
       const acx = a.isModal ? a.x + (a.mw || 0) / 2 : a.x; const acy = a.isModal ? a.y + (a.mh || 0) / 2 : a.y;
       const bcx = b.isModal ? b.x + (b.mw || 0) / 2 : b.x; const bcy = b.isModal ? b.y + (b.mh || 0) / 2 : b.y;
       const dx = bcx - acx, dy = bcy - acy; const len = Math.hypot(dx, dy) || 1; const ux = dx / len, uy = dy / len;
-      const p1 = anchorOn(a, ux, uy, 2);
-      const p2 = anchorOn(b, -ux, -uy, 9);
+      const p1 = anchorOn(a, ux, uy, 3 / k);
+      const p2 = anchorOn(b, -ux, -uy, 4 / k);
       return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, ux, uy };
     };
     const path = (d) => { const e = ends(d); if (!e) return ''; return `M${e.x1},${e.y1} L${e.x2},${e.y2}`; };
-    this.gMainpath.selectAll('path.mp-outer').attr('d', path);
-    this.gMainpath.selectAll('path.mp-inner').attr('d', path);
+    this.gMainpath.selectAll('path.mp-outer').attr('d', path).attr('stroke-width', (4 / k).toFixed(2));
+    this.gMainpath.selectAll('path.mp-inner').attr('d', path).attr('stroke-width', (1.5 / k).toFixed(2));
     this.gMainpath.selectAll('polygon.mp-arrow').attr('points', (d) => {
       const e = ends(d); if (!e) return '';
-      const s = 9; const a = Math.atan2(e.uy, e.ux);
+      const s = 15 / k; const a = Math.atan2(e.uy, e.ux); // 屏幕约 15px 的箭头
       const tx = e.x2, ty = e.y2;
-      return `${tx},${ty} ${tx - Math.cos(a - 0.42) * s},${ty - Math.sin(a - 0.42) * s} ${tx - Math.cos(a + 0.42) * s},${ty - Math.sin(a + 0.42) * s}`;
+      return `${tx},${ty} ${tx - Math.cos(a - 0.45) * s},${ty - Math.sin(a - 0.45) * s} ${tx - Math.cos(a + 0.45) * s},${ty - Math.sin(a + 0.45) * s}`;
     });
   }
 
@@ -973,7 +1080,10 @@ export class ForceGraph {
     // PR4：卡片以左上角定位，聚焦时取其中心
     const px = n.isModal ? n.x + (n.mw || 0) / 2 : n.x;
     const py = n.isModal ? n.y + (n.mh || 0) / 2 : n.y;
-    const t = d3.zoomIdentity.translate(this.W / 2 - px * scale, this.H / 2 - py * scale).scale(scale);
+    // 居中到可见区中点（扣除侧栏遮挡）
+    const inset = this._leftInset();
+    const cx = inset + (this.W - inset) / 2;
+    const t = this._constrain(d3.zoomIdentity.translate(cx - px * scale, this.H / 2 - py * scale).scale(scale));
     d3.select(this.stageEl).transition().duration(550).call(this.zoom.transform, t);
   }
 

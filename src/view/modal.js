@@ -2,7 +2,8 @@
 // view/modal.js  —  节点 ↔ modal
 // =============================================================================
 import { ICON } from '../ui/icons.js';
-import { isLeafNode, nodeTag, paperName, typeColor } from '../data/schema.js';
+import { isLeafNode, nodeTag, paperName, typeColor, memberKey } from '../data/schema.js';
+import { toast } from '../ui/feedback.js';
 
 const DEFAULT_W = 380;
 const A4 = 1.414;
@@ -13,13 +14,18 @@ export const MODAL_W = DEFAULT_W;
 export const MAX_H = Math.round(DEFAULT_W * A4);
 
 // 顶部按钮配置：内容操作成组在前，破坏性「隐藏」与「切回节点」分到右侧（N3）
+// 标题行：仅固定 + 关闭为节点
 const TOP_BUTTONS = [
-  { act: 'open-used', title: '展开使用本结论者', icon: 'arrowUsed' },
-  { act: 'open-deps', title: '展开本结论的依赖', icon: 'arrowDeps' },
-  { act: 'details', title: '详情', icon: 'expand' },
-  { act: 'pin', title: '锁定位置', icon: 'pin' },
-  { act: 'hide', title: '隐藏此节点', icon: 'eyeOff', tone: 'danger', sep: true },
-  { act: 'to-node', title: '切回节点', icon: 'circle' },
+  { act: 'pin', title: '固定', icon: 'pin' },
+  { act: 'to-node', title: '关闭为节点', icon: 'circle', sep: true },
+];
+// 工具栏行（m-sub 上方）：复制 / 引用 / 被引（带下拉，放大）+ 详情页 / 隐藏
+const TOOL_BUTTONS = [
+  { act: 'copy', title: '复制', icon: 'copy', caret: true },
+  { act: 'show-deps', title: '引用', icon: 'arrowDeps', caret: true },
+  { act: 'show-used', title: '被引', icon: 'arrowUsed', caret: true },
+  { act: 'details', title: '详情页', icon: 'expand', sep: true },
+  { act: 'hide', title: '隐藏', icon: 'eyeOff', tone: 'danger' },
 ];
 
 // -----------------------------------------------------------------------------
@@ -31,15 +37,16 @@ export function buildModalShell(opts) {
   el.className = `modal type-${opts.type || ''}${opts.preview ? ' preview' : ''}`;
   el.style.width = `${CUR_W}px`;
   if (opts.color) el.style.setProperty('--modal-color', opts.color);
-  const btns = (opts.buttons || []).map((b) => `<button class="m-btn${b.tone === 'danger' ? ' m-btn-danger' : ''}${b.sep ? ' m-sep' : ''}" data-act="${b.act}" title="${b.title}">${ICON[b.icon] || ''}</button>`).join('');
+  const mkBtns = (arr) => (arr || []).map((b) => `<button class="m-btn${b.tone === 'danger' ? ' m-btn-danger' : ''}${b.sep ? ' m-sep' : ''}${b.caret ? ' m-btn-drop' : ''}" data-act="${b.act}" title="${b.title}">${ICON[b.icon] || ''}</button>`).join('');
+  const hasSub = opts.subHTML || (opts.subButtons && opts.subButtons.length);
   el.innerHTML = `
     <div class="modal-top">
       <span class="m-title">${opts.titleHTML || ''}</span>
-      ${btns}
+      ${mkBtns(opts.buttons)}
     </div>
-    ${opts.subHTML ? `<div class="m-sub">${opts.subHTML}</div>` : ''}
+    ${hasSub ? `<div class="m-sub"><span class="m-sub-left">${opts.subHTML || ''}</span>${opts.subButtons && opts.subButtons.length ? `<span class="m-sub-right">${mkBtns(opts.subButtons)}</span>` : ''}</div>` : ''}
     <div class="modal-body${opts.collapsed ? ' collapsed' : ''}">${opts.bodyHTML || ''}</div>
-    ${opts.foot ? `<div class="modal-foot">${ICON.chevronDown}<span>展开${escapeHtml(opts.footLabel || '详情')}</span></div>` : ''}`;
+    ${opts.foot ? `<div class="modal-foot">${ICON.chevronDown}<span>展开${escapeHtml(opts.footLabel || '细节')}</span></div>` : ''}`;
   return el;
 }
 
@@ -102,7 +109,7 @@ export class ModalManager {
     const rec = this.open.get(node.id);
     if (!rec) return;
     const pb = rec.el.querySelector('[data-act="pin"]');
-    if (pb) { pb.classList.toggle('is-active', !!node.pinned); pb.title = node.pinned ? '已锁定位置（点击解锁）' : '锁定位置'; }
+    if (pb) { pb.classList.toggle('is-active', !!node.pinned); pb.title = node.pinned ? '已固定' : '固定'; }
   }
   // pin 光晕：节点圆 + 卡片都套对应颜色光晕（PR1）
   _applyPinClass(node) {
@@ -291,7 +298,8 @@ export class ModalManager {
       titleHTML: titleHTML(node),
       subHTML: paper ? `<span class="m-paper">${ICON.fileText || ''}${escapeHtml(paper)}</span>` : '',
       buttons: TOP_BUTTONS,
-      bodyHTML: `<div class="statement">${stmtHtml}</div>${proofHtml ? `<div class="proof-wrap"><div class="proof-label">${escapeHtml(proofLabel)}.</div>${proofHtml}</div>` : ''}`,
+      subButtons: TOOL_BUTTONS,
+      bodyHTML: `<div class="statement">${stmtHtml}</div>${proofHtml ? `<div class="proof-wrap">${proofHtml}</div>` : ''}`,
       foot: !!proofHtml,
       footLabel: proofLabel,
       collapsed: true, // 默认折叠证明（N1）
@@ -303,6 +311,11 @@ export class ModalManager {
     const mnfNum = String(node.number ?? nodeTag(ctx.model, node));
     face.innerHTML = `<div class="mnf-type">${escapeHtml(node.typeLabel || node.type || '')}</div><div class="mnf-num" style="--num-len:${Math.max(1, mnfNum.length)}">${escapeHtml(mnfNum)}</div>`;
     el.appendChild(face);
+    // 打标模式 hover 提示遮罩（仅视觉，pointer-events:none）
+    const editOverlay = document.createElement('div');
+    editOverlay.className = 'm-edit-overlay';
+    editOverlay.innerHTML = '<div class="meo-text"><div>单击操作整体卡片标签</div><div>双击操作具体位置标签</div></div>';
+    el.appendChild(editOverlay);
     const body = el.querySelector('.modal-body');
     this.overlayEl.appendChild(el);
 
@@ -312,6 +325,7 @@ export class ModalManager {
       rec._naturalH = node.mh;
       if (this.ctx.graph._lod) this.applyLod(this.ctx.graph._lod); // 远景时新开框直接成正方形
       this._syncPositions();
+      this.renderCardMarks(rec); // span/pos 标记
     });
 
     // proof 折叠条：向下三角=可展开，向上三角=可收起（N1）
@@ -331,6 +345,7 @@ export class ModalManager {
         rec._naturalH = node.mh;
         this._syncPositions();
         this.ctx.graph.reheat(0.25);
+        this.renderCardMarks(rec); // 折叠/展开后重算标记位置
       });
     };
     rec.expandProof = () => rec.setProofCollapsed(false);
@@ -350,9 +365,17 @@ export class ModalManager {
 
     el.querySelector('[data-act="to-node"]').addEventListener('click', () => this._collapseWithUndo(node, rec));
     el.querySelector('[data-act="details"]').addEventListener('click', () => this.ctx.openDetails(node.id));
-    el.querySelector('[data-act="open-used"]').addEventListener('click', () => this._openRelated(node, 'used'));
-    el.querySelector('[data-act="open-deps"]').addEventListener('click', () => this._openRelated(node, 'deps'));
     el.querySelector('[data-act="hide"]').addEventListener('click', () => this.ctx.hideNode(node.id));
+    // 复制：下拉「复制所有内容 / 复制标题」
+    el.querySelector('[data-act="copy"]').addEventListener('click', (e) => {
+      this._openCardMenu(e.currentTarget, [
+        { label: '复制所有内容', onClick: () => this._copyNode(node, 'all') },
+        { label: '复制标题', onClick: () => this._copyNode(node, 'title') },
+      ]);
+    });
+    // 引用 / 被引：下拉列出，点击聚焦
+    el.querySelector('[data-act="show-deps"]').addEventListener('click', (e) => this._openRelatedMenu(e.currentTarget, node, 'deps'));
+    el.querySelector('[data-act="show-used"]').addEventListener('click', (e) => this._openRelatedMenu(e.currentTarget, node, 'used'));
 
     if (foot) foot.addEventListener('click', () => rec.setProofCollapsed(!rec.collapsed));
 
@@ -408,6 +431,148 @@ export class ModalManager {
       this.ctx.pushUndo({ undo: () => batch.forEach((id) => this.closeModal(id)) });
     }
     this.ctx.refLayer.refreshRelations();
+  }
+
+  // 卡片内通用下拉菜单（复制 / 引用 / 被引）
+  _openCardMenu(anchorEl, items) {
+    this._closeCardMenu();
+    const menu = document.createElement('div');
+    menu.className = 'm-menu';
+    for (const it of items) {
+      const mi = document.createElement('div');
+      mi.className = 'm-menu-item' + (it.disabled ? ' dim' : '') + (it.head ? ' head' : '');
+      const main = document.createElement('button');
+      main.className = 'mm-main';
+      if (it.html) main.innerHTML = it.html; else main.textContent = it.label;
+      if (it.disabled) main.disabled = true;
+      else main.addEventListener('click', () => { this._closeCardMenu(); it.onClick && it.onClick(); });
+      mi.appendChild(main);
+      if (it.action) {
+        const ab = document.createElement('button');
+        ab.className = 'mm-action'; ab.title = it.action.title || '展开细节';
+        ab.innerHTML = ICON[it.action.icon] || ICON.expand;
+        ab.addEventListener('click', (e) => { e.stopPropagation(); this._closeCardMenu(); it.action.onClick && it.action.onClick(); });
+        mi.appendChild(ab);
+      }
+      menu.appendChild(mi);
+    }
+    document.body.appendChild(menu);
+    const r = anchorEl.getBoundingClientRect();
+    menu.style.position = 'fixed';
+    menu.style.top = `${r.bottom + 4}px`;
+    menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+    this._cardMenu = menu;
+    const close = (ev) => { if (!menu.contains(ev.target)) this._closeCardMenu(); };
+    setTimeout(() => { document.addEventListener('pointerdown', close, true); this._cardMenuClose = close; }, 0);
+  }
+  _closeCardMenu() {
+    if (this._cardMenu) { this._cardMenu.remove(); this._cardMenu = null; }
+    if (this._cardMenuClose) { document.removeEventListener('pointerdown', this._cardMenuClose, true); this._cardMenuClose = null; }
+  }
+  _copyNode(node, mode) {
+    const text = mode === 'title'
+      ? (node.title || node.id || '')
+      : [node.title, node.statementBody, node.proofBody].filter(Boolean).join('\n\n');
+    try { navigator.clipboard.writeText(text); toast(mode === 'title' ? '已复制标题' : '已复制内容'); } catch { toast('复制失败', { type: 'error' }); }
+  }
+  _openRelatedMenu(anchorEl, node, dir) {
+    const word = dir === 'used' ? '被引' : '引用';
+    const set = dir === 'used' ? this.ctx.model.usedBy.get(node.id) : this.ctx.model.deps.get(node.id);
+    const list = [...(set || [])].map((id) => this.ctx.model.nodeById.get(id)).filter(Boolean);
+    const items = [];
+    // 第一条：展开全部细节
+    items.push({ head: true, html: `<span class="mm-all">展开全部${word}细节</span>`, onClick: () => this._expandAllRelated(node, dir), disabled: !list.length });
+    if (!list.length) items.push({ label: `（无${word}）`, disabled: true });
+    for (const t of list) {
+      items.push({
+        // 标号按各自 type 颜色；标题用默认文字色（黑/白）
+        html: `<span class="mm-num" style="color:${typeColor(this.ctx.model, t.type)}">${escapeHtml(nodeTag(this.ctx.model, t))}</span><span class="mm-label">${escapeHtml(t.title || t.id)}</span>`,
+        onClick: () => this._focusNode(t),                         // 点击条目：聚焦
+        action: { icon: 'expand', title: '展开细节', onClick: () => this._openExpanded(t) }, // 右侧：展开该项细节
+      });
+    }
+    this._openCardMenu(anchorEl, items);
+  }
+  _focusNode(t) {
+    if (t._userHidden && this.ctx.unhideNode) this.ctx.unhideNode(t.id);
+    this.ctx.graph.focusNode(t.id, this.ctx.graph.getZoomScale());
+    const e = this.ctx.graph.nodeEls.get(t.id);
+    if (e) { e.classList.add('search-hit'); setTimeout(() => e.classList.remove('search-hit'), 1500); }
+  }
+  _openExpanded(t) {
+    this.openFromNode(t);
+    const r = this.open.get(t.id);
+    if (r && r.expandProof) r.expandProof();
+  }
+  _expandAllRelated(node, dir) {
+    this._openRelated(node, dir); // 径向展开为卡片
+    const set = dir === 'used' ? this.ctx.model.usedBy.get(node.id) : this.ctx.model.deps.get(node.id);
+    for (const id of (set || [])) { const r = this.open.get(id); if (r && r.expandProof) r.expandProof(); }
+  }
+
+  // ===== 卡片内 span（虚线+贴片）/ pos（贴片）标记渲染 =====
+  refreshAllMarks() { for (const rec of this.open.values()) this.renderCardMarks(rec); }
+  renderCardMarks(rec) {
+    const body = rec.el.querySelector('.modal-body'); if (!body || !rec.node) return;
+    body.querySelectorAll('.m-mark-underline, .m-mark-chip').forEach((e) => e.remove());
+    const tags = this.ctx.graph.getTags ? this.ctx.graph.getTags() : [];
+    const bodyRect = body.getBoundingClientRect();
+    for (const tag of tags) {
+      if (tag.visible === false) continue;
+      tag.members.forEach((m, idx) => {
+        if (!m || typeof m === 'string' || m.node !== rec.node.id) return;
+        const label = tag.kind === 'ordered' ? `${tag.marker ? `${tag.marker} ` : ''}${idx + 1}` : '';
+        if (m.type === 'span') this._renderSpanMark(body, bodyRect, tag, m, label);
+        else if (m.type === 'pos') this._renderPosMark(body, tag, m, label);
+      });
+    }
+  }
+  _markChip(tag, label, member) {
+    const pill = document.createElement('div');
+    pill.className = `m-mark-chip tag-pill ${tag.kind === 'ordered' ? 'tag-step' : 'tag-mark'}`;
+    pill.style.setProperty('--tc', tag.color || '#ff9e64');
+    if (tag.kind === 'ordered') pill.textContent = label;
+    else pill.innerHTML = (ICON[tag.icon] || ICON.tag) + (tag.marker ? `<span class="tag-mark-txt">${escapeHtml(tag.marker)}</span>` : '');
+    pill.addEventListener('click', (e) => { e.stopPropagation(); this.ctx.jumpToMember && this.ctx.jumpToMember(member); });
+    if (this.ctx.graph._attachChipGesture) this.ctx.graph._attachChipGesture(pill, { tagId: tag.id, kind: tag.kind, nodeId: member.node, memberKey: memberKey(member) });
+    return pill;
+  }
+  _renderSpanMark(body, bodyRect, tag, m, label) {
+    const range = this._rangeFromMember(body, m); if (!range) return;
+    const rects = range.getClientRects(); let last = null;
+    for (const r of rects) {
+      if (r.width < 1) continue;
+      const u = document.createElement('div'); u.className = 'm-mark-underline'; u.style.setProperty('--tc', tag.color || '#ff9e64');
+      u.style.left = `${r.left - bodyRect.left + body.scrollLeft}px`;
+      u.style.top = `${r.bottom - bodyRect.top + body.scrollTop - 1}px`;
+      u.style.width = `${r.width}px`;
+      body.appendChild(u); last = r;
+    }
+    if (!last) return;
+    const chip = this._markChip(tag, label, m);
+    chip.style.left = `${last.right - bodyRect.left + body.scrollLeft + 3}px`;
+    chip.style.top = `${last.top - bodyRect.top + body.scrollTop - 3}px`;
+    body.appendChild(chip);
+  }
+  _renderPosMark(body, tag, m, label) {
+    const chip = this._markChip(tag, label, m); chip.classList.add('m-mark-pos');
+    chip.style.left = `${(m.x || 0) * body.clientWidth}px`;
+    chip.style.top = `${(m.y || 0) * body.scrollHeight}px`;
+    body.appendChild(chip);
+  }
+  _rangeFromMember(body, m) {
+    const container = m.section === 'proof' ? body.querySelector('.proof-wrap') : body.querySelector('.statement');
+    if (!container) return null;
+    const range = document.createRange();
+    let acc = 0, started = false, node;
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    while ((node = walker.nextNode())) {
+      const len = node.textContent.length;
+      if (!started && acc + len >= m.start) { range.setStart(node, Math.max(0, m.start - acc)); started = true; }
+      if (started && acc + len >= m.end) { range.setEnd(node, Math.max(0, m.end - acc)); return range; }
+      acc += len;
+    }
+    return started ? range : null;
   }
 
   _syncPositions() {
@@ -496,5 +661,5 @@ export class ModalManager {
 }
 
 function escapeHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-function proofLabelOf(ctx) { return ctx.model.meta.proofLabel || '详情'; }
+function proofLabelOf(ctx) { return ctx.model.meta.proofLabel || '细节'; }
 function cssEscape(s) { return String(s).replace(/"/g, '\\"'); }

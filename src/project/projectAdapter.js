@@ -184,16 +184,19 @@ export function compileProject(project) {
 
   // 标签合并：config.tags（用户编辑，成员已是唯一化后的 id）为准；
   // 各文档图级 graph.tags（导入/prompt 生成，成员为原始 id）按文档重映射后作为 seed 追加。
+  const memNode = (m) => (typeof m === 'string' ? m : m && m.node);
+  const keepMember = (m) => nodeById.has(memNode(m));
   const tagById = new Map();
   for (const t of normalizeTags(normalized.config.tags)) {
-    tagById.set(t.id, { ...t, members: t.members.filter((m) => nodeById.has(m)) });
+    // config.tags 成员已是唯一化后的 id，仅过滤不存在的
+    tagById.set(t.id, { ...t, members: t.members.filter(keepMember) });
   }
   for (const doc of docs) {
     const map = docNodeIdMap.get(doc.id) || new Map();
+    const remap = (m) => (typeof m === 'string' ? (map.get(m) || m) : { ...m, node: map.get(m.node) || m.node });
     for (const t of normalizeTags(doc.graph?.tags)) {
       if (tagById.has(t.id)) continue; // 已被 config 覆盖
-      const members = t.members.map((m) => map.get(m) || m).filter((m) => nodeById.has(m));
-      tagById.set(t.id, { ...t, members });
+      tagById.set(t.id, { ...t, members: t.members.map(remap).filter(keepMember) });
     }
   }
   const tags = [...tagById.values()];

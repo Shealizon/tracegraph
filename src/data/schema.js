@@ -71,20 +71,38 @@ export const DEFAULT_PROFILE = PAPER_PROFILE;
 // 标签（Tag）：有序（主线/章节/步骤）与无序（喜爱/已看过…）共用同一结构。
 // 详见 docs/TAGS-DESIGN.md。
 // =============================================================================
-export const TAG_COLORS = ['#ff9e64', '#c39bff', '#7dd3a8', '#5bb1c9', '#e3879e', '#e0c068'];
+// 标签专用调色板：与节点类型配色（橙/淡紫/薄荷/青/粉/金）刻意区分，用更饱和的另一套
+export const TAG_COLORS = ['#4f7cff', '#ff4f87', '#1ec8b6', '#a64bf4', '#f5a300', '#ef4d4d'];
 export const MAINPATH_TAG_ID = 'mainpath';
+
+// 成员可为「nodeId 字符串（整卡片）」或对象 { node, type:'span'|'pos', … }
+export function memberNode(m) { return typeof m === 'string' ? m : (m && m.node) || null; }
+export function memberType(m) { return typeof m === 'string' ? 'node' : (m && m.type) || 'node'; }
+export function memberKey(m) {
+  if (typeof m === 'string') return m;
+  if (!m || !m.node) return '';
+  if (m.type === 'span') return `${m.node}@span:${m.section || ''}:${m.start}-${m.end}`;
+  if (m.type === 'pos') return `${m.node}@pos:${Number(m.x).toFixed(3)},${Number(m.y).toFixed(3)}`;
+  return m.node;
+}
 
 export function normalizeTag(t, i = 0) {
   const kind = t?.kind === 'ordered' ? 'ordered' : 'unordered';
-  const members = Array.isArray(t?.members) ? t.members.filter((m) => typeof m === 'string') : [];
+  const raw = Array.isArray(t?.members) ? t.members.filter((m) => typeof m === 'string' || (m && typeof m === 'object' && m.node)) : [];
+  // 按 memberKey 去重，保序
+  const seenM = new Set();
+  const members = [];
+  for (const m of raw) { const k = memberKey(m); if (!k || seenM.has(k)) continue; seenM.add(k); members.push(m); }
   return {
     id: t?.id || (kind === 'ordered' ? MAINPATH_TAG_ID : `tag-${i + 1}`),
-    label: t?.label || (kind === 'ordered' ? '主线' : '标签'),
+    label: typeof t?.label === 'string' ? t.label : '', // 允许空标题（可重名，靠 id 区分）
     kind,
     icon: t?.icon || (kind === 'ordered' ? 'route' : 'tag'),
     color: t?.color || TAG_COLORS[i % TAG_COLORS.length],
     visible: t?.visible !== false,
-    members: [...new Set(members)], // 去重，保序
+    // 图中贴片标记文字：有序为序号前缀（如 Step），无序为图标后缀（如 Section）；默认空
+    marker: typeof t?.marker === 'string' ? t.marker : '',
+    members, // 已按 memberKey 去重保序（成员可为字符串或 span/pos 对象）
   };
 }
 

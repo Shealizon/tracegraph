@@ -16,6 +16,11 @@ import { initProjectStore, saveProject, setCurrentProjectId } from './project/st
 import { compileProject } from './project/projectAdapter.js';
 import { downloadProject, goLeading, importGenericTex, importStructuredJson, openProjectConfigDialog } from './project/projectConfig.js';
 import { toast } from './ui/feedback.js';
+import { initTooltips } from './ui/tooltip.js';
+import { initCardMenus } from './ui/cardMenus.js';
+import { memberNode, memberType } from './data/schema.js';
+
+initTooltips();
 
 init().catch((err) => {
   console.error(err);
@@ -212,13 +217,34 @@ function startMain(db, project) {
     ctx.rebuildTagPanel && ctx.rebuildTagPanel();
     ctx.refreshMainpathButton && ctx.refreshMainpathButton();
     ctx.applyTagFilter && ctx.applyTagFilter();
+    ctx.updateTagHint && ctx.updateTagHint();
+    ctx.modals && ctx.modals.refreshAllMarks && ctx.modals.refreshAllMarks();
+  };
+  // 跳转到成员：node 聚焦；span/pos 打开卡片并滚动到该处
+  ctx.jumpToMember = (member) => {
+    const nodeId = memberNode(member); const n = ctx.model.nodeById.get(nodeId); if (!n) return;
+    if (n._userHidden) ctx.unhideNode(nodeId);
+    if (!ctx.modals.isOpen(nodeId)) ctx.modals.openFromNode(n);
+    ctx.graph.focusNode(nodeId, ctx.graph.getZoomScale());
+    if (!member || typeof member === 'string' || memberType(member) === 'node') return;
+    setTimeout(() => {
+      const rec = ctx.modals.open.get(nodeId); if (!rec) return;
+      const body = rec.el.querySelector('.modal-body'); if (!body) return;
+      if (member.type === 'span') {
+        if (member.section === 'proof' && rec.setProofCollapsed) rec.setProofCollapsed(false);
+        const range = ctx.modals._rangeFromMember(body, member);
+        if (range) { const r = range.getBoundingClientRect(); const br = body.getBoundingClientRect(); body.scrollTop += (r.top - br.top) - body.clientHeight / 2; }
+      } else if (member.type === 'pos') {
+        body.scrollTop = (member.y || 0) * body.scrollHeight - body.clientHeight / 2;
+      }
+    }, 140);
   };
   ctx.tagInsertAt = null; // 插入模式：在该下标处插入后续点击的节点（3->[a,b,c]->4）
   ctx.toggleNodeTag = (tagId, nodeId) => {
     const tags = (ctx.graph.getTags() || []).map((t) => ({ ...t, members: [...t.members] }));
     const t = tags.find((x) => x.id === tagId);
     if (!t) return;
-    const i = t.members.indexOf(nodeId);
+    const i = t.members.findIndex((x) => memberType(x) === 'node' && memberNode(x) === nodeId); // 仅匹配整卡片成员
     if (ctx.tagInsertAt != null && ctx.tagEditing === tagId) {
       // 插入模式：移到指定位置（已存在则先移除），下次插入位置 +1，实现连续插入
       let at = ctx.tagInsertAt;
@@ -228,11 +254,55 @@ function startMain(db, project) {
       ctx.tagInsertAt = at + 1;
     } else if (i >= 0) t.members.splice(i, 1);
     else t.members.push(nodeId); // 追加：点击顺序即步骤顺序
+    ctx.noteRecentTag(tagId);
     ctx.persistTags(tags);
   };
   ctx.activateNode = (n) => {
     if (ctx.tagEditing) { ctx.toggleNodeTag(ctx.tagEditing, n.id); return; }
     ctx.modals.openFromNode(n);
+  };
+  // 最近使用过的标签（LRU），供 simple-menu / 右键菜单的「常用三个标签」
+  ctx._recentTags = [];
+  ctx.noteRecentTag = (tagId) => { if (tagId) ctx._recentTags = [tagId, ...ctx._recentTags.filter((x) => x !== tagId)]; };
+  ctx.commonTags = (n = 3) => {
+    const tags = ctx.graph.getTags ? ctx.graph.getTags() : [];
+    const byId = new Map(tags.map((t) => [t.id, t]));
+    const out = [];
+    for (const id of ctx._recentTags) { const t = byId.get(id); if (t) out.push(t); if (out.length >= n) break; }
+    for (const t of tags) { if (out.length >= n) break; if (!out.includes(t)) out.push(t); }
+    return out.slice(0, n);
+  };
+  // 追加任意成员（node 字符串 / span / pos 对象）；可指定插入下标
+  ctx.addMember = (tagId, member, index = null) => {
+    if (!member) return;
+    ctx.persistTags(ctx.graph.getTags().map((t) => {
+      if (t.id !== tagId) return t;
+      const ms = [...t.members];
+      const at = index == null ? ms.length : Math.max(0, Math.min(index, ms.length));
+      ms.splice(at, 0, member);
+      return { ...t, members: ms };
+    }));
+    ctx.noteRecentTag(tagId);
+  };
+  // 选区 → span 成员（记录 section + 字符偏移 + 原文，供后续重建 Range）
+  ctx.spanFromSelection = (body, nodeId, sel) => {
+    const range = sel.getRangeAt(0);
+    const startEl = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+    const proof = startEl && startEl.closest('.proof-wrap');
+    const container = proof || (startEl && startEl.closest('.statement')) || body;
+    const off = (n, o) => { const r = document.createRange(); r.selectNodeContents(container); r.setEnd(n, o); return r.toString().length; };
+    const start = off(range.startContainer, range.startOffset);
+    const end = off(range.endContainer, range.endOffset);
+    const text = range.toString();
+    if (end <= start || !text.trim()) return null;
+    return { node: nodeId, type: 'span', section: proof ? 'proof' : 'statement', start, end, text };
+  };
+  // 点击点 → pos 成员（相对正文宽度/滚动高度的 0–1 坐标）
+  ctx.posFromPoint = (body, nodeId, cx, cy) => {
+    const r = body.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (cx - r.left) / Math.max(1, r.width)));
+    const y = Math.max(0, Math.min(1, (cy - r.top + body.scrollTop) / Math.max(1, body.scrollHeight)));
+    return { node: nodeId, type: 'pos', x: +x.toFixed(4), y: +y.toFixed(4) };
   };
   // 打标模式：氛围（页面变化）+ 底部提示 + Enter 完成
   ctx.setTagEditing = (tagId, insertAt = null) => {
@@ -243,22 +313,35 @@ function startMain(db, project) {
     ctx.tagInsertAt = tagId ? insertAt : null;
     const appEl = document.getElementById('app');
     appEl.classList.toggle('tag-editing-mode', !!tagId);
-    if (ctx._tagHint) { ctx._tagHint.remove(); ctx._tagHint = null; }
+    if (ctx._tagHint) { ctx._tagHint.remove(); ctx._tagHint = null; ctx._tagHintInfo = null; }
     if (tagId) {
       const t = (ctx.graph.getTags() || []).find((x) => x.id === tagId);
-      const mode = insertAt != null ? `第 ${insertAt} 项后插入` : '点节点 / 卡片增删';
+      appEl.style.setProperty('--tag-edit-color', t?.color || '#ff9e64'); // 氛围渐变用当前标签色
       const hint = document.createElement('div');
       hint.className = 'tag-edit-hint';
-      hint.innerHTML = `<span>「${escapeHtml(t?.label || '')}」${mode}</span>`;
+      const info = document.createElement('span'); info.className = 'teh-info';
       const done = document.createElement('button'); done.className = 'teh-btn teh-done'; done.textContent = '完成';
       done.addEventListener('click', () => ctx.setTagEditing(null));
       const cancel = document.createElement('button'); cancel.className = 'teh-btn teh-cancel'; cancel.textContent = '取消';
       cancel.addEventListener('click', () => ctx.cancelTagEditing());
-      hint.appendChild(done); hint.appendChild(cancel);
+      hint.appendChild(info); hint.appendChild(done); hint.appendChild(cancel);
       appEl.appendChild(hint);
-      ctx._tagHint = hint;
+      ctx._tagHint = hint; ctx._tagHintInfo = info;
+      ctx.updateTagHint();
     }
     ctx.rebuildTagPanel && ctx.rebuildTagPanel();
+  };
+  // 底部提示：添加 [色点/方框(有序写当前序号)] 标签 / 删除标签；序号随插入位置实时更新
+  ctx.updateTagHint = () => {
+    if (!ctx._tagHintInfo || !ctx.tagEditing) return;
+    const t = (ctx.graph.getTags() || []).find((x) => x.id === ctx.tagEditing);
+    if (!t) return;
+    const ordered = t.kind === 'ordered';
+    const num = (ctx.tagInsertAt != null ? ctx.tagInsertAt : (t.members || []).length) + 1;
+    const sw = ordered
+      ? `<span class="teh-swatch square" style="--tc:${t.color}">${num}</span>`
+      : `<span class="teh-swatch" style="--tc:${t.color}"></span>`;
+    ctx._tagHintInfo.innerHTML = `添加 ${sw} 标签 / 删除标签`;
   };
   // 取消：回滚到进入打标前的快照并退出
   ctx.cancelTagEditing = () => {
@@ -269,13 +352,41 @@ function startMain(db, project) {
     if (ctx._tagHint) { ctx._tagHint.remove(); ctx._tagHint = null; }
     if (snap) ctx.persistTags(snap); else ctx.rebuildTagPanel && ctx.rebuildTagPanel();
   };
-  // 打标模式下点击卡片（非按钮/引用）也能加入/移出
+  // 打标模式：卡片正文交互——拖选文字→span 标记；双击→位置标记；单击→整卡片标记
+  const cardBodyAt = (target) => {
+    for (const [nodeId, rec] of ctx.modals.open) {
+      if (rec.el.contains(target)) { const body = rec.el.querySelector('.modal-body'); return { nodeId, body, inBody: !!(body && body.contains(target)) }; }
+    }
+    return null;
+  };
+  let pressX = 0, pressY = 0, dragged = false, spanHandled = false, clickTimer = null;
+  overlayEl.addEventListener('pointerdown', (e) => { if (!ctx.tagEditing) return; pressX = e.clientX; pressY = e.clientY; dragged = false; spanHandled = false; }, true);
+  overlayEl.addEventListener('pointermove', (e) => { if (ctx.tagEditing && Math.hypot(e.clientX - pressX, e.clientY - pressY) > 5) dragged = true; }, true);
+  overlayEl.addEventListener('mouseup', (e) => {
+    if (!ctx.tagEditing) return;
+    const c = cardBodyAt(e.target); if (!c || !c.inBody) return;
+    const sel = window.getSelection();
+    if (dragged && sel && !sel.isCollapsed && c.body.contains(sel.anchorNode)) {
+      const span = ctx.spanFromSelection(c.body, c.nodeId, sel);
+      if (span) { ctx.addMember(ctx.tagEditing, span); spanHandled = true; sel.removeAllRanges(); }
+    }
+  }, true);
   overlayEl.addEventListener('click', (e) => {
     if (!ctx.tagEditing || !ctx.modals) return;
     if (e.target.closest('.m-btn, button, a, input, .texref, .m-sub')) return;
-    for (const [nodeId, rec] of ctx.modals.open) {
-      if (rec.el.contains(e.target)) { e.stopPropagation(); e.preventDefault(); ctx.toggleNodeTag(ctx.tagEditing, nodeId); return; }
-    }
+    const c = cardBodyAt(e.target); if (!c) return;
+    e.stopPropagation(); e.preventDefault();
+    if (spanHandled) { spanHandled = false; return; }      // 刚完成 span，不再切整卡片
+    clearTimeout(clickTimer);
+    clickTimer = setTimeout(() => ctx.toggleNodeTag(ctx.tagEditing, c.nodeId), 230); // 延迟，等可能的双击
+  }, true);
+  overlayEl.addEventListener('dblclick', (e) => {
+    if (!ctx.tagEditing) return;
+    const c = cardBodyAt(e.target); if (!c || !c.inBody) return;
+    e.stopPropagation(); e.preventDefault();
+    clearTimeout(clickTimer);                               // 取消单击的整卡片
+    const sel = window.getSelection(); if (sel) sel.removeAllRanges(); // 取消双击选词
+    ctx.addMember(ctx.tagEditing, ctx.posFromPoint(c.body, c.nodeId, e.clientX, e.clientY));
   }, true);
   // Enter 完成 / Esc 取消（输入框聚焦时不触发）
   window.addEventListener('keydown', (e) => {
@@ -313,6 +424,7 @@ function startMain(db, project) {
 
   ctx.modals = new ModalManager(ctx, { overlayEl, stageEl });
   ctx.refLayer = new RefLayer(ctx, { overlayEl, stageEl });
+  initCardMenus(ctx); // 选中文字 simple-menu + 右键菜单
   if (Number.isFinite(initialState.modalWidth)) ctx.modals.setWidth(initialState.modalWidth);
 
   // 节点 hover -> 邻居高亮 + 完整信息预览

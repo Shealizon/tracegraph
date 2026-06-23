@@ -414,9 +414,10 @@ body {
 /* 标签层：缩放不变（不随 zoom 变换），贴片定位在屏幕空间，恒定像素尺寸 */
 #tag-layer { position: absolute; inset: 0; z-index: 4; pointer-events: none; overflow: hidden; }
 .tag-chip-cluster { position: absolute; transform: translate(-50%, -100%); display: flex; gap: 3px; align-items: flex-end; padding-bottom: 5px; white-space: nowrap; }
-.tag-pill { display: inline-flex; align-items: center; gap: 3px; height: 18px; padding: 0 6px; border-radius: 5px; font-size: 11px; font-weight: 650; line-height: 1; color: #fff; background: var(--tc, #ff9e64); box-shadow: 0 1px 4px rgba(0,0,0,.4); pointer-events: auto; cursor: default; }
-.tag-pill.tag-mark { padding: 0 5px; }
+.tag-pill { display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-height: 18px; padding: 3px 7px; border-radius: 5px; font-size: 11px; font-weight: 650; line-height: 1; color: #fff; background: var(--tc, #ff9e64); box-shadow: 0 1px 4px rgba(0,0,0,.4); pointer-events: auto; cursor: default; box-sizing: border-box; }
+.tag-pill.tag-mark { padding: 0 6px; gap: 2px; }
 .tag-pill.tag-mark svg { width: 12px; height: 12px; stroke: currentColor; }
+.tag-pill.tag-mark .tag-mark-txt { font-size: 11px; font-weight: 650; }
 .tag-step::before { content: ''; position: absolute; bottom: -4px; left: 50%; transform: translateX(-50%); border: 4px solid transparent; border-top-color: var(--tc, #ff9e64); }
 .tag-step { position: relative; }
 /* 贴片与节点状态同步：变灰 / pin 高光 */
@@ -424,8 +425,9 @@ body {
 .tag-chip-cluster.chip-pin .tag-pill { box-shadow: 0 0 0 2px color-mix(in srgb, var(--tc, #ff9e64) 55%, #fff), 0 0 8px 1px color-mix(in srgb, var(--tc, #ff9e64) 60%, transparent), 0 1px 4px rgba(0,0,0,.4); }
 
 /* 主线双线连接（SVG，在 zoom-g 内随缩放）：粗描边 + 背景色细描边 = 双线效果 */
-.mp-outer { fill: none; stroke-width: 4; stroke-linecap: round; opacity: .92; }
-.mp-inner { fill: none; stroke: var(--bg, #14151a); stroke-width: 1.4; stroke-linecap: round; }
+/* 线宽由 JS 按 1/k 设置（缩放不变）；此处仅样式 */
+.mp-outer { fill: none; stroke-linecap: round; opacity: .92; }
+.mp-inner { fill: none; stroke: var(--bg, #14151a); stroke-linecap: round; }
 .mp-arrow { stroke: none; }
 
 /* 侧栏标签面板 */
@@ -436,7 +438,13 @@ body {
 .tag-row.tag-vis-off { opacity: .55; }
 .tag-name { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; background: none; border: 0; color: var(--text); cursor: pointer; padding: 0; text-align: left; }
 .tag-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
-.tag-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 600; }
+/* 色块兼显隐开关：圆点(无序)/方框(有序)，比原色点略大；隐藏=灰+划线 */
+.tag-swatch { flex: 0 0 auto; width: 13px; height: 13px; padding: 0; border: 0; border-radius: 50%; cursor: pointer; background: var(--accent); }
+.tag-swatch.square { border-radius: 3px; }
+.tag-swatch.off { background: var(--text-dim) !important; position: relative; }
+.tag-swatch.off::after { content: ''; position: absolute; left: -2px; right: -2px; top: 50%; height: 2px; transform: translateY(-50%) rotate(-15deg); background: var(--text); border-radius: 2px; }
+.tag-label { flex: 1 1 auto; min-width: 0; min-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 600; }
+/* 空名不显示文字，但 flex:1 + min-height 仍占满名称区，可双击重命名 */
 .tag-kind { color: var(--text-dim); font-size: 10.5px; flex: 0 0 auto; margin-left: auto; padding-left: 6px; }
 .tag-acts { display: flex; gap: 2px; flex: 0 0 auto; }
 .tag-ic { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: 0; border-radius: 6px; background: none; color: var(--text-dim); cursor: pointer; }
@@ -450,8 +458,14 @@ body {
 .tag-stat { font-size: 11px; color: var(--text-dim); }
 .tag-sub-gap { flex: 1 1 auto; }
 .tag-ic.tag-del:hover { background: color-mix(in srgb, #e3556a 22%, transparent); color: #e3556a; }
-.tag-rename-input { flex: 1 1 auto; min-width: 0; height: 22px; padding: 0 6px; border: 1px solid var(--tc, var(--accent)); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 12.5px; font-weight: 600; }
-.tag-rename-input:focus { outline: none; }
+.tag-edit-input { height: 20px; padding: 0 6px; border: 1px solid var(--tc, var(--accent)); border-radius: 5px; background: var(--bg); color: var(--text); font-size: 12px; font-weight: 600; }
+.tag-edit-input:focus { outline: none; }
+/* 标记文字色框：样式同成员标号 tm-idx（tag 颜色框），文字水平+垂直居中，与前面信息留间距 */
+.tag-marker-field { display: inline-flex; align-items: center; justify-content: center; min-height: 18px; margin-left: 10px; padding: 2px 8px; border: 1px solid transparent; border-radius: 5px; background: var(--tc, var(--accent)); color: #fff; font-size: 11px; font-weight: 700; line-height: 1; cursor: text; box-sizing: border-box; }
+.tag-marker-field.empty { background: none; color: var(--text-dim); border: 1px dashed var(--line); font-weight: 500; }
+/* 无序成员列表前导：tag 图标（取代色点） */
+.tm-mark { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; color: var(--tc, var(--accent)); }
+.tm-mark svg { width: 13px; height: 13px; }
 .tag-caret { transition: transform .12s ease; }
 .tag-caret:not(.open) { transform: rotate(-90deg); } /* 收起→朝右；展开→朝下(chevronDown) */
 .tag-members { display: flex; flex-direction: column; gap: 1px; padding: 3px 2px 6px; }
@@ -472,18 +486,44 @@ body {
 /* 打标模式氛围：一定宽度的边框渐变模糊遮罩（多层 inset 由强到弱向内晕开，非单一框线） */
 #app.tag-editing-mode #stage::after {
   content: ''; position: absolute; inset: 0; z-index: 26; pointer-events: none; border-radius: inherit;
+  --tec: var(--tag-edit-color, var(--accent, #ff9e64));
   box-shadow:
-    inset 0 0 16px 2px color-mix(in srgb, var(--accent, #ff9e64) 42%, transparent),
-    inset 0 0 44px 10px color-mix(in srgb, var(--accent, #ff9e64) 30%, transparent),
-    inset 0 0 96px 28px color-mix(in srgb, var(--accent, #ff9e64) 18%, transparent);
+    inset 0 0 16px 2px color-mix(in srgb, var(--tec) 42%, transparent),
+    inset 0 0 44px 10px color-mix(in srgb, var(--tec) 30%, transparent),
+    inset 0 0 96px 28px color-mix(in srgb, var(--tec) 18%, transparent);
   animation: tagEditPulse 2.6s ease-in-out infinite;
 }
 @keyframes tagEditPulse { 0%, 100% { opacity: .78; } 50% { opacity: 1; } }
 #app.tag-editing-mode #nodes-layer .node { cursor: copy; }
 .tag-edit-hint { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 14px; border-radius: 999px; background: var(--bg-modal-solid, #1c1d24); border: 1px solid var(--accent-line, var(--line)); box-shadow: var(--shadow-pop, 0 6px 20px rgba(0,0,0,.4)); font-size: 12.5px; color: var(--text); pointer-events: auto; }
+.teh-info { display: inline-flex; align-items: center; gap: 5px; }
+.teh-swatch { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; background: var(--tc, var(--accent)); color: #fff; font-size: 10px; font-weight: 700; }
+.teh-swatch.square { border-radius: 4px; min-width: 16px; width: auto; height: 16px; padding: 0 4px; }
 .teh-btn { font: inherit; font-size: 12px; font-weight: 600; padding: 3px 12px; border-radius: 999px; border: 1px solid var(--line); background: none; color: var(--text); cursor: pointer; }
 .teh-btn.teh-done { background: var(--accent, #ff9e64); border-color: var(--accent, #ff9e64); color: #fff; }
 .teh-btn:hover { filter: brightness(1.08); }
+
+/* 全局自定义 tooltip（替代原生 title）：主题一致、简约 */
+.app-tip {
+  position: fixed; z-index: 900; left: 0; top: 0; max-width: 260px;
+  padding: 4px 9px; border-radius: 7px;
+  background: var(--bg-modal-solid, #1c1d24); color: var(--text);
+  border: 1px solid var(--line-soft, var(--line)); box-shadow: 0 4px 14px rgba(0,0,0,.32);
+  font-size: 11.5px; line-height: 1.45; font-weight: 500; letter-spacing: .01em;
+  pointer-events: none; opacity: 0; transform: translateY(3px);
+  transition: opacity .1s ease, transform .1s ease;
+}
+.app-tip.show { opacity: 1; transform: none; }
+
+/* 长按贴片弹出的手势按钮（拖到其上松手执行）：样式与标签贴片一致（标签色填充） */
+.chip-gmenu { position: fixed; inset: 0; z-index: 90; pointer-events: none; }
+.cg-btn { position: fixed; transform: translate(-50%, -50%); min-width: 19px; height: 19px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; background: var(--tc, #ff9e64); color: #fff; box-shadow: 0 1px 5px rgba(0,0,0,.45); font-size: 11px; font-weight: 700; line-height: 1; pointer-events: auto; user-select: none; transition: filter .1s ease; animation: cgPop .15s cubic-bezier(.2, .9, .3, 1.4) backwards; }
+.cg-btn:nth-child(2) { animation-delay: .04s; }
+.cg-btn:nth-child(3) { animation-delay: .08s; }
+.cg-btn.cg-icon { padding: 0 4px; }
+.cg-btn.cg-icon svg { width: 13px; height: 13px; }
+.cg-btn.hot { filter: brightness(1.18); transform: translate(-50%, -50%) scale(1.2); }
+@keyframes cgPop { from { transform: translate(-50%, -50%) scale(0); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
 
 .zoom-control {
   position: absolute;

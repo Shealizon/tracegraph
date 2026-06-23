@@ -164,7 +164,7 @@ export function openProjectConfigDialog({ db, project, onSaved }) {
             <span class="cfg-section-title">文件</span>
             <span class="cfg-count" data-count-doc></span>
             <div class="cfg-add">
-              <button class="btn btn--sm" data-add title="支持 .json / .tex / .txt，按后缀自动选择导入方式">${ICON.plus}<span>添加文件</span></button>
+              <button class="btn btn--sm" data-add title="支持 .json / .tex / .txt">${ICON.plus}<span>添加文件</span></button>
             </div>
           </div>
           <div class="cfg-rows" data-docs>${project.documents.length
