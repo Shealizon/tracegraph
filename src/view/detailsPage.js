@@ -25,6 +25,22 @@ export function openReaderLibrary(ctx) {
   renderReader(reader);
 }
 
+export function openReaderRoute(ctx, route = {}) {
+  const reader = ensureReader(ctx);
+  const page = parseRoutePage(route.page);
+  if (page) activatePage(reader, page);
+  else if (!reader.tabs.length) addLibraryTab(reader);
+  renderReader(reader);
+}
+
+export function getReaderRoute(ctx) {
+  const reader = ctx._reader;
+  if (!reader || !document.body.contains(reader.el)) return null;
+  const tab = activeTab(reader);
+  if (!tab) return { page: 'library' };
+  return { page: tab.kind === 'node' ? `node:${tab.nodeId}` : 'library' };
+}
+
 function ensureReader(ctx) {
   if (ctx._reader && document.body.contains(ctx._reader.el)) return ctx._reader;
 
@@ -78,6 +94,7 @@ function closeReader(reader) {
   }
   reader.el.remove();
   reader.ctx._reader = null;
+  reader.ctx.writeHash && reader.ctx.writeHash();
 }
 
 function storageKey(ctx) {
@@ -121,6 +138,19 @@ function addNodeTab(reader, nodeId) {
   reader.tabs.push(tab);
   reader.activeId = tab.id;
   persistState(reader);
+  return tab;
+}
+
+function activatePage(reader, page) {
+  const key = pageKey(page);
+  let tab = reader.tabs.find((t) => pageKey(pageFromTab(t)) === key);
+  if (!tab) {
+    tab = page.kind === 'node' ? addNodeTab(reader, page.nodeId) : addLibraryTab(reader);
+  } else {
+    if (page.kind === 'library') tab.query = page.query || tab.query || '';
+    reader.activeId = tab.id;
+    persistState(reader);
+  }
   return tab;
 }
 
@@ -199,6 +229,7 @@ function renderReader(reader) {
   bindReader(reader);
   requestAnimationFrame(() => restoreScroll(reader));
   el.focus();
+  reader.ctx.writeHash && reader.ctx.writeHash();
 }
 
 function renderActivePage(reader) {
@@ -745,6 +776,12 @@ function persistState(reader) {
     scroll: t.scroll || {},
   }));
   localStorage.setItem(reader.storageKey, JSON.stringify({ activeId: reader.activeId, tabs }));
+}
+
+function parseRoutePage(value) {
+  if (!value || value === 'library') return value === 'library' ? libraryPage() : null;
+  if (value.startsWith('node:')) return nodePage(value.slice(5));
+  return null;
 }
 
 function escapeHtml(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }

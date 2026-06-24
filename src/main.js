@@ -10,7 +10,7 @@ import { ModalManager } from './view/modal.js';
 import { RefLayer } from './view/refLayer.js';
 import { buildSidebar, buildZoomControl } from './ui/sidebar.js';
 import { ICON } from './ui/icons.js';
-import { openDetails, openReaderLibrary } from './view/detailsPage.js';
+import { getReaderRoute, openDetails, openReaderLibrary, openReaderRoute } from './view/detailsPage.js';
 import { isLeafNode } from './data/schema.js';
 import { renderLeadingPage } from './view/leadingPage.js';
 import { initProjectStore, saveProject, setCurrentProjectId } from './project/store.js';
@@ -34,7 +34,7 @@ async function init() {
   const screen = query.get('screen') || 'leading';
   const projectId = query.get('project') || store.currentProjectId;
 
-  if (screen === 'main') {
+  if (screen === 'main' || screen === 'reader') {
     const project = store.projects.find((p) => p.id === projectId) || store.projects[0];
     if (project) {
       setCurrentProjectId(project.id);
@@ -463,8 +463,13 @@ function startMain(db, project) {
   // ---- Deep-link：URL hash 恢复 / 写回 ----
   ctx.writeHash = () => {
     const ids = ctx.modals ? [...ctx.modals.open.keys()] : [];
+    const readerRoute = getReaderRoute(ctx);
     const params = new URLSearchParams();
     if (ids.length) params.set('open', ids.join(','));
+    if (readerRoute) {
+      params.set('reader', '1');
+      params.set('readerPage', readerRoute.page);
+    }
     params.set('mode', ctx.mode);
     if (ctx.filterActive) params.set('types', [...ctx.filterActive].join(','));
     params.set('hidden', [...(ctx.hidden || [])].join(','));
@@ -480,7 +485,8 @@ function startMain(db, project) {
     const pins = model.nodes.filter((n) => n.pinned).map((n) => n.id);
     if (pins.length) params.set('pin', pins.join(','));
     const str = params.toString();
-    history.replaceState(null, '', `${location.pathname}?screen=main&project=${encodeURIComponent(project.id)}${str ? `#${str}` : ''}`);
+    const screen = readerRoute ? 'reader' : 'main';
+    history.replaceState(null, '', `${location.pathname}?screen=${screen}&project=${encodeURIComponent(project.id)}${str ? `#${str}` : ''}`);
     scheduleProjectStateSave();
   };
 
@@ -511,6 +517,7 @@ function startMain(db, project) {
         if (ids.length === 1) graph.focusNode(ids[0], 0.85);
         if (state.focus) graph.focusNode(state.focus, 1.0);
       }
+      if (state.readerOpen) openReaderRoute(ctx, { page: state.readerPage });
       ctx.writeHash && ctx.writeHash();
       ctx._restoring = false;
     };
@@ -606,6 +613,7 @@ function buildReaderLauncher(ctx, stageEl) {
 
 function readHash() {
   const h = new URLSearchParams(location.hash.slice(1));
+  const q = new URLSearchParams(location.search);
   const forceParts = (h.get('force') || '').split(',').map((v) => Number(v));
   const zoomParts = (h.get('zoom') || '').split(',').map((v) => Number(v));
   return {
@@ -620,6 +628,8 @@ function readHash() {
     refsRaiseEnabled: h.has('refs') ? h.get('refs') !== '0' : null,
     themeMode: h.get('theme') || '',
     sidebarCollapsed: h.has('sidebar') ? h.get('sidebar') === '0' : null,
+    readerOpen: q.get('screen') === 'reader' || h.get('reader') === '1',
+    readerPage: h.get('readerPage') || '',
     zoom: h.has('zoom') ? { k: zoomParts[0], x: zoomParts[1], y: zoomParts[2] } : null,
     pin: parseList(h.get('pin')),
   };
