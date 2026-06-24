@@ -591,6 +591,44 @@ body {
 .zoom-home:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .zoom-home svg { width: 13px; height: 13px; }
 
+.reader-launcher {
+  position: absolute;
+  right: 18px;
+  top: 18px;
+  z-index: 40;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: 999px;
+  background: var(--bg-modal-solid);
+  color: var(--accent);
+  box-shadow: var(--shadow-pop);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.reader-launcher:hover { background: var(--accent-bg); }
+.reader-launcher svg { width: 18px; height: 18px; }
+
+@media (max-width: 760px) {
+  #sidebar,
+  .sidebar-rail,
+  .zoom-control {
+    display: none;
+  }
+  #stage {
+    touch-action: pan-x pan-y;
+  }
+  .reader-launcher {
+    right: max(12px, env(safe-area-inset-right));
+    top: max(12px, env(safe-area-inset-top));
+    width: 44px;
+    height: 44px;
+  }
+}
+
 /* ---- 节点（圆）：编号上 / 名称下，字体自适应 ---- */
 .node {
   position: absolute; left: 0; top: 0;
@@ -764,10 +802,13 @@ body {
 .cfg-rows { display: flex; flex-direction: column; gap: 6px; }
 .cfg-rows--scroll { max-height: 40vh; overflow-y: auto; }
 .cfg-empty { font-size: 12px; color: var(--text-dim); padding: 14px; border: 1px dashed var(--line-soft); border-radius: var(--r); text-align: center; }
-.project-file { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid var(--line-soft); border-radius: var(--r); font-size: 12.5px; color: var(--text); cursor: pointer; }
+.project-file { display: flex; align-items: center; gap: 8px; padding: 6px 7px 6px 11px; border: 1px solid var(--line-soft); border-radius: var(--r); font-size: 12.5px; color: var(--text); }
 .project-file:hover { background: var(--hover); }
+.pf-toggle { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; cursor: pointer; }
 .pf-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pf-meta { flex: 0 0 auto; color: var(--text-dim); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.pf-delete { flex: 0 0 auto; width: 30px; height: 30px; color: var(--text-dim); }
+.pf-delete:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
 
 /* 高级：节点 / 关系两列 */
 .cfg-advanced { border-top: 1px solid var(--line-soft); padding-top: 12px; }
@@ -802,7 +843,7 @@ body {
 .confirm-back { position: fixed; inset: 0; z-index: 820; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0,0,0,.42); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 .confirm-pop { width: min(380px, 92vw); padding: 18px; border-radius: var(--r-lg); background: var(--bg-modal-solid); border: 1px solid var(--line); box-shadow: var(--shadow-modal); }
 .confirm-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
-.confirm-msg { font-size: 13px; color: var(--text); line-height: 1.55; white-space: pre-wrap; }
+.confirm-msg { font-size: 13px; color: var(--text); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
 .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .confirm-actions .btn { min-width: 76px; }
 

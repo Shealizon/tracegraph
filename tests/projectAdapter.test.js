@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeProject, graphToDocument, compileProject, relationKey, uniqueId } from '../src/project/projectAdapter.js';
+import { normalizeProject, graphToDocument, compileProject, removeProjectDocuments, relationKey, uniqueId } from '../src/project/projectAdapter.js';
 
 describe('projectAdapter · normalizeProject', () => {
   it('fills format/config defaults and doc fields', () => {
@@ -24,6 +24,44 @@ describe('projectAdapter · helpers', () => {
     expect(relationKey('a', 'l', 'b')).toBe('a|l|b');
     expect(uniqueId('doc')).toMatch(/^doc-/);
     expect(uniqueId('p')).not.toBe(uniqueId('p'));
+  });
+});
+
+describe('projectAdapter · removeProjectDocuments', () => {
+  it('removes documents and prunes related config', () => {
+    const project = normalizeProject({
+      id: 'p-remove',
+      name: 'P',
+      config: {
+        enabledDocumentIds: ['d1', 'd2'],
+        disabledNodeIds: ['a', 'b', 'keep'],
+        disabledRelationKeys: ['a|a|b', 'x|x|y', 'keep|keep|z'],
+      },
+      documents: [
+        {
+          id: 'd1',
+          name: 'D1',
+          graph: {
+            nodes: [{ id: 'a' }, { id: 'b' }],
+            edges: [{ from: 'a', fromLabel: 'a', to: 'b' }],
+          },
+        },
+        {
+          id: 'd2',
+          name: 'D2',
+          graph: {
+            nodes: [{ id: 'keep' }],
+            edges: [{ from: 'keep', fromLabel: 'keep', to: 'z' }],
+          },
+        },
+      ],
+    });
+
+    const next = removeProjectDocuments(project, ['d1']);
+    expect(next.documents.map((d) => d.id)).toEqual(['d2']);
+    expect(next.config.enabledDocumentIds).toEqual(['d2']);
+    expect(next.config.disabledNodeIds).toEqual(['keep']);
+    expect(next.config.disabledRelationKeys).toEqual(['x|x|y', 'keep|keep|z']);
   });
 });
 
