@@ -657,10 +657,8 @@ body {
   }
   .mobile-sidebar-toggle svg { width: 18px; height: 18px; }
   .mobile-sidebar-open .mobile-sidebar-toggle {
-    z-index: 94;
-    color: var(--accent);
-    background: var(--accent-bg);
-    border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+    opacity: 0;
+    pointer-events: none;
   }
   .mobile-sidebar-backdrop {
     position: fixed;
