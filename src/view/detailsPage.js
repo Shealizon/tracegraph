@@ -72,6 +72,10 @@ function closeReader(reader) {
   persistState(reader);
   closeReaderCopyMenu(reader);
   closeReaderSelectionMenu(reader);
+  if (reader.selectionChangeHandler) {
+    document.removeEventListener('selectionchange', reader.selectionChangeHandler);
+    reader.selectionChangeHandler = null;
+  }
   reader.el.remove();
   reader.ctx._reader = null;
 }
@@ -560,6 +564,13 @@ function bindReaderSelectionSurface(reader) {
       if (sel) showReaderSelectionMenu(reader, sel);
     }, 120);
   };
+  reader.selectionChangeHandler = () => {
+    if (!reader.selectionMenu) return;
+    setTimeout(() => {
+      if (!selectionInReader(reader)) closeReaderSelectionMenu(reader);
+    }, 120);
+  };
+  document.addEventListener('selectionchange', reader.selectionChangeHandler);
   reader.el.addEventListener('mouseup', schedule, true);
   reader.el.addEventListener('touchend', schedule, true);
   reader.el.addEventListener('copy', (e) => {
@@ -611,23 +622,12 @@ function showReaderSelectionMenu(reader, sel) {
   menu.style.left = `${Math.max(6, x)}px`;
   menu.style.top = `${Math.max(6, y)}px`;
   reader.selectionMenu = menu;
-  const close = (ev) => {
-    if (!menu.contains(ev.target)) closeReaderSelectionMenu(reader);
-  };
-  setTimeout(() => {
-    document.addEventListener('pointerdown', close, true);
-    reader.selectionMenuClose = close;
-  }, 0);
 }
 
 function closeReaderSelectionMenu(reader) {
   if (reader.selectionMenu) {
     reader.selectionMenu.remove();
     reader.selectionMenu = null;
-  }
-  if (reader.selectionMenuClose) {
-    document.removeEventListener('pointerdown', reader.selectionMenuClose, true);
-    reader.selectionMenuClose = null;
   }
 }
 
