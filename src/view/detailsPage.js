@@ -6,6 +6,7 @@
 
 import { isLeafNode, nodeTag, paperName, typeColor } from '../data/schema.js';
 import { ICON } from '../ui/icons.js';
+import { toast } from '../ui/feedback.js';
 
 const STORE_PREFIX = 'paper-graph:reader:';
 let seq = 1;
@@ -67,6 +68,7 @@ function ensureReader(ctx) {
 function closeReader(reader) {
   saveScroll(reader);
   persistState(reader);
+  closeReaderCopyMenu(reader);
   reader.el.remove();
   reader.ctx._reader = null;
 }
@@ -225,6 +227,7 @@ function renderToolbar(reader) {
     <button class="reader-tool reader-forward" data-forward ${canForward ? '' : 'disabled'} title="前进">${ICON.chevronDown}</button>
     <button class="reader-tool reader-primary" data-library title="阅读列表">${ICON.search}<span>阅读列表</span></button>
     <span class="reader-spacer"></span>
+    <button class="reader-tool" data-copy-current ${tab?.kind === 'node' ? '' : 'disabled'} title="复制">${ICON.copy}</button>
     <button class="reader-tool" data-new-current title="新标签">${ICON.plus}</button>
     <button class="reader-tool" data-close-reader title="关闭">${ICON.close}</button>
   </div>`;
@@ -334,6 +337,7 @@ function bindReader(reader) {
   }));
   el.querySelector('[data-back]')?.addEventListener('click', () => goHistory(reader, -1));
   el.querySelector('[data-forward]')?.addEventListener('click', () => goHistory(reader, 1));
+  el.querySelector('[data-copy-current]')?.addEventListener('click', (e) => openReaderCopyMenu(reader, e.currentTarget));
   el.querySelector('[data-library]')?.addEventListener('click', () => {
     navigate(reader, reader.activeId, libraryPage(activeTab(reader)?.query || ''));
     renderReader(reader);
@@ -493,6 +497,68 @@ function positionPreview(el, anchorEl) {
 function closePreview(reader) {
   reader.previewEl?.remove();
   reader.previewEl = null;
+}
+
+function openReaderCopyMenu(reader, anchorEl) {
+  const tab = activeTab(reader);
+  const node = tab?.kind === 'node' ? reader.ctx.model.nodeById.get(tab.nodeId) : null;
+  if (!node) return;
+  closeReaderCopyMenu(reader);
+  const menu = document.createElement('div');
+  menu.className = 'm-menu reader-copy-menu';
+  [
+    { label: '复制所有内容', mode: 'all' },
+    { label: '复制标题', mode: 'title' },
+  ].forEach((item) => {
+    const row = document.createElement('div');
+    row.className = 'm-menu-item';
+    const button = document.createElement('button');
+    button.className = 'mm-main';
+    button.type = 'button';
+    button.textContent = item.label;
+    button.addEventListener('click', () => {
+      closeReaderCopyMenu(reader);
+      copyReaderNode(node, item.mode);
+    });
+    row.appendChild(button);
+    menu.appendChild(row);
+  });
+  document.body.appendChild(menu);
+  const r = anchorEl.getBoundingClientRect();
+  menu.style.position = 'fixed';
+  menu.style.top = `${r.bottom + 4}px`;
+  menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+  reader.copyMenu = menu;
+  const close = (ev) => {
+    if (!menu.contains(ev.target)) closeReaderCopyMenu(reader);
+  };
+  setTimeout(() => {
+    document.addEventListener('pointerdown', close, true);
+    reader.copyMenuClose = close;
+  }, 0);
+}
+
+function closeReaderCopyMenu(reader) {
+  if (reader.copyMenu) {
+    reader.copyMenu.remove();
+    reader.copyMenu = null;
+  }
+  if (reader.copyMenuClose) {
+    document.removeEventListener('pointerdown', reader.copyMenuClose, true);
+    reader.copyMenuClose = null;
+  }
+}
+
+async function copyReaderNode(node, mode) {
+  const text = mode === 'title'
+    ? (node.title || node.id || '')
+    : [node.title, node.statementBody, node.proofBody].filter(Boolean).join('\n\n');
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(mode === 'title' ? '已复制标题' : '已复制内容');
+  } catch {
+    toast('复制失败', { type: 'error' });
+  }
 }
 
 function bindScrollMemory(reader) {
