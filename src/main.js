@@ -469,6 +469,7 @@ function startMain(db, project) {
     if (readerRoute) {
       params.set('reader', '1');
       params.set('readerPage', readerRoute.page);
+      if (readerRoute.chain?.length) params.set('readerChain', readerRoute.chain.join('>'));
     }
     params.set('mode', ctx.mode);
     if (ctx.filterActive) params.set('types', [...ctx.filterActive].join(','));
@@ -517,7 +518,7 @@ function startMain(db, project) {
         if (ids.length === 1) graph.focusNode(ids[0], 0.85);
         if (state.focus) graph.focusNode(state.focus, 1.0);
       }
-      if (state.readerOpen) openReaderRoute(ctx, { page: state.readerPage });
+      if (state.readerOpen) openReaderRoute(ctx, { page: state.readerPage, chain: state.readerChain });
       ctx.writeHash && ctx.writeHash();
       ctx._restoring = false;
     };
@@ -630,6 +631,7 @@ function readHash() {
     sidebarCollapsed: h.has('sidebar') ? h.get('sidebar') === '0' : null,
     readerOpen: q.get('screen') === 'reader' || h.get('reader') === '1',
     readerPage: h.get('readerPage') || '',
+    readerChain: parseChain(h.get('readerChain')),
     zoom: h.has('zoom') ? { k: zoomParts[0], x: zoomParts[1], y: zoomParts[2] } : null,
     pin: parseList(h.get('pin')),
   };
@@ -637,6 +639,10 @@ function readHash() {
 
 function parseList(value) {
   return (value || '').split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+function parseChain(value) {
+  return (value || '').split('>').map((s) => s.trim()).filter(Boolean);
 }
 
 function fmtNumber(value) {

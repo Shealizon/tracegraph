@@ -15,7 +15,7 @@ let seq = 1;
 export function openDetails(ctx, nodeId, opts = {}) {
   const reader = ensureReader(ctx);
   if (opts.newTab || !reader.tabs.length) addNodeTab(reader, nodeId);
-  else navigate(reader, reader.activeId, nodePage(nodeId));
+  else navigate(reader, reader.activeId, nodePage(nodeId, '', [nodeId]));
   renderReader(reader);
 }
 
@@ -27,7 +27,7 @@ export function openReaderLibrary(ctx) {
 
 export function openReaderRoute(ctx, route = {}) {
   const reader = ensureReader(ctx);
-  const page = parseRoutePage(route.page);
+  const page = parseRoutePage(route.page, route.chain);
   if (page) activatePage(reader, page);
   else if (!reader.tabs.length) addLibraryTab(reader);
   renderReader(reader);
@@ -38,7 +38,10 @@ export function getReaderRoute(ctx) {
   if (!reader || !document.body.contains(reader.el)) return null;
   const tab = activeTab(reader);
   if (!tab) return { page: 'library' };
-  return { page: tab.kind === 'node' ? `node:${tab.nodeId}` : 'library' };
+  return {
+    page: tab.kind === 'node' ? `node:${tab.nodeId}` : 'library',
+    chain: tab.kind === 'node' ? normalizeChain(reader, tab.chain, tab.nodeId) : [],
+  };
 }
 
 function ensureReader(ctx) {
@@ -53,6 +56,9 @@ function ensureReader(ctx) {
     tabs: [],
     activeId: '',
     previewEl: null,
+    searchOpen: false,
+    searchQuery: '',
+    pendingLabel: '',
     storageKey: storageKey(ctx),
   };
   ctx._reader = reader;
@@ -88,6 +94,7 @@ function closeReader(reader) {
   persistState(reader);
   closeReaderCopyMenu(reader);
   closeReaderSelectionMenu(reader);
+  closeSearch(reader);
   clearTimeout(reader.selectionTimer);
   if (reader.selectionChangeHandler) {
     document.removeEventListener('selectionchange', reader.selectionChangeHandler);
@@ -107,8 +114,8 @@ function pageKey(page) {
   return page?.kind === 'node' ? page.nodeId : 'library';
 }
 
-function nodePage(nodeId) {
-  return { kind: 'node', nodeId };
+function nodePage(nodeId, labelId = '', chain = null) {
+  return { kind: 'node', nodeId, labelId: labelId || '', chain };
 }
 
 function libraryPage(query = '') {
@@ -116,12 +123,14 @@ function libraryPage(query = '') {
 }
 
 function pageFromTab(tab) {
-  return tab.kind === 'node' ? nodePage(tab.nodeId) : libraryPage(tab.query || '');
+  return tab.kind === 'node' ? nodePage(tab.nodeId, tab.labelId || '', tab.chain || []) : libraryPage(tab.query || '');
 }
 
 function setTabPage(tab, page) {
   tab.kind = page.kind === 'node' ? 'node' : 'library';
   tab.nodeId = tab.kind === 'node' ? page.nodeId : '';
+  tab.labelId = tab.kind === 'node' ? (page.labelId || '') : '';
+  tab.chain = tab.kind === 'node' ? normalizeChainForPage(page.chain, page.nodeId) : [];
   tab.query = tab.kind === 'library' ? (page.query || tab.query || '') : (tab.query || '');
 }
 
@@ -135,7 +144,7 @@ function addLibraryTab(reader) {
 
 function addNodeTab(reader, nodeId) {
   if (!nodeId) return null;
-  const tab = createTab(nodePage(nodeId));
+  const tab = createTab(nodePage(nodeId, '', [nodeId]));
   reader.tabs.push(tab);
   reader.activeId = tab.id;
   persistState(reader);
@@ -147,8 +156,10 @@ function activatePage(reader, page) {
   let tab = reader.tabs.find((t) => pageKey(pageFromTab(t)) === key);
   if (!tab) {
     tab = page.kind === 'node' ? addNodeTab(reader, page.nodeId) : addLibraryTab(reader);
+    if (page.kind === 'node') setTabPage(tab, page);
   } else {
     if (page.kind === 'library') tab.query = page.query || tab.query || '';
+    if (page.kind === 'node') setTabPage(tab, page);
     reader.activeId = tab.id;
     persistState(reader);
   }
@@ -160,6 +171,8 @@ function createTab(page) {
     id: `tab-${seq++}`,
     kind: 'library',
     nodeId: '',
+    labelId: '',
+    chain: [],
     query: '',
     back: [],
     forward: [],
@@ -175,13 +188,23 @@ function activeTab(reader) {
 
 function navigate(reader, tabId, page, push = true) {
   const tab = reader.tabs.find((t) => t.id === tabId);
-  if (!tab || !page || (page.kind === 'node' && !page.nodeId)) return;
-  if (pageKey(pageFromTab(tab)) === pageKey(page)) return;
+  if (!tab || !page || (page.kind === 'node' && !page.nodeId)) return false;
+  if (pageKey(pageFromTab(tab)) === pageKey(page)) {
+    if (page.kind === 'node') {
+      tab.labelId = page.labelId || '';
+      if (page.chain) tab.chain = normalizeChainForPage(page.chain, page.nodeId);
+      reader.pendingLabel = tab.labelId;
+      persistState(reader);
+    }
+    return false;
+  }
   saveScroll(reader);
   if (push) tab.back.push(pageFromTab(tab));
   setTabPage(tab, page);
   if (push) tab.forward = [];
+  reader.pendingLabel = page.kind === 'node' ? (page.labelId || '') : '';
   persistState(reader);
+  return true;
 }
 
 function goHistory(reader, dir) {
@@ -225,10 +248,16 @@ function renderReader(reader) {
       <div class="reader-body">
         ${renderActivePage(reader)}
       </div>
+      ${reader.searchOpen ? renderSearchDrawer(reader) : ''}
     </div>`;
 
   bindReader(reader);
-  requestAnimationFrame(() => restoreScroll(reader));
+  requestAnimationFrame(() => {
+    const label = reader.pendingLabel;
+    reader.pendingLabel = '';
+    if (label) scrollToLabel(reader, label);
+    else restoreScroll(reader);
+  });
   el.focus();
   reader.ctx.writeHash && reader.ctx.writeHash();
 }
@@ -247,9 +276,10 @@ function renderTabs(reader) {
       const n = t.kind === 'node' ? ctx.model.nodeById.get(t.nodeId) : null;
       const active = t.id === reader.activeId;
       const title = n?.title || n?.id || '阅读列表';
+      const displayTitle = active ? inlineRendered(reader, title) : '';
       return `<button class="reader-tab${active ? ' active' : ''}" data-tab="${escapeAttr(t.id)}" role="tab" title="${escapeAttr(title)}">
         <span class="rt-num" style="color:${n ? typeColor(ctx.model, n.type) : ''}">${n ? escapeHtml(nodeTag(ctx.model, n)) : ICON.listOrdered}</span>
-        <span class="rt-title">${escapeHtml(title)}</span>
+        <span class="rt-title">${displayTitle}</span>
         <span class="rt-close" data-close-tab="${escapeAttr(t.id)}">${ICON.close}</span>
       </button>`;
     }).join('')}
@@ -261,10 +291,11 @@ function renderToolbar(reader) {
   const tab = activeTab(reader);
   const canBack = !!tab?.back.length;
   const canForward = !!tab?.forward.length;
+  const canSearch = tab?.kind === 'node';
   return `<div class="reader-toolbar">
     <button class="reader-tool" data-back ${canBack ? '' : 'disabled'} title="返回">${ICON.chevronDown}</button>
     <button class="reader-tool reader-forward" data-forward ${canForward ? '' : 'disabled'} title="前进">${ICON.chevronDown}</button>
-    <button class="reader-tool reader-primary" data-library title="阅读列表">${ICON.search}<span>阅读列表</span></button>
+    ${canSearch ? `<button class="reader-tool reader-primary" data-search-reader title="搜索阅读列表">${ICON.search}<span>搜索</span></button>` : ''}
     <span class="reader-spacer"></span>
     <button class="reader-tool" data-copy-current ${tab?.kind === 'node' ? '' : 'disabled'} title="复制">${ICON.copy}</button>
     <button class="reader-tool" data-new-current title="新标签">${ICON.plus}</button>
@@ -313,7 +344,7 @@ function nodeHero(reader, node, { deps, usedBy, paper, idx }) {
       <span class="reader-node-tag">${escapeHtml(nodeTag(ctx.model, node))}</span>
       ${paper ? `<span class="reader-paper">${ICON.fileText}${escapeHtml(paper)}</span>` : ''}
     </div>
-    <h1>${escapeHtml(node.title || node.id)}</h1>
+    <h1>${inlineRendered(reader, node.title || node.id)}</h1>
     <div class="reader-position">
       <span>全局 ${idx + 1}/${ctx.model.nodes.length}</span>
       <span>依赖 ${deps.length}</span>
@@ -321,6 +352,7 @@ function nodeHero(reader, node, { deps, usedBy, paper, idx }) {
       <span>重要度 ${node.importance ?? 1}</span>
       ${node.inCycle ? '<span>环中节点</span>' : ''}
     </div>
+    ${renderChain(reader, node)}
     <div class="reader-map">
       ${miniGroup('依赖', deps, reader)}
       ${miniGroup('被使用', usedBy, reader)}
@@ -352,13 +384,50 @@ function renderLibraryPage(reader, tab) {
       <input data-library-query placeholder="搜索编号、标题、类型" value="${escapeAttr(tab?.query || '')}">
     </div>
     <div class="reader-library-list">
-      ${nodes.map((n) => `<button class="reader-library-item" data-library-open="${escapeAttr(n.id)}" data-long-preview="${escapeAttr(n.id)}">
-        <span style="color:${typeColor(reader.ctx.model, n.type)}">${escapeHtml(nodeTag(reader.ctx.model, n))}</span>
-        <b>${escapeHtml(n.title || n.id)}</b>
-        <small>${escapeHtml(paperName(reader.ctx.model, n) || n.typeLabel || n.type || '')}</small>
-      </button>`).join('') || '<div class="reader-muted">没有匹配条目。</div>'}
+      ${renderLibraryItems(reader, nodes)}
     </div>
   </section>`;
+}
+
+function renderSearchDrawer(reader) {
+  const nodes = filteredNodes(reader, { query: reader.searchQuery || '' });
+  return `<div class="reader-search-backdrop" data-search-close>
+    <aside class="reader-search-panel" role="dialog" aria-label="搜索阅读列表" data-search-panel>
+      <div class="reader-search-head">
+        <strong>阅读列表</strong>
+        <span>${nodes.length}/${reader.ctx.model.nodes.length}</span>
+        <button data-search-close title="关闭">${ICON.close}</button>
+      </div>
+      <div class="reader-library-search">
+        <span>${ICON.search}</span>
+        <input data-search-query placeholder="搜索编号、标题、类型" value="${escapeAttr(reader.searchQuery || '')}">
+      </div>
+      <div class="reader-library-list reader-search-list">
+        ${renderLibraryItems(reader, nodes)}
+      </div>
+    </aside>
+  </div>`;
+}
+
+function renderLibraryItems(reader, nodes) {
+  return nodes.map((n) => `<button class="reader-library-item" data-library-open="${escapeAttr(n.id)}" data-long-preview="${escapeAttr(n.id)}">
+    <span style="color:${typeColor(reader.ctx.model, n.type)}">${escapeHtml(nodeTag(reader.ctx.model, n))}</span>
+    <b>${inlineRendered(reader, n.title || n.id)}</b>
+    <small>${escapeHtml(paperName(reader.ctx.model, n) || n.typeLabel || n.type || '')}</small>
+  </button>`).join('') || '<div class="reader-muted">没有匹配条目。</div>';
+}
+
+function renderChain(reader, node) {
+  const chain = normalizeChain(reader, activeTab(reader)?.chain, node.id);
+  if (chain.length <= 1) return '';
+  return `<nav class="reader-chain" aria-label="调用链">
+    ${chain.map((id, i) => {
+      const n = reader.ctx.model.nodeById.get(id);
+      if (!n) return '';
+      const current = id === node.id;
+      return `${i ? '<span class="reader-chain-sep">--</span>' : ''}<button data-chain-jump="${escapeAttr(id)}" ${current ? 'aria-current="page"' : ''} style="--chain-color:${typeColor(reader.ctx.model, n.type)}">${escapeHtml(nodeTag(reader.ctx.model, n))}</button>`;
+    }).join('')}
+  </nav>`;
 }
 
 function bindReader(reader) {
@@ -377,8 +446,9 @@ function bindReader(reader) {
   el.querySelector('[data-back]')?.addEventListener('click', () => goHistory(reader, -1));
   el.querySelector('[data-forward]')?.addEventListener('click', () => goHistory(reader, 1));
   el.querySelector('[data-copy-current]')?.addEventListener('click', (e) => openReaderCopyMenu(reader, e.currentTarget));
-  el.querySelector('[data-library]')?.addEventListener('click', () => {
-    navigate(reader, reader.activeId, libraryPage(activeTab(reader)?.query || ''));
+  el.querySelector('[data-search-reader]')?.addEventListener('click', () => {
+    reader.searchOpen = true;
+    reader.searchQuery = activeTab(reader)?.query || reader.searchQuery || '';
     renderReader(reader);
   });
   el.querySelector('[data-new-tab]')?.addEventListener('click', () => {
@@ -396,13 +466,19 @@ function bindReader(reader) {
   el.querySelectorAll('[data-goto]').forEach((target) => {
     target.addEventListener('click', (e) => {
       if (consumeLongPress(target)) { e.preventDefault(); return; }
-      navigate(reader, reader.activeId, nodePage(target.dataset.goto));
+      followNode(reader, target.dataset.goto);
       renderReader(reader);
     });
     bindLongPress(target, () => showPreview(reader, target.dataset.longPreview || target.dataset.goto, target));
   });
 
+  el.querySelectorAll('[data-chain-jump]').forEach((b) => b.addEventListener('click', () => {
+    jumpChain(reader, b.dataset.chainJump);
+    renderReader(reader);
+  }));
+
   bindInlineRefs(reader);
+  bindSearchDrawer(reader);
   bindLibrary(reader);
   bindScrollMemory(reader);
 }
@@ -418,10 +494,31 @@ function bindInlineRefs(reader) {
       if (consumeLongPress(ref)) { e.preventDefault(); return; }
       e.preventDefault();
       e.stopPropagation();
-      navigate(reader, reader.activeId, nodePage(owner));
+      followNode(reader, owner, target);
       renderReader(reader);
     });
     bindLongPress(ref, () => showPreview(reader, owner, ref));
+  });
+}
+
+function bindSearchDrawer(reader) {
+  const panel = reader.el.querySelector('[data-search-panel]');
+  if (!panel) return;
+  reader.el.querySelectorAll('[data-search-close]').forEach((el) => {
+    el.addEventListener('click', (e) => {
+      if (e.currentTarget !== e.target && e.currentTarget.classList.contains('reader-search-backdrop')) return;
+      closeSearch(reader);
+      renderReader(reader);
+    });
+  });
+  panel.addEventListener('click', (e) => e.stopPropagation());
+  const input = panel.querySelector('[data-search-query]');
+  input?.addEventListener('input', () => {
+    reader.searchQuery = input.value;
+    const list = panel.querySelector('.reader-search-list');
+    if (!list) return;
+    list.innerHTML = renderLibraryItems(reader, filteredNodes(reader, { query: reader.searchQuery }));
+    bindLibraryItems(reader, list);
   });
 }
 
@@ -437,11 +534,7 @@ function bindLibrary(reader) {
       persistState(reader);
       const list = reader.el.querySelector('.reader-library-list');
       if (!list) return;
-      list.innerHTML = filteredNodes(reader, tab).map((n) => `<button class="reader-library-item" data-library-open="${escapeAttr(n.id)}" data-long-preview="${escapeAttr(n.id)}">
-        <span style="color:${typeColor(reader.ctx.model, n.type)}">${escapeHtml(nodeTag(reader.ctx.model, n))}</span>
-        <b>${escapeHtml(n.title || n.id)}</b>
-        <small>${escapeHtml(paperName(reader.ctx.model, n) || n.typeLabel || n.type || '')}</small>
-      </button>`).join('') || '<div class="reader-muted">没有匹配条目。</div>';
+      list.innerHTML = renderLibraryItems(reader, filteredNodes(reader, tab));
       bindLibraryItems(reader, list);
     });
   }
@@ -453,7 +546,12 @@ function bindLibraryItems(reader, root) {
     b.addEventListener('click', () => {
       if (consumeLongPress(b)) return;
       const tab = activeTab(reader) || addLibraryTab(reader);
-      navigate(reader, tab.id, nodePage(b.dataset.libraryOpen), tab.kind === 'node' || tab.kind === 'library');
+      if (reader.searchOpen) {
+        followNode(reader, b.dataset.libraryOpen);
+        closeSearch(reader);
+      } else {
+        navigate(reader, tab.id, nodePage(b.dataset.libraryOpen, '', tab.kind === 'node' ? chainForTarget(reader, tab, b.dataset.libraryOpen) : [b.dataset.libraryOpen]), tab.kind === 'node' || tab.kind === 'library');
+      }
       reader.activeId = tab.id;
       persistState(reader);
       renderReader(reader);
@@ -485,6 +583,40 @@ function consumeLongPress(el) {
   return true;
 }
 
+function followNode(reader, nodeId, labelId = '') {
+  if (!nodeId || !reader.ctx.model.nodeById.has(nodeId)) return;
+  const tab = activeTab(reader) || addLibraryTab(reader);
+  navigate(reader, tab.id, nodePage(nodeId, labelId, chainForTarget(reader, tab, nodeId)), true);
+  reader.activeId = tab.id;
+  persistState(reader);
+}
+
+function chainForTarget(reader, tab, targetId) {
+  const current = tab?.kind === 'node' ? tab.nodeId : '';
+  let chain = normalizeChain(reader, tab?.chain, current);
+  if (current) {
+    const currentIndex = chain.indexOf(current);
+    if (currentIndex >= 0) chain = chain.slice(0, currentIndex + 1);
+    else chain.push(current);
+  }
+  const existing = chain.indexOf(targetId);
+  if (existing >= 0) return chain.slice(0, existing + 1);
+  return [...chain, targetId];
+}
+
+function jumpChain(reader, nodeId) {
+  const tab = activeTab(reader);
+  if (!tab || tab.kind !== 'node' || !nodeId) return;
+  const chain = normalizeChain(reader, tab.chain, tab.nodeId);
+  const idx = chain.indexOf(nodeId);
+  if (idx < 0) return;
+  navigate(reader, tab.id, nodePage(nodeId, '', chain.slice(0, idx + 1)), true);
+}
+
+function closeSearch(reader) {
+  reader.searchOpen = false;
+}
+
 function showPreview(reader, nodeId, anchorEl) {
   const node = reader.ctx.model.nodeById.get(nodeId);
   if (!node) return;
@@ -510,7 +642,7 @@ function showPreview(reader, nodeId, anchorEl) {
   positionPreview(el, anchorEl);
   el.querySelector('[data-close-preview]')?.addEventListener('click', () => closePreview(reader));
   el.querySelector('[data-preview-open]')?.addEventListener('click', () => {
-    navigate(reader, reader.activeId, nodePage(node.id));
+    followNode(reader, node.id);
     closePreview(reader);
     renderReader(reader);
   });
@@ -731,6 +863,21 @@ function restoreScroll(reader) {
   scroller.scrollTop = tab.scroll?.[pageKey(pageFromTab(tab))] || 0;
 }
 
+function scrollToLabel(reader, labelId) {
+  const scroller = scrollElement(reader);
+  if (!scroller || !labelId) return;
+  const target = reader.el.querySelector(`.reader-main [data-label="${cssEscape(labelId)}"]`);
+  if (!target) {
+    scroller.scrollTop = 0;
+    return;
+  }
+  const sr = scroller.getBoundingClientRect();
+  const tr = target.getBoundingClientRect();
+  const desired = scroller.scrollTop + tr.top - sr.top - Math.max(0, (scroller.clientHeight - tr.height) / 2);
+  const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+  scroller.scrollTop = Math.max(0, Math.min(max, desired));
+}
+
 function filteredNodes(reader, tab) {
   const q = (tab?.query || '').trim().toLowerCase();
   return reader.ctx.model.nodes
@@ -759,7 +906,7 @@ function restoreState(reader) {
 
 function sanitizeTab(reader, tab) {
   if (!tab || typeof tab !== 'object') return null;
-  const next = createTab(tab.kind === 'node' ? nodePage(tab.nodeId) : libraryPage(tab.query || ''));
+  const next = createTab(tab.kind === 'node' ? nodePage(tab.nodeId, tab.labelId || '', tab.chain) : libraryPage(tab.query || ''));
   next.id = typeof tab.id === 'string' ? tab.id : next.id;
   next.back = sanitizePages(reader, tab.back);
   next.forward = sanitizePages(reader, tab.forward);
@@ -771,7 +918,7 @@ function sanitizeTab(reader, tab) {
 function sanitizePages(reader, pages) {
   if (!Array.isArray(pages)) return [];
   return pages.map((p) => {
-    if (p?.kind === 'node' && reader.ctx.model.nodeById.has(p.nodeId)) return nodePage(p.nodeId);
+    if (p?.kind === 'node' && reader.ctx.model.nodeById.has(p.nodeId)) return nodePage(p.nodeId, p.labelId || '', p.chain);
     if (p?.kind === 'library') return libraryPage(p.query || '');
     return null;
   }).filter(Boolean);
@@ -783,6 +930,8 @@ function persistState(reader) {
     id: t.id,
     kind: t.kind,
     nodeId: t.nodeId,
+    labelId: t.labelId || '',
+    chain: t.chain || [],
     query: t.query || '',
     back: t.back,
     forward: t.forward,
@@ -791,10 +940,45 @@ function persistState(reader) {
   localStorage.setItem(reader.storageKey, JSON.stringify({ activeId: reader.activeId, tabs }));
 }
 
-function parseRoutePage(value) {
+function parseRoutePage(value, chain = []) {
   if (!value || value === 'library') return value === 'library' ? libraryPage() : null;
-  if (value.startsWith('node:')) return nodePage(value.slice(5));
+  if (value.startsWith('node:')) {
+    const nodeId = value.slice(5);
+    return nodePage(nodeId, '', normalizeChainForPage(chain, nodeId));
+  }
   return null;
+}
+
+function normalizeChain(reader, chain, fallbackNodeId = '') {
+  const ids = Array.isArray(chain) ? chain : [];
+  const out = [];
+  for (const id of ids) {
+    if (!id || !reader.ctx.model.nodeById.has(id) || out.includes(id)) continue;
+    out.push(id);
+  }
+  if (fallbackNodeId && reader.ctx.model.nodeById.has(fallbackNodeId) && !out.includes(fallbackNodeId)) out.push(fallbackNodeId);
+  return out;
+}
+
+function normalizeChainForPage(chain, nodeId) {
+  const out = [];
+  if (Array.isArray(chain)) {
+    for (const id of chain) {
+      if (id && !out.includes(id)) out.push(id);
+    }
+  }
+  if (nodeId && !out.includes(nodeId)) out.push(nodeId);
+  return out;
+}
+
+function inlineRendered(reader, text) {
+  const html = reader.ctx.render(String(text || ''));
+  const match = html.match(/^<p>([\s\S]*)<\/p>$/);
+  return match ? match[1] : html || escapeHtml(text);
+}
+
+function cssEscape(value) {
+  return window.CSS?.escape ? window.CSS.escape(value) : String(value).replace(/["\\]/g, '\\$&');
 }
 
 function escapeHtml(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
