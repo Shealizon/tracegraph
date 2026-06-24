@@ -7,6 +7,7 @@
 import { isLeafNode, nodeTag, paperName, typeColor } from '../data/schema.js';
 import { ICON } from '../ui/icons.js';
 import { toast } from '../ui/feedback.js';
+import { selectionSource } from '../ui/cardMenus.js';
 
 const STORE_PREFIX = 'paper-graph:reader:';
 let seq = 1;
@@ -40,6 +41,7 @@ function ensureReader(ctx) {
   };
   ctx._reader = reader;
   restoreState(reader);
+  bindReaderSelectionSurface(reader);
   el.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       if (reader.previewEl) closePreview(reader);
@@ -69,6 +71,7 @@ function closeReader(reader) {
   saveScroll(reader);
   persistState(reader);
   closeReaderCopyMenu(reader);
+  closeReaderSelectionMenu(reader);
   reader.el.remove();
   reader.ctx._reader = null;
 }
@@ -243,7 +246,7 @@ function renderNode(reader, node) {
   const proofLabel = model.meta.proofLabel || '详情';
 
   if (isLeafNode(model, node)) {
-    return `<article class="reader-layout" data-node-id="${escapeAttr(node.id)}">
+    return `<article class="reader-layout" data-node-id="${escapeAttr(node.id)}" style="--reader-color:${typeColor(model, node.type)}">
       <main class="reader-main" tabindex="0">
         ${nodeHero(reader, node, { deps, usedBy, paper, idx })}
         <section class="reader-content reader-source">
@@ -256,7 +259,7 @@ function renderNode(reader, node) {
 
   const statement = ctx.getRendered ? ctx.getRendered(node.id, 'statement') : ctx.render(node.statementBody);
   const proof = node.proofBody ? (ctx.getRendered ? ctx.getRendered(node.id, 'proof') : ctx.render(node.proofBody)) : '';
-  return `<article class="reader-layout" data-node-id="${escapeAttr(node.id)}">
+  return `<article class="reader-layout" data-node-id="${escapeAttr(node.id)}" style="--reader-color:${typeColor(model, node.type)}">
     <main class="reader-main" tabindex="0">
       ${nodeHero(reader, node, { deps, usedBy, paper, idx })}
       <section class="reader-content">
@@ -546,6 +549,94 @@ function closeReaderCopyMenu(reader) {
   if (reader.copyMenuClose) {
     document.removeEventListener('pointerdown', reader.copyMenuClose, true);
     reader.copyMenuClose = null;
+  }
+}
+
+function bindReaderSelectionSurface(reader) {
+  const schedule = () => {
+    if (!window.matchMedia?.('(max-width: 760px)').matches) return;
+    setTimeout(() => {
+      const sel = selectionInReader(reader);
+      if (sel) showReaderSelectionMenu(reader, sel);
+    }, 120);
+  };
+  reader.el.addEventListener('mouseup', schedule, true);
+  reader.el.addEventListener('touchend', schedule, true);
+  reader.el.addEventListener('copy', (e) => {
+    const sel = selectionInReader(reader);
+    if (!sel) return;
+    const src = selectionSource(sel);
+    if (src && e.clipboardData) {
+      e.clipboardData.setData('text/plain', src);
+      e.preventDefault();
+    }
+  }, true);
+}
+
+function selectionInReader(reader) {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.toString().trim() || !sel.rangeCount) return null;
+  const nodeEl = (n) => (n?.nodeType === 1 ? n : n?.parentElement);
+  const anchor = nodeEl(sel.anchorNode);
+  const focus = nodeEl(sel.focusNode);
+  const content = anchor?.closest?.('.reader-content');
+  if (!content || !reader.el.contains(content) || !content.contains(focus)) return null;
+  return sel;
+}
+
+function showReaderSelectionMenu(reader, sel) {
+  closeReaderSelectionMenu(reader);
+  const rects = sel.getRangeAt(0).getClientRects();
+  const last = rects[rects.length - 1];
+  if (!last) return;
+  const menu = document.createElement('div');
+  menu.className = 'card-simple-menu reader-selection-menu';
+  const button = document.createElement('button');
+  button.className = 'csm-btn';
+  button.type = 'button';
+  button.title = '复制选中';
+  button.innerHTML = ICON.copy;
+  button.addEventListener('click', () => {
+    copyReaderSelection(sel);
+    closeReaderSelectionMenu(reader);
+  });
+  menu.appendChild(button);
+  document.body.appendChild(menu);
+  const mw = menu.offsetWidth;
+  const mh = menu.offsetHeight;
+  let x = last.right;
+  let y = last.bottom + 6;
+  if (x + mw > window.innerWidth - 6) x = window.innerWidth - mw - 6;
+  if (y + mh > window.innerHeight - 6) y = last.top - mh - 6;
+  menu.style.left = `${Math.max(6, x)}px`;
+  menu.style.top = `${Math.max(6, y)}px`;
+  reader.selectionMenu = menu;
+  const close = (ev) => {
+    if (!menu.contains(ev.target)) closeReaderSelectionMenu(reader);
+  };
+  setTimeout(() => {
+    document.addEventListener('pointerdown', close, true);
+    reader.selectionMenuClose = close;
+  }, 0);
+}
+
+function closeReaderSelectionMenu(reader) {
+  if (reader.selectionMenu) {
+    reader.selectionMenu.remove();
+    reader.selectionMenu = null;
+  }
+  if (reader.selectionMenuClose) {
+    document.removeEventListener('pointerdown', reader.selectionMenuClose, true);
+    reader.selectionMenuClose = null;
+  }
+}
+
+async function copyReaderSelection(sel) {
+  try {
+    await navigator.clipboard.writeText(selectionSource(sel));
+    toast('已复制');
+  } catch {
+    toast('复制失败', { type: 'error' });
   }
 }
 
