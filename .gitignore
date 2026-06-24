@@ -6,5 +6,6 @@ dist/
 coverage/
 .llmsrc/
 .opencode/
+.codex-remote-attachments/
 output/
 output.json

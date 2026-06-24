@@ -88,6 +88,7 @@ function closeReader(reader) {
   persistState(reader);
   closeReaderCopyMenu(reader);
   closeReaderSelectionMenu(reader);
+  clearTimeout(reader.selectionTimer);
   if (reader.selectionChangeHandler) {
     document.removeEventListener('selectionchange', reader.selectionChangeHandler);
     reader.selectionChangeHandler = null;
@@ -588,22 +589,24 @@ function closeReaderCopyMenu(reader) {
 }
 
 function bindReaderSelectionSurface(reader) {
-  const schedule = () => {
+  const schedule = (delay = 180) => {
     if (!window.matchMedia?.('(max-width: 760px)').matches) return;
-    setTimeout(() => {
+    clearTimeout(reader.selectionTimer);
+    reader.selectionTimer = setTimeout(() => {
       const sel = selectionInReader(reader);
       if (sel) showReaderSelectionMenu(reader, sel);
-    }, 120);
+      else if (reader.selectionMenu) closeReaderSelectionMenu(reader);
+      reader.selectionTimer = null;
+    }, delay);
   };
-  reader.selectionChangeHandler = () => {
-    if (!reader.selectionMenu) return;
-    setTimeout(() => {
-      if (!selectionInReader(reader)) closeReaderSelectionMenu(reader);
-    }, 120);
-  };
+  reader.selectionChangeHandler = () => schedule(260);
   document.addEventListener('selectionchange', reader.selectionChangeHandler);
-  reader.el.addEventListener('mouseup', schedule, true);
-  reader.el.addEventListener('touchend', schedule, true);
+  reader.el.addEventListener('mouseup', () => schedule(120), true);
+  reader.el.addEventListener('touchend', () => schedule(120), true);
+  reader.el.addEventListener('scroll', () => {
+    if (!reader.selectionMenu) return;
+    schedule(80);
+  }, true);
   reader.el.addEventListener('copy', (e) => {
     const sel = selectionInReader(reader);
     if (!sel) return;
@@ -627,32 +630,42 @@ function selectionInReader(reader) {
 }
 
 function showReaderSelectionMenu(reader, sel) {
-  closeReaderSelectionMenu(reader);
+  const rect = selectionRect(sel);
+  if (!rect) return;
+  if (!reader.selectionMenu) {
+    const menu = document.createElement('div');
+    menu.className = 'card-simple-menu reader-selection-menu';
+    const button = document.createElement('button');
+    button.className = 'csm-btn';
+    button.type = 'button';
+    button.title = '复制选中';
+    button.innerHTML = ICON.copy;
+    button.addEventListener('click', () => {
+      copyReaderSelection(window.getSelection());
+      closeReaderSelectionMenu(reader);
+    });
+    menu.appendChild(button);
+    document.body.appendChild(menu);
+    reader.selectionMenu = menu;
+  }
+  positionReaderSelectionMenu(reader.selectionMenu, rect);
+}
+
+function selectionRect(sel) {
   const rects = sel.getRangeAt(0).getClientRects();
-  const last = rects[rects.length - 1];
-  if (!last) return;
-  const menu = document.createElement('div');
-  menu.className = 'card-simple-menu reader-selection-menu';
-  const button = document.createElement('button');
-  button.className = 'csm-btn';
-  button.type = 'button';
-  button.title = '复制选中';
-  button.innerHTML = ICON.copy;
-  button.addEventListener('click', () => {
-    copyReaderSelection(sel);
-    closeReaderSelectionMenu(reader);
-  });
-  menu.appendChild(button);
-  document.body.appendChild(menu);
+  const visible = [...rects].filter((r) => r.width > 1 && r.height > 1);
+  return visible[visible.length - 1] || null;
+}
+
+function positionReaderSelectionMenu(menu, rect) {
   const mw = menu.offsetWidth;
   const mh = menu.offsetHeight;
-  let x = last.right;
-  let y = last.bottom + 6;
+  let x = rect.right;
+  let y = rect.bottom + 6;
   if (x + mw > window.innerWidth - 6) x = window.innerWidth - mw - 6;
-  if (y + mh > window.innerHeight - 6) y = last.top - mh - 6;
+  if (y + mh > window.innerHeight - 6) y = rect.top - mh - 6;
   menu.style.left = `${Math.max(6, x)}px`;
   menu.style.top = `${Math.max(6, y)}px`;
-  reader.selectionMenu = menu;
 }
 
 function closeReaderSelectionMenu(reader) {
