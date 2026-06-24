@@ -364,7 +364,7 @@ export class ModalManager {
     pinBtn.addEventListener('click', () => this.togglePin(node));
 
     el.querySelector('[data-act="to-node"]').addEventListener('click', () => this._collapseWithUndo(node, rec));
-    el.querySelector('[data-act="details"]').addEventListener('click', () => this.ctx.openDetails(node.id));
+    el.querySelector('[data-act="details"]').addEventListener('click', () => this.ctx.openDetails(node.id, { newTab: true }));
     el.querySelector('[data-act="hide"]').addEventListener('click', () => this.ctx.hideNode(node.id));
     // 复制：下拉「复制所有内容 / 复制标题」
     el.querySelector('[data-act="copy"]').addEventListener('click', (e) => {

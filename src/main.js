@@ -114,7 +114,7 @@ function startMain(db, project) {
     hidden: new Set(initialState.hidden),
     filterActive: initialState.types ? new Set(initialState.types) : null,
     sidebarCollapsed: initialState.sidebarCollapsed,
-    openDetails: (nodeId) => openDetails(ctx, nodeId),
+    openDetails: (nodeId, opts) => openDetails(ctx, nodeId, opts),
     openReaderLibrary: () => openReaderLibrary(ctx),
     goLeading,
     openProjectConfig: () => openProjectConfigDialog({ db, project, onSaved: () => location.reload() }),
