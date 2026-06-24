@@ -107,7 +107,7 @@ export function createRenderer(opts) {
     // KaTeX 不能直接输出我们的占位符（含 NUL）。策略：把占位符替换为 \text{<PH>}，
     // 渲染后 DOM 里会含该文本，再用字符串替换回 HTML。
     // 为稳妥，这里把 NUL 占位符换成安全 token，再在外层替换。
-    tex = injectTags(tex);
+    tex = normalizeMathEnvs(injectTags(tex));
 
     try {
       const out = katex.renderToString(tex, {
@@ -122,6 +122,15 @@ export function createRenderer(opts) {
     } catch (e) {
       return `<code class="math-error">${escapeHtml(seg.value)}</code>`;
     }
+  }
+
+  function normalizeMathEnvs(tex) {
+    // KaTeX does not reliably support LaTeX's multline environment.  Treat it
+    // as a gathered display so exported arXiv papers render instead of falling
+    // back to a red raw-TeX error block.
+    return tex.replace(/\\begin\{multline\*?\}([\s\S]*?)\\end\{multline\*?\}/g, (_, body) => {
+      return `\\begin{gathered}${body}\\end{gathered}`;
+    });
   }
 
   // 把 \begin{equation}\label{k}..\end{equation} 等转换为带 \tag 的形式

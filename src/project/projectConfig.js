@@ -1,4 +1,4 @@
-import { graphToDocument, normalizeProject, uniqueId } from './projectAdapter.js';
+import { graphToDocument, normalizeProject, removeProjectDocuments, uniqueId } from './projectAdapter.js';
 import { isProjectPayload, saveProject } from './store.js';
 import { extractFixedTexGraph } from '../import/texExtract.js';
 import { extractGenericTexGraph } from '../import/texGeneric.js';
@@ -178,11 +178,11 @@ export function openProjectConfigDialog({ db, project, onSaved }) {
             <div class="cfg-adv-grid">
               <section class="cfg-col">
                 <div class="cfg-col-head"><span>节点</span><span class="cfg-count" data-count-node></span><button class="cfg-selall" data-selall="node" type="button">全选/反选</button></div>
-                <div class="cfg-rows cfg-rows--scroll" data-nodes>${nodeRows.map(({ doc, node }) => checkRow('node', node.id, !disabledNodes.has(node.id), `${node.typeLabel || node.type} ${node.number || ''} · ${node.title || node.id}`, multiDoc ? doc.name : '')).join('')}</div>
+                <div class="cfg-rows cfg-rows--scroll" data-nodes>${nodeRows.map(({ doc, node }) => checkRow('node', node.id, !disabledNodes.has(node.id), `${node.typeLabel || node.type} ${node.number || ''} · ${node.title || node.id}`, multiDoc ? doc.name : '', doc.id)).join('')}</div>
               </section>
               <section class="cfg-col">
                 <div class="cfg-col-head"><span>关系</span><span class="cfg-count" data-count-rel></span><button class="cfg-selall" data-selall="relation" type="button">全选/反选</button></div>
-                <div class="cfg-rows cfg-rows--scroll" data-relations>${relationRows.map(({ doc, edge, key }) => checkRow('relation', key, !disabledRelations.has(key), `${edge.fromLabel || edge.from} → ${edge.to}`, multiDoc ? doc.name : '')).join('')}</div>
+                <div class="cfg-rows cfg-rows--scroll" data-relations>${relationRows.map(({ doc, edge, key }) => checkRow('relation', key, !disabledRelations.has(key), `${edge.fromLabel || edge.from} → ${edge.to}`, multiDoc ? doc.name : '', doc.id)).join('')}</div>
               </section>
             </div>
           </div>
@@ -244,6 +244,33 @@ export function openProjectConfigDialog({ db, project, onSaved }) {
     const file = await pickFile('.json,.tex,.txt,application/json,text/plain');
     if (file) importFilesHere([file]);
   });
+
+  overlay.addEventListener('click', async (ev) => {
+    const btn = ev.target.closest('[data-delete-doc]');
+    if (!btn) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const docId = btn.dataset.deleteDoc;
+    const doc = project.documents.find((d) => d.id === docId);
+    if (!doc) return;
+    const ok = await confirmDialog({
+      title: '删除文件',
+      message: `确定从项目中删除此文件吗？\n${middleEllipsis(doc.name, 72)}\n相关节点与关系配置也会移除。`,
+      okText: '删除',
+      cancelText: '取消',
+      danger: true,
+    });
+    if (!ok) return;
+    btn.closest('.project-file')?.remove();
+    overlay.querySelectorAll('[data-doc-id]').forEach((el) => {
+      if (el.dataset.docId === docId) el.remove();
+    });
+    const docsEl = $('[data-docs]');
+    if (docsEl && !docsEl.querySelector('.project-file')) {
+      docsEl.innerHTML = '<div class="cfg-empty">还没有文件，点「添加文件」导入。</div>';
+    }
+    updateCounts();
+  });
   // 支持把文件直接拖拽进配置弹窗追加导入
   overlay.addEventListener('dragover', (ev) => { ev.preventDefault(); overlay.classList.add('drag-over'); });
   overlay.addEventListener('dragleave', (ev) => { if (ev.target === overlay) overlay.classList.remove('drag-over'); });
@@ -257,17 +284,21 @@ export function openProjectConfigDialog({ db, project, onSaved }) {
   $('[data-cancel]').addEventListener('click', close);
   overlay.addEventListener('click', (ev) => { if (ev.target === overlay) close(); });
   $('[data-save]').addEventListener('click', async () => {
+    const remainingDocIds = new Set([...overlay.querySelectorAll('.project-file[data-doc-id]')].map((el) => el.dataset.docId));
+    const pruned = removeProjectDocuments(project, project.documents.map((doc) => doc.id).filter((id) => !remainingDocIds.has(id)));
+    const remainingNodeRows = nodeRows.filter(({ doc }) => remainingDocIds.has(doc.id));
+    const remainingRelationRows = relationRows.filter(({ doc }) => remainingDocIds.has(doc.id));
     const docIds = checkedValues(overlay, 'doc');
     const enabledNodeIds = new Set(checkedValues(overlay, 'node'));
     const enabledRelationKeys = new Set(checkedValues(overlay, 'relation'));
     const next = normalizeProject({
-      ...project,
+      ...pruned,
       name: $('[data-name]').value.trim() || phName,
       config: {
-        ...project.config,
+        ...pruned.config,
         enabledDocumentIds: docIds,
-        disabledNodeIds: nodeRows.map(({ node }) => node.id).filter((id) => !enabledNodeIds.has(id)),
-        disabledRelationKeys: relationRows.map((r) => r.key).filter((key) => !enabledRelationKeys.has(key)),
+        disabledNodeIds: remainingNodeRows.map(({ node }) => node.id).filter((id) => !enabledNodeIds.has(id)),
+        disabledRelationKeys: remainingRelationRows.map((r) => r.key).filter((key) => !enabledRelationKeys.has(key)),
       },
     });
     await saveProject(db, next);
@@ -324,13 +355,13 @@ function checkedValues(root, type) {
   return [...root.querySelectorAll(`input[data-type="${type}"]`)].filter((i) => i.checked).map((i) => i.value);
 }
 
-function checkRow(type, value, checked, label, sub = '') {
-  return `<label class="project-check"><input type="checkbox" data-type="${type}" value="${escapeAttr(value)}"${checked ? ' checked' : ''}><span>${escapeHtml(label)}</span>${sub ? `<small>${escapeHtml(sub)}</small>` : ''}</label>`;
+function checkRow(type, value, checked, label, sub = '', docId = '') {
+  return `<label class="project-check"${docId ? ` data-doc-id="${escapeAttr(docId)}"` : ''}><input type="checkbox" data-type="${type}" value="${escapeAttr(value)}"${checked ? ' checked' : ''}><span>${escapeHtml(label)}</span>${sub ? `<small>${escapeHtml(sub)}</small>` : ''}</label>`;
 }
 
 // 文件行：启用开关 + 文件名 + 节点/关系计数
 function fileRow(doc, checked, meta) {
-  return `<label class="project-file"><input type="checkbox" data-type="doc" value="${escapeAttr(doc.id)}"${checked ? ' checked' : ''}><span class="pf-name">${escapeHtml(doc.name)}</span><span class="pf-meta">${escapeHtml(meta)}</span></label>`;
+  return `<div class="project-file" data-doc-id="${escapeAttr(doc.id)}"><label class="pf-toggle"><input type="checkbox" data-type="doc" value="${escapeAttr(doc.id)}"${checked ? ' checked' : ''}><span class="pf-name">${escapeHtml(doc.name)}</span><span class="pf-meta">${escapeHtml(meta)}</span></label><button class="icon-btn pf-delete" type="button" data-delete-doc="${escapeAttr(doc.id)}" title="删除文件">${ICON.trash}</button></div>`;
 }
 
 function downloadJson(value, filename) {
@@ -343,5 +374,11 @@ function downloadJson(value, filename) {
 }
 
 function safeName(name) { return String(name).replace(/[\\/:*?"<>|]/g, '-').slice(0, 80) || 'project'; }
+function middleEllipsis(value, max = 72) {
+  const s = String(value ?? '');
+  if (s.length <= max) return s;
+  const keep = Math.max(8, Math.floor((max - 3) / 2));
+  return `${s.slice(0, keep)}...${s.slice(-keep)}`;
+}
 function escapeHtml(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 function escapeAttr(s) { return escapeHtml(s).replace(/"/g, '&quot;'); }

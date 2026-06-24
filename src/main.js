@@ -9,7 +9,8 @@ import { ForceGraph } from './view/forceGraph.js';
 import { ModalManager } from './view/modal.js';
 import { RefLayer } from './view/refLayer.js';
 import { buildSidebar, buildZoomControl } from './ui/sidebar.js';
-import { openDetails } from './view/detailsPage.js';
+import { ICON } from './ui/icons.js';
+import { openDetails, openReaderLibrary } from './view/detailsPage.js';
 import { isLeafNode } from './data/schema.js';
 import { renderLeadingPage } from './view/leadingPage.js';
 import { initProjectStore, saveProject, setCurrentProjectId } from './project/store.js';
@@ -114,6 +115,7 @@ function startMain(db, project) {
     filterActive: initialState.types ? new Set(initialState.types) : null,
     sidebarCollapsed: initialState.sidebarCollapsed,
     openDetails: (nodeId) => openDetails(ctx, nodeId),
+    openReaderLibrary: () => openReaderLibrary(ctx),
     goLeading,
     openProjectConfig: () => openProjectConfigDialog({ db, project, onSaved: () => location.reload() }),
     exportProject: () => downloadProject(project),
@@ -456,6 +458,7 @@ function startMain(db, project) {
 
   buildSidebar(ctx, document.getElementById('sidebar'));
   buildZoomControl(ctx, stageEl);
+  buildReaderLauncher(ctx, stageEl);
 
   // ---- Deep-link：URL hash 恢复 / 写回 ----
   ctx.writeHash = () => {
@@ -585,6 +588,20 @@ function startMain(db, project) {
 
   // 暴露调试
   window.__ctx = ctx;
+}
+
+function buildReaderLauncher(ctx, stageEl) {
+  let btn = stageEl.querySelector('.reader-launcher');
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.className = 'reader-launcher';
+    btn.type = 'button';
+    stageEl.appendChild(btn);
+  }
+  btn.innerHTML = ICON.listOrdered;
+  btn.title = '打开阅读列表';
+  btn.setAttribute('aria-label', '打开阅读列表');
+  btn.addEventListener('click', () => ctx.openReaderLibrary && ctx.openReaderLibrary());
 }
 
 function readHash() {

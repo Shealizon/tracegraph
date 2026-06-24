@@ -159,6 +159,7 @@ function attachOverflowMenu(ctx, anchor) {
   const close = () => { if (menu) { menu.remove(); menu = null; document.removeEventListener('click', onDoc, true); } };
   const onDoc = (ev) => { if (menu && !menu.contains(ev.target) && ev.target !== anchor) close(); };
   const items = [
+    { label: '阅读列表', icon: 'search', run: () => ctx.openReaderLibrary && ctx.openReaderLibrary() },
     { label: '项目配置', icon: 'settings', run: () => ctx.openProjectConfig && ctx.openProjectConfig() },
     { label: '导入文件', icon: 'upload', run: () => ctx.importFile && ctx.importFile() },
     { label: '导出项目', icon: 'download', run: () => ctx.exportProject && ctx.exportProject() },

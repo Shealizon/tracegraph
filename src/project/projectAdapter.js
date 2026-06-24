@@ -68,6 +68,28 @@ export function graphToDocument(graph, name, sourceType = 'structured-json') {
   };
 }
 
+export function removeProjectDocuments(project, documentIds) {
+  const remove = new Set(documentIds || []);
+  if (!remove.size) return normalizeProject(project);
+  const normalized = normalizeProject(project);
+  const remainingDocs = normalized.documents.filter((doc) => !remove.has(doc.id));
+  const removedDocs = normalized.documents.filter((doc) => remove.has(doc.id));
+  const remainingIds = new Set(remainingDocs.map((doc) => doc.id));
+  const removedNodeIds = new Set(removedDocs.flatMap((doc) => (doc.graph?.nodes || []).map((node) => node.id)));
+  const removedRelationKeys = new Set(removedDocs.flatMap((doc) => (doc.graph?.edges || []).map((edge) => relationKey(edge.from, edge.fromLabel, edge.to))));
+
+  return normalizeProject({
+    ...normalized,
+    documents: remainingDocs,
+    config: {
+      ...normalized.config,
+      enabledDocumentIds: normalized.config.enabledDocumentIds.filter((id) => remainingIds.has(id)),
+      disabledNodeIds: normalized.config.disabledNodeIds.filter((id) => !removedNodeIds.has(id)),
+      disabledRelationKeys: normalized.config.disabledRelationKeys.filter((key) => !removedRelationKeys.has(key)),
+    },
+  });
+}
+
 export function compileProject(project) {
   const normalized = normalizeProject(project);
   const enabledDocs = new Set(normalized.config.enabledDocumentIds || []);
