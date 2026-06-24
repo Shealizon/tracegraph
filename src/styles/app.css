@@ -360,6 +360,10 @@ body {
 .sidebar-rail svg { width: 14px; height: 14px; display: block; transition: transform .2s ease; }
 .sidebar-collapsed .sidebar-rail { left: 0; }
 .sidebar-collapsed .sidebar-rail .rail-ico { transform: rotate(180deg); }
+.mobile-sidebar-toggle,
+.mobile-sidebar-backdrop {
+  display: none;
+}
 .side-group { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
 .side-group > .side-label { font-size: 10.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 1px; }
 
@@ -613,10 +617,65 @@ body {
 .reader-launcher svg { width: 18px; height: 18px; }
 
 @media (max-width: 760px) {
-  #sidebar,
   .sidebar-rail,
   .zoom-control {
     display: none;
+  }
+  #sidebar {
+    display: flex;
+    width: min(86vw, 330px);
+    padding: max(14px, env(safe-area-inset-top)) 12px max(18px, env(safe-area-inset-bottom));
+    transform: translateX(-105%);
+    opacity: 0;
+    z-index: 92;
+    background: var(--bg-modal-solid);
+    border-right: 1px solid var(--line);
+    box-shadow: var(--shadow-modal);
+    pointer-events: none;
+  }
+  .mobile-sidebar-open #sidebar {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .mobile-sidebar-toggle {
+    position: absolute;
+    left: max(12px, env(safe-area-inset-left));
+    top: max(12px, env(safe-area-inset-top));
+    z-index: 61;
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+    border-radius: 999px;
+    background: var(--bg-modal-solid);
+    color: var(--text);
+    box-shadow: var(--shadow-pop);
+    cursor: pointer;
+  }
+  .mobile-sidebar-toggle svg { width: 18px; height: 18px; }
+  .mobile-sidebar-open .mobile-sidebar-toggle {
+    z-index: 94;
+    color: var(--accent);
+    background: var(--accent-bg);
+    border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  }
+  .mobile-sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 91;
+    display: block;
+    border: 0;
+    background: rgba(0,0,0,.28);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .16s ease;
+  }
+  .mobile-sidebar-open .mobile-sidebar-backdrop {
+    opacity: 1;
+    pointer-events: auto;
   }
   #stage {
     touch-action: pan-x pan-y;

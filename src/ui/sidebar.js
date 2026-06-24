@@ -18,6 +18,7 @@ export function buildSidebar(ctx, root) {
   const { model, graph } = ctx;
   const app = document.getElementById('app');
   const rail = ensureCollapseRail(app);
+  const mobileSidebar = ensureMobileSidebarToggle(app);
   const collapsed = ctx.sidebarCollapsed ?? (localStorage.getItem('hg-sidebar-collapsed') === '1');
   const setCollapsed = (on) => {
     ctx.sidebarCollapsed = on;
@@ -27,6 +28,8 @@ export function buildSidebar(ctx, root) {
     ctx.writeHash && ctx.writeHash();
   };
   rail.onclick = () => setCollapsed(!app.classList.contains('sidebar-collapsed'));
+  mobileSidebar.button.onclick = () => app.classList.toggle('mobile-sidebar-open');
+  mobileSidebar.backdrop.onclick = () => app.classList.remove('mobile-sidebar-open');
   setCollapsed(collapsed);
 
   // ---- 头部：返回首页 · 项目名 · 溢出菜单 ----
@@ -257,6 +260,27 @@ function ensureCollapseRail(app) {
   }
   b.innerHTML = `<span class="rail-ico">${CHEVRON}</span>`;
   return b;
+}
+
+function ensureMobileSidebarToggle(app) {
+  let button = app.querySelector('.mobile-sidebar-toggle');
+  if (!button) {
+    button = el('button', 'mobile-sidebar-toggle');
+    button.type = 'button';
+    app.appendChild(button);
+  }
+  button.innerHTML = ICON.settings;
+  button.title = '显示侧栏';
+  button.setAttribute('aria-label', '显示侧栏');
+
+  let backdrop = app.querySelector('.mobile-sidebar-backdrop');
+  if (!backdrop) {
+    backdrop = el('button', 'mobile-sidebar-backdrop');
+    backdrop.type = 'button';
+    backdrop.setAttribute('aria-label', '关闭侧栏');
+    app.appendChild(backdrop);
+  }
+  return { button, backdrop };
 }
 
 // 节点对应的筛选键：单篇=type，多篇=docId::type
