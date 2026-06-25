@@ -142,11 +142,12 @@ function addLibraryTab(reader) {
   return tab;
 }
 
-function addNodeTab(reader, nodeId) {
+function addNodeTab(reader, nodeId, labelId = '') {
   if (!nodeId) return null;
-  const tab = createTab(nodePage(nodeId, '', [nodeId]));
+  const tab = createTab(nodePage(nodeId, labelId, [nodeId]));
   reader.tabs.push(tab);
   reader.activeId = tab.id;
+  reader.pendingLabel = labelId || '';
   persistState(reader);
   return tab;
 }
@@ -466,6 +467,11 @@ function bindReader(reader) {
   el.querySelectorAll('[data-goto]').forEach((target) => {
     target.addEventListener('click', (e) => {
       if (consumeLongPress(target)) { e.preventDefault(); return; }
+      if (isMobileReader()) {
+        e.preventDefault();
+        showPreview(reader, target.dataset.longPreview || target.dataset.goto, target);
+        return;
+      }
       followNode(reader, target.dataset.goto);
       renderReader(reader);
     });
@@ -494,11 +500,19 @@ function bindInlineRefs(reader) {
       if (consumeLongPress(ref)) { e.preventDefault(); return; }
       e.preventDefault();
       e.stopPropagation();
+      if (isMobileReader()) {
+        showPreview(reader, owner, ref, target);
+        return;
+      }
       followNode(reader, owner, target);
       renderReader(reader);
     });
-    bindLongPress(ref, () => showPreview(reader, owner, ref));
+    bindLongPress(ref, () => showPreview(reader, owner, ref, target));
   });
+}
+
+function isMobileReader() {
+  return !!window.matchMedia?.('(max-width: 760px)').matches;
 }
 
 function bindSearchDrawer(reader) {
@@ -617,13 +631,16 @@ function closeSearch(reader) {
   reader.searchOpen = false;
 }
 
-function showPreview(reader, nodeId, anchorEl) {
+function showPreview(reader, nodeId, anchorEl, labelId = '') {
   const node = reader.ctx.model.nodeById.get(nodeId);
   if (!node) return;
   closePreview(reader);
   const statement = isLeafNode(reader.ctx.model, node)
     ? (node.statementBody ? reader.ctx.render(node.statementBody) : `<p>${escapeHtml(node.title || '')}</p>`)
     : (reader.ctx.getRendered ? reader.ctx.getRendered(node.id, 'statement') : reader.ctx.render(node.statementBody));
+  const proof = !isLeafNode(reader.ctx.model, node) && node.proofBody
+    ? (reader.ctx.getRendered ? reader.ctx.getRendered(node.id, 'proof') : reader.ctx.render(node.proofBody))
+    : '';
   const el = document.createElement('div');
   el.className = 'reader-preview';
   el.style.setProperty('--reader-color', typeColor(reader.ctx.model, node.type));
@@ -631,38 +648,53 @@ function showPreview(reader, nodeId, anchorEl) {
     <div class="reader-preview-head">
       <span>${escapeHtml(nodeTag(reader.ctx.model, node))}</span>
       <strong>${escapeHtml(node.title || node.id)}</strong>
+      <div class="reader-preview-head-actions">
+        <button data-preview-open="${escapeAttr(node.id)}" title="打开">${ICON.arrowUpRight}</button>
+        <button data-preview-new="${escapeAttr(node.id)}" title="新标签">${ICON.plus}</button>
+      </div>
       <button data-close-preview title="关闭">${ICON.close}</button>
     </div>
-    <div class="reader-preview-body">${statement || '<p class="reader-muted">无正文。</p>'}</div>
-    <div class="reader-preview-actions">
-      <button data-preview-open="${escapeAttr(node.id)}">${ICON.arrowUpRight}<span>打开</span></button>
-      <button data-preview-new="${escapeAttr(node.id)}">${ICON.plus}<span>新标签</span></button>
-    </div>`;
+    <div class="reader-preview-body">${statement || '<p class="reader-muted">无正文。</p>'}${proof ? `<div class="proof-wrap">${proof}</div>` : ''}</div>`;
   reader.el.appendChild(el);
   positionPreview(el, anchorEl);
   el.querySelector('[data-close-preview]')?.addEventListener('click', () => closePreview(reader));
   el.querySelector('[data-preview-open]')?.addEventListener('click', () => {
-    followNode(reader, node.id);
+    followNode(reader, node.id, labelId);
     closePreview(reader);
     renderReader(reader);
   });
   el.querySelector('[data-preview-new]')?.addEventListener('click', () => {
-    addNodeTab(reader, node.id);
+    addNodeTab(reader, node.id, labelId);
     closePreview(reader);
     renderReader(reader);
   });
   reader.previewEl = el;
+  if (labelId) requestAnimationFrame(() => scrollPreviewToLabel(el, labelId));
 }
 
 function positionPreview(el, anchorEl) {
   const ar = anchorEl.getBoundingClientRect();
-  const host = document.body.getBoundingClientRect();
   const width = Math.min(430, Math.max(280, window.innerWidth - 24));
   el.style.width = `${width}px`;
   const left = Math.min(window.innerWidth - width - 12, Math.max(12, ar.left + ar.width / 2 - width / 2));
-  const topBelow = ar.bottom + 10;
-  el.style.left = `${left - host.left}px`;
-  el.style.top = `${Math.min(window.innerHeight - 230, Math.max(12, topBelow)) - host.top}px`;
+  const gap = 10;
+  const below = window.innerHeight - ar.bottom - gap - 12;
+  const above = ar.top - gap - 12;
+  const placeBelow = below >= 180 || below >= above;
+  const available = Math.max(80, placeBelow ? below : above);
+  const maxHeight = Math.min(430, available);
+  el.style.maxHeight = `${maxHeight}px`;
+  el.style.left = `${left}px`;
+  el.style.top = `${placeBelow ? ar.bottom + gap : Math.max(12, ar.top - gap - maxHeight)}px`;
+}
+
+function scrollPreviewToLabel(previewEl, labelId) {
+  const body = previewEl.querySelector('.reader-preview-body');
+  const target = body?.querySelector(`[data-label="${cssEscape(labelId)}"]`);
+  if (!body || !target) return;
+  const br = body.getBoundingClientRect();
+  const tr = target.getBoundingClientRect();
+  body.scrollTop += tr.top - br.top - 10;
 }
 
 function closePreview(reader) {

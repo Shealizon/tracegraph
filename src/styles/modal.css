@@ -423,27 +423,22 @@
   box-shadow: var(--shadow-modal); overflow: hidden;
 }
 .reader-preview-head {
-  min-height: 46px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px;
+  min-height: 46px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px;
   padding: 8px 10px; border-bottom: 1px solid var(--line-soft); font-family: var(--font);
 }
 .reader-preview-head span { color: var(--reader-color); font: 800 12px/1 var(--font); }
 .reader-preview-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.reader-preview-head-actions { display: flex; align-items: center; gap: 2px; }
 .reader-preview-head button {
   width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
   border: 0; border-radius: 7px; background: transparent; color: var(--text-dim); cursor: pointer;
 }
 .reader-preview-head button:hover { background: var(--hover); color: var(--danger); }
+.reader-preview-head-actions button:hover { color: var(--accent); }
 .reader-preview-head svg { width: 14px; height: 14px; }
 .reader-preview-body { min-height: 0; overflow: auto; padding: 12px 14px; font-family: var(--serif); font-size: 14px; line-height: 1.62; }
 .reader-preview-body p { margin: 0 0 9px; }
-.reader-preview-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 9px 10px; border-top: 1px solid var(--line-soft); }
-.reader-preview-actions button {
-  min-height: 34px; display: inline-flex; align-items: center; gap: 6px;
-  border: 1px solid var(--line-soft); border-radius: 8px; background: var(--bg); color: var(--text);
-  padding: 0 10px; cursor: pointer; font: 12px/1 var(--font);
-}
-.reader-preview-actions button:hover { background: var(--hover); color: var(--accent); }
-.reader-preview-actions svg { width: 14px; height: 14px; }
+.reader-preview-body .proof-wrap { margin-top: 12px; border-top: 1px dashed var(--line-soft); padding-top: 10px; }
 
 @media (max-width: 760px) {
   .reader-tabs { padding: 6px 7px 5px; gap: 5px; }
@@ -469,5 +464,4 @@
   .reader-library-page { height: auto; min-height: 100%; padding: 14px 12px 28px; overflow: visible; }
   .reader-search-panel { width: 100vw; border-right: 0; }
   .reader-preview { max-width: calc(100vw - 20px); max-height: 58vh; }
-  .reader-preview-actions span { display: none; }
 }
