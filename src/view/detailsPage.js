@@ -10,6 +10,8 @@ import { toast } from '../ui/feedback.js';
 import { selectionSource } from '../ui/cardMenus.js';
 
 const STORE_PREFIX = 'paper-graph:reader:';
+const CHROME_HIDE_AFTER = 72;
+const CHROME_DELTA = 18;
 let seq = 1;
 
 export function openDetails(ctx, nodeId, opts = {}) {
@@ -56,6 +58,9 @@ function ensureReader(ctx) {
     tabs: [],
     activeId: '',
     previewEl: null,
+    chromeCollapsed: false,
+    chromeScrollTop: 0,
+    chromeScrollDelta: 0,
     searchOpen: false,
     searchQuery: '',
     pendingLabel: '',
@@ -243,11 +248,14 @@ function renderReader(reader) {
   const { el } = reader;
   const tab = activeTab(reader);
   if (!tab && !reader.tabs.length) addLibraryTab(reader);
+  setReaderChromeCollapsed(reader, false);
 
   el.innerHTML = `
     <div class="reader-shell">
-      ${renderTabs(reader)}
-      ${renderToolbar(reader)}
+      <div class="reader-chrome">
+        ${renderTabs(reader)}
+        ${renderToolbar(reader)}
+      </div>
       <div class="reader-body">
         ${renderActivePage(reader)}
       </div>
@@ -260,6 +268,7 @@ function renderReader(reader) {
     reader.pendingLabel = '';
     if (label) scrollToLabel(reader, label);
     else restoreScroll(reader);
+    resetReaderChromeScroll(reader);
   });
   el.focus();
   reader.ctx.writeHash && reader.ctx.writeHash();
@@ -450,6 +459,7 @@ function bindReader(reader) {
   el.querySelector('[data-forward]')?.addEventListener('click', () => goHistory(reader, 1));
   el.querySelector('[data-copy-current]')?.addEventListener('click', (e) => openReaderCopyMenu(reader, e.currentTarget));
   el.querySelector('[data-search-reader]')?.addEventListener('click', () => {
+    setReaderChromeCollapsed(reader, false);
     reader.searchOpen = true;
     reader.searchQuery = activeTab(reader)?.query || reader.searchQuery || '';
     renderReader(reader);
@@ -927,9 +937,57 @@ function bindScrollMemory(reader) {
     const tab = activeTab(reader);
     if (!tab) return;
     tab.scroll[pageKey(pageFromTab(tab))] = scroller.scrollTop;
+    updateReaderChromeOnScroll(reader, scroller);
     clearTimeout(reader.scrollTimer);
     reader.scrollTimer = setTimeout(() => persistState(reader), 180);
   }, { passive: true });
+}
+
+function resetReaderChromeScroll(reader) {
+  const scroller = scrollElement(reader);
+  reader.chromeScrollTop = Math.max(0, scroller?.scrollTop || 0);
+  reader.chromeScrollDelta = 0;
+  updateReaderChromeAvailability(reader, scroller);
+}
+
+function updateReaderChromeAvailability(reader, scroller = scrollElement(reader)) {
+  const tab = activeTab(reader);
+  const canCollapse = !!scroller
+    && tab?.kind === 'node'
+    && !reader.searchOpen
+    && scroller.scrollHeight > scroller.clientHeight + 24
+    && scroller.scrollTop > CHROME_HIDE_AFTER;
+  if (!canCollapse) setReaderChromeCollapsed(reader, false);
+  return canCollapse;
+}
+
+function updateReaderChromeOnScroll(reader, scroller) {
+  const current = Math.max(0, scroller.scrollTop || 0);
+  const previous = Number.isFinite(reader.chromeScrollTop) ? reader.chromeScrollTop : current;
+  const delta = current - previous;
+  reader.chromeScrollTop = current;
+
+  if (!updateReaderChromeAvailability(reader, scroller)) {
+    reader.chromeScrollDelta = 0;
+    return;
+  }
+  if (Math.abs(delta) < 1) return;
+  if ((delta > 0 && reader.chromeScrollDelta < 0) || (delta < 0 && reader.chromeScrollDelta > 0)) {
+    reader.chromeScrollDelta = 0;
+  }
+  reader.chromeScrollDelta += delta;
+  if (reader.chromeScrollDelta > CHROME_DELTA) {
+    setReaderChromeCollapsed(reader, true);
+    reader.chromeScrollDelta = 0;
+  } else if (reader.chromeScrollDelta < -CHROME_DELTA) {
+    setReaderChromeCollapsed(reader, false);
+    reader.chromeScrollDelta = 0;
+  }
+}
+
+function setReaderChromeCollapsed(reader, collapsed) {
+  reader.chromeCollapsed = !!collapsed;
+  reader.el.classList.toggle('reader-chrome-collapsed', reader.chromeCollapsed);
 }
 
 function scrollElement(reader) {
