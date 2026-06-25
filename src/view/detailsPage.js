@@ -792,10 +792,11 @@ function selectionRect(sel) {
 function positionReaderSelectionMenu(menu, rect) {
   const mw = menu.offsetWidth;
   const mh = menu.offsetHeight;
-  let x = rect.right;
-  let y = rect.bottom + 6;
-  if (x + mw > window.innerWidth - 6) x = window.innerWidth - mw - 6;
-  if (y + mh > window.innerHeight - 6) y = rect.top - mh - 6;
+  let x = rect.right + 8;
+  let y = rect.top + rect.height / 2 - mh / 2;
+  if (x + mw > window.innerWidth - 6) x = rect.left - mw - 8;
+  if (x < 6) x = window.innerWidth - mw - 6;
+  if (y + mh > window.innerHeight - 6) y = window.innerHeight - mh - 6;
   menu.style.left = `${Math.max(6, x)}px`;
   menu.style.top = `${Math.max(6, y)}px`;
 }
