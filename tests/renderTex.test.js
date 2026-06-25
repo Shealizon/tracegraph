@@ -18,7 +18,7 @@ describe('render/tex · math environments', () => {
     expect(html).toContain('katex-display');
   });
 
-  it('renders equation numbers as trailing formula content', () => {
+  it('renders equation numbers with KaTeX leqno tags', () => {
     const render = createRenderer({
       numberOf: () => '57',
       kindOf: () => 'equation',
@@ -26,7 +26,8 @@ describe('render/tex · math environments', () => {
     const html = render(String.raw`\[
 a_{k+1}=\frac{a_k}{1-a_kb_k},\qquad c_{k+1}=(c_k^2-b_k)\label{eq:long}
 \]`);
-    expect(html).not.toContain('class="tag"');
+    expect(html).toContain('katex-display leqno');
+    expect(html).toContain('class="tag"');
     expect(html).toContain('57');
   });
 });

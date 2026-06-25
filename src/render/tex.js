@@ -116,6 +116,7 @@ export function createRenderer(opts) {
         trust: true,
         macros,
         fleqn: false,
+        leqno: display,
       });
       return display ? `<div class="math-display"${dataLabel}>${out}</div>` : out;
     } catch (e) {
@@ -132,27 +133,26 @@ export function createRenderer(opts) {
     });
   }
 
-  // 把 \begin{equation}\label{k}..\end{equation} 等转换为尾随编号。
-  // 不用 KaTeX 的 \tag：它会绝对定位到可视容器右侧，长公式在窄屏横向滚动时会与公式重叠。
+  // 把 \begin{equation}\label{k}..\end{equation} 等转换为带 \tag 的形式。
+  // 编号位置交给 KaTeX leqno 处理，放在公式左侧。
   function injectTags(tex) {
-    // equation/equation* -> 取出 label 注入尾随文本编号；KaTeX 不支持 equation 环境名，
-    // 用 equation* 交给 KaTeX 渲染。这里把 equation 体直接作为单行，附加编号。
+    // equation/equation* -> 取出 label 注入 tag；KaTeX 不支持 equation 环境名，
+    // 用 equation* 交给 KaTeX 渲染。这里把 equation 体直接作为单行，附加 \tag。
     // align / align* 直接交给 KaTeX（其支持 align）。
     // 处理 equation 环境
     tex = tex.replace(/\\begin\{equation\*?\}([\s\S]*?)\\end\{equation\*?\}/g, (full, body) => {
       const { tag, clean } = pullTag(body);
       return `\\begin{equation*}${clean}${tag}\\end{equation*}`;
     });
-    // align 环境内的 \label 也转尾随文本编号（逐行）
+    // align 环境内的 \label 也转 \tag（逐行）
     tex = tex.replace(/\\begin\{(align\*?|alignat\*?)\}([\s\S]*?)\\end\{\1\}/g, (full, env, body) => {
-      const conv = body.replace(/\\label\{([^}]+)\}/g, (_, k) => tagText(k));
+      const conv = body.replace(/\\label\{([^}]+)\}/g, (_, k) => `\\tag{${numberOf(k)}}`);
       return `\\begin{${env}}${conv}\\end{${env}}`;
     });
-    // 裸 \label（在 \[..\] 中）转尾随文本编号
+    // 裸 \label（在 \[..\] 中）转 \tag
     // 处理放在 renderMath 之前的 \[..\] 已被 tokenizer 标记 display；此处对 seg.value 通用替换
     if (!/\\begin\{/.test(tex)) {
-      const { tag, clean } = pullTag(tex);
-      tex = clean + tag;
+      tex = tex.replace(/\\label\{([^}]+)\}/g, (_, k) => `\\tag{${numberOf(k)}}`);
     } else {
       // 清除残留裸 label
       tex = tex.replace(/\\label\{[^}]+\}/g, '');
@@ -163,14 +163,10 @@ export function createRenderer(opts) {
   function pullTag(body) {
     let tag = '';
     const clean = body.replace(/\\label\{([^}]+)\}/g, (_, k) => {
-      tag = tagText(k);
+      tag = `\\tag{${numberOf(k)}}`;
       return '';
     });
     return { tag, clean };
-  }
-
-  function tagText(k) {
-    return `\\qquad\\text{(${escapeTexText(numberOf(k))})}`;
   }
 
   // --- prose 段渲染（轻量 LaTeX 文本 -> HTML） ---
@@ -348,7 +344,4 @@ function escapeHtml(s) {
 }
 function escapeAttr(s) {
   return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-}
-function escapeTexText(s) {
-  return String(s).replace(/[\\{}$%&#_^~]/g, (ch) => `\\${ch}`);
 }

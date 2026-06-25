@@ -167,19 +167,10 @@
 .modal-body p { margin: 0 0 8px; }
 .modal-body .math-display { margin: 8px 0; overflow-x: auto; overflow-y: hidden; }
 
-/* KaTeX positions \tag at the visible line edge. On narrow screens long
-   formulas then scroll underneath the number, so keep the tag in the formula
-   flow and let it sit after the rendered expression instead. */
-.math-display .katex-display {
-  display: inline-block;
-  min-width: 100%;
-  margin: 0;
-}
-.math-display .katex-display > .katex > .katex-html > .tag {
-  position: static !important;
-  display: inline-block;
-  margin-left: .8em;
-  transform: none !important;
+/* With KaTeX leqno, \tag is absolutely placed at the left edge. Reserve
+   space so long formulas start after the equation number instead of under it. */
+.math-display .katex-display.leqno > .katex > .katex-html {
+  padding-left: 3.2em;
 }
 /* 选区配色：不用默认蓝，改用卡片 type 色 */
 .modal-body ::selection { background: color-mix(in srgb, var(--modal-color, var(--accent, #ff9e64)) 36%, transparent); }
