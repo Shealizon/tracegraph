@@ -17,4 +17,16 @@ describe('render/tex · math environments', () => {
     expect(html).not.toContain('\\begin{multline}');
     expect(html).toContain('katex-display');
   });
+
+  it('renders equation numbers as trailing formula content', () => {
+    const render = createRenderer({
+      numberOf: () => '57',
+      kindOf: () => 'equation',
+    });
+    const html = render(String.raw`\[
+a_{k+1}=\frac{a_k}{1-a_kb_k},\qquad c_{k+1}=(c_k^2-b_k)\label{eq:long}
+\]`);
+    expect(html).not.toContain('class="tag"');
+    expect(html).toContain('57');
+  });
 });

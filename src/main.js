@@ -1,6 +1,7 @@
 // =============================================================================
 // main.js  —  项目入口、leading/main 路由与关系图状态机
 // =============================================================================
+import 'katex/dist/katex.min.css';
 import './styles/app.css';
 import './styles/modal.css';
 import { buildModel } from './model/graph.js';
