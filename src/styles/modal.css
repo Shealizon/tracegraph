@@ -268,12 +268,15 @@
   animation: fadeIn .2s ease;
 }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-.reader-shell { min-height: 0; flex: 1; display: flex; flex-direction: column; }
+.reader-shell { position: relative; min-height: 0; flex: 1; display: flex; flex-direction: column; }
 .reader-chrome {
-  flex: 0 0 auto; overflow: hidden;
+  position: absolute; top: 0; left: 0; right: 0; z-index: 12;
+  transform: translateY(calc(-1 * var(--reader-chrome-offset, 0px)));
+  will-change: transform;
 }
 .reader-chrome-inner {
-  transform: translateY(calc(-1 * var(--reader-chrome-offset, 0px)));
+  background: var(--bg-modal-solid);
+  box-shadow: 0 1px 0 var(--line-soft);
 }
 .reader-page.reader-chrome-hidden .reader-chrome { pointer-events: none; }
 .reader-tabs {
@@ -317,7 +320,7 @@
 .reader-forward svg { transform: rotate(-90deg); }
 .reader-primary { padding: 0 12px; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--line-soft)); }
 .reader-spacer { flex: 1 1 auto; }
-.reader-body { flex: 1; min-height: 0; overflow: hidden; }
+.reader-body { flex: 1; min-height: 0; overflow: hidden; padding-top: var(--reader-chrome-space, 0px); box-sizing: border-box; }
 .reader-layout { height: 100%; min-height: 0; display: block; }
 .reader-main {
   min-width: 0; height: 100%; box-sizing: border-box; overflow-y: auto; padding: 22px clamp(18px, 4vw, 52px) 46px;
