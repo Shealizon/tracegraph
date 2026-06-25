@@ -270,11 +270,12 @@
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 .reader-shell { min-height: 0; flex: 1; display: flex; flex-direction: column; }
 .reader-chrome {
-  flex: 0 0 auto; height: var(--reader-chrome-height, auto); overflow: hidden;
+  flex: 0 0 auto; overflow: hidden;
 }
 .reader-chrome-inner {
   transform: translateY(calc(-1 * var(--reader-chrome-offset, 0px)));
 }
+.reader-page.reader-chrome-hidden .reader-chrome { pointer-events: none; }
 .reader-tabs {
   display: flex; align-items: stretch; gap: 6px;
   padding: 8px 10px 6px;

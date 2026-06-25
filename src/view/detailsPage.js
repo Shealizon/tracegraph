@@ -983,8 +983,8 @@ function setReaderChromeOffset(reader, offset) {
   const height = reader.chromeHeight || reader.el.querySelector('.reader-chrome-inner')?.offsetHeight || 0;
   const next = Math.max(0, Math.min(height, Number.isFinite(offset) ? offset : 0));
   reader.chromeOffset = next;
-  reader.el.style.setProperty('--reader-chrome-height', `${Math.max(0, height - next)}px`);
   reader.el.style.setProperty('--reader-chrome-offset', `${next}px`);
+  reader.el.classList.toggle('reader-chrome-hidden', height > 0 && next >= height - 1);
 }
 
 function scrollActiveTabIntoView(reader) {
