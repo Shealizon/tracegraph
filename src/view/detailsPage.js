@@ -10,8 +10,7 @@ import { toast } from '../ui/feedback.js';
 import { selectionSource } from '../ui/cardMenus.js';
 
 const STORE_PREFIX = 'paper-graph:reader:';
-const CHROME_HIDE_AFTER = 72;
-const CHROME_DELTA = 18;
+const CHROME_HIDE_AFTER = 36;
 let seq = 1;
 
 export function openDetails(ctx, nodeId, opts = {}) {
@@ -58,9 +57,9 @@ function ensureReader(ctx) {
     tabs: [],
     activeId: '',
     previewEl: null,
-    chromeCollapsed: false,
+    chromeOffset: 0,
+    chromeHeight: 0,
     chromeScrollTop: 0,
-    chromeScrollDelta: 0,
     searchOpen: false,
     searchQuery: '',
     pendingLabel: '',
@@ -248,13 +247,14 @@ function renderReader(reader) {
   const { el } = reader;
   const tab = activeTab(reader);
   if (!tab && !reader.tabs.length) addLibraryTab(reader);
-  setReaderChromeCollapsed(reader, false);
 
   el.innerHTML = `
     <div class="reader-shell">
       <div class="reader-chrome">
-        ${renderTabs(reader)}
-        ${renderToolbar(reader)}
+        <div class="reader-chrome-inner">
+          ${renderTabs(reader)}
+          ${renderToolbar(reader)}
+        </div>
       </div>
       <div class="reader-body">
         ${renderActivePage(reader)}
@@ -262,6 +262,7 @@ function renderReader(reader) {
       ${reader.searchOpen ? renderSearchDrawer(reader) : ''}
     </div>`;
 
+  setReaderChromeOffset(reader, 0);
   bindReader(reader);
   requestAnimationFrame(() => {
     const label = reader.pendingLabel;
@@ -269,6 +270,7 @@ function renderReader(reader) {
     if (label) scrollToLabel(reader, label);
     else restoreScroll(reader);
     resetReaderChromeScroll(reader);
+    scrollActiveTabIntoView(reader);
   });
   el.focus();
   reader.ctx.writeHash && reader.ctx.writeHash();
@@ -459,7 +461,7 @@ function bindReader(reader) {
   el.querySelector('[data-forward]')?.addEventListener('click', () => goHistory(reader, 1));
   el.querySelector('[data-copy-current]')?.addEventListener('click', (e) => openReaderCopyMenu(reader, e.currentTarget));
   el.querySelector('[data-search-reader]')?.addEventListener('click', () => {
-    setReaderChromeCollapsed(reader, false);
+    setReaderChromeOffset(reader, 0);
     reader.searchOpen = true;
     reader.searchQuery = activeTab(reader)?.query || reader.searchQuery || '';
     renderReader(reader);
@@ -945,19 +947,22 @@ function bindScrollMemory(reader) {
 
 function resetReaderChromeScroll(reader) {
   const scroller = scrollElement(reader);
+  reader.chromeHeight = reader.el.querySelector('.reader-chrome-inner')?.offsetHeight || 0;
   reader.chromeScrollTop = Math.max(0, scroller?.scrollTop || 0);
-  reader.chromeScrollDelta = 0;
+  if (reader.chromeScrollTop <= CHROME_HIDE_AFTER) setReaderChromeOffset(reader, 0);
   updateReaderChromeAvailability(reader, scroller);
 }
 
 function updateReaderChromeAvailability(reader, scroller = scrollElement(reader)) {
   const tab = activeTab(reader);
+  reader.chromeHeight = reader.el.querySelector('.reader-chrome-inner')?.offsetHeight || reader.chromeHeight || 0;
   const canCollapse = !!scroller
     && tab?.kind === 'node'
     && !reader.searchOpen
+    && reader.chromeHeight > 0
     && scroller.scrollHeight > scroller.clientHeight + 24
     && scroller.scrollTop > CHROME_HIDE_AFTER;
-  if (!canCollapse) setReaderChromeCollapsed(reader, false);
+  if (!canCollapse) setReaderChromeOffset(reader, 0);
   return canCollapse;
 }
 
@@ -968,26 +973,26 @@ function updateReaderChromeOnScroll(reader, scroller) {
   reader.chromeScrollTop = current;
 
   if (!updateReaderChromeAvailability(reader, scroller)) {
-    reader.chromeScrollDelta = 0;
     return;
   }
   if (Math.abs(delta) < 1) return;
-  if ((delta > 0 && reader.chromeScrollDelta < 0) || (delta < 0 && reader.chromeScrollDelta > 0)) {
-    reader.chromeScrollDelta = 0;
-  }
-  reader.chromeScrollDelta += delta;
-  if (reader.chromeScrollDelta > CHROME_DELTA) {
-    setReaderChromeCollapsed(reader, true);
-    reader.chromeScrollDelta = 0;
-  } else if (reader.chromeScrollDelta < -CHROME_DELTA) {
-    setReaderChromeCollapsed(reader, false);
-    reader.chromeScrollDelta = 0;
-  }
+  setReaderChromeOffset(reader, reader.chromeOffset + delta);
 }
 
-function setReaderChromeCollapsed(reader, collapsed) {
-  reader.chromeCollapsed = !!collapsed;
-  reader.el.classList.toggle('reader-chrome-collapsed', reader.chromeCollapsed);
+function setReaderChromeOffset(reader, offset) {
+  const height = reader.chromeHeight || reader.el.querySelector('.reader-chrome-inner')?.offsetHeight || 0;
+  const next = Math.max(0, Math.min(height, Number.isFinite(offset) ? offset : 0));
+  reader.chromeOffset = next;
+  reader.el.style.setProperty('--reader-chrome-height', `${Math.max(0, height - next)}px`);
+  reader.el.style.setProperty('--reader-chrome-offset', `${next}px`);
+}
+
+function scrollActiveTabIntoView(reader) {
+  const tabs = reader.el.querySelector('.reader-tabs');
+  const active = tabs?.querySelector('.reader-tab.active');
+  if (!tabs || !active) return;
+  const left = active.offsetLeft - tabs.offsetLeft;
+  tabs.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
 }
 
 function scrollElement(reader) {
