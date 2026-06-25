@@ -634,6 +634,7 @@ function closeSearch(reader) {
 function showPreview(reader, nodeId, anchorEl, labelId = '') {
   const node = reader.ctx.model.nodeById.get(nodeId);
   if (!node) return;
+  const anchorRect = anchorEl?.getBoundingClientRect?.();
   closePreview(reader);
   const statement = isLeafNode(reader.ctx.model, node)
     ? (node.statementBody ? reader.ctx.render(node.statementBody) : `<p>${escapeHtml(node.title || '')}</p>`)
@@ -656,7 +657,8 @@ function showPreview(reader, nodeId, anchorEl, labelId = '') {
     </div>
     <div class="reader-preview-body">${statement || '<p class="reader-muted">无正文。</p>'}${proof ? `<div class="proof-wrap">${proof}</div>` : ''}</div>`;
   reader.el.appendChild(el);
-  positionPreview(el, anchorEl);
+  positionPreview(el, anchorRect);
+  bindPreviewContent(reader, el);
   el.querySelector('[data-close-preview]')?.addEventListener('click', () => closePreview(reader));
   el.querySelector('[data-preview-open]')?.addEventListener('click', () => {
     followNode(reader, node.id, labelId);
@@ -669,11 +671,53 @@ function showPreview(reader, nodeId, anchorEl, labelId = '') {
     renderReader(reader);
   });
   reader.previewEl = el;
+  installPreviewDismiss(reader, el);
   if (labelId) requestAnimationFrame(() => scrollPreviewToLabel(el, labelId));
 }
 
-function positionPreview(el, anchorEl) {
-  const ar = anchorEl.getBoundingClientRect();
+function bindPreviewContent(reader, previewEl) {
+  const body = previewEl.querySelector('.reader-preview-body');
+  body?.addEventListener('click', (e) => {
+    const ref = e.target.closest('.texref');
+    const goto = e.target.closest('[data-goto]');
+    const link = ref || goto;
+    if (!link || !body.contains(link)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (ref) {
+      const target = ref.dataset.target;
+      const owner = ref.dataset.owner || reader.ctx.ownerOf(target);
+      if (owner) showPreview(reader, owner, ref, target);
+      return;
+    }
+    showPreview(reader, goto.dataset.longPreview || goto.dataset.goto, goto);
+  });
+}
+
+function installPreviewDismiss(reader, previewEl) {
+  const dismiss = (e) => {
+    if (previewEl.contains(e.target)) return;
+    closePreview(reader);
+  };
+  const add = () => {
+    if (reader.previewEl !== previewEl) return;
+    document.addEventListener('pointerdown', dismiss, true);
+    document.addEventListener('scroll', dismiss, true);
+    document.addEventListener('wheel', dismiss, true);
+    document.addEventListener('touchmove', dismiss, { capture: true, passive: true });
+    reader.previewCleanup = () => {
+      document.removeEventListener('pointerdown', dismiss, true);
+      document.removeEventListener('scroll', dismiss, true);
+      document.removeEventListener('wheel', dismiss, true);
+      document.removeEventListener('touchmove', dismiss, true);
+      reader.previewCleanup = null;
+    };
+  };
+  setTimeout(add, 0);
+}
+
+function positionPreview(el, anchorRect) {
+  const ar = anchorRect || { left: 12, right: 12, top: 12, bottom: 12, width: 0, height: 0 };
   const width = Math.min(430, Math.max(280, window.innerWidth - 24));
   el.style.width = `${width}px`;
   const left = Math.min(window.innerWidth - width - 12, Math.max(12, ar.left + ar.width / 2 - width / 2));
@@ -698,6 +742,7 @@ function scrollPreviewToLabel(previewEl, labelId) {
 }
 
 function closePreview(reader) {
+  reader.previewCleanup?.();
   reader.previewEl?.remove();
   reader.previewEl = null;
 }

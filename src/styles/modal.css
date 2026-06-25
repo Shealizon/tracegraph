@@ -438,6 +438,7 @@
 .reader-preview-head svg { width: 14px; height: 14px; }
 .reader-preview-body { min-height: 0; overflow: auto; padding: 12px 14px; font-family: var(--serif); font-size: 14px; line-height: 1.62; }
 .reader-preview-body p { margin: 0 0 9px; }
+.reader-preview-body .math-display { max-width: 100%; margin: 14px 0; overflow-x: auto; overflow-y: hidden; padding-bottom: 2px; }
 .reader-preview-body .proof-wrap { margin-top: 12px; border-top: 1px dashed var(--line-soft); padding-top: 10px; }
 
 @media (max-width: 760px) {
