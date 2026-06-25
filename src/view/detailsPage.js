@@ -142,12 +142,14 @@ function addLibraryTab(reader) {
   return tab;
 }
 
-function addNodeTab(reader, nodeId, labelId = '') {
+function addNodeTab(reader, nodeId, labelId = '', activate = true) {
   if (!nodeId) return null;
   const tab = createTab(nodePage(nodeId, labelId, [nodeId]));
   reader.tabs.push(tab);
-  reader.activeId = tab.id;
-  reader.pendingLabel = labelId || '';
+  if (activate) {
+    reader.activeId = tab.id;
+    reader.pendingLabel = labelId || '';
+  }
   persistState(reader);
   return tab;
 }
@@ -634,8 +636,9 @@ function closeSearch(reader) {
 function showPreview(reader, nodeId, anchorEl, labelId = '') {
   const node = reader.ctx.model.nodeById.get(nodeId);
   if (!node) return;
-  const anchorRect = anchorEl?.getBoundingClientRect?.();
-  closePreview(reader);
+  const fromPreview = !!reader.previewEl?.contains(anchorEl);
+  const anchorRect = fromPreview ? reader.previewAnchorRect : anchorEl?.getBoundingClientRect?.();
+  closePreview(reader, fromPreview);
   const statement = isLeafNode(reader.ctx.model, node)
     ? (node.statementBody ? reader.ctx.render(node.statementBody) : `<p>${escapeHtml(node.title || '')}</p>`)
     : (reader.ctx.getRendered ? reader.ctx.getRendered(node.id, 'statement') : reader.ctx.render(node.statementBody));
@@ -665,12 +668,22 @@ function showPreview(reader, nodeId, anchorEl, labelId = '') {
     closePreview(reader);
     renderReader(reader);
   });
-  el.querySelector('[data-preview-new]')?.addEventListener('click', () => {
+  const previewNew = el.querySelector('[data-preview-new]');
+  previewNew?.addEventListener('click', () => {
+    if (consumeLongPress(previewNew)) return;
     addNodeTab(reader, node.id, labelId);
     closePreview(reader);
     renderReader(reader);
   });
+  if (previewNew) {
+    bindLongPress(previewNew, () => {
+      addNodeTab(reader, node.id, labelId, false);
+      closePreview(reader);
+      renderReader(reader);
+    });
+  }
   reader.previewEl = el;
+  reader.previewAnchorRect = anchorRect;
   installPreviewDismiss(reader, el);
   if (labelId) requestAnimationFrame(() => scrollPreviewToLabel(el, labelId));
 }
@@ -741,10 +754,11 @@ function scrollPreviewToLabel(previewEl, labelId) {
   body.scrollTop += tr.top - br.top - 10;
 }
 
-function closePreview(reader) {
+function closePreview(reader, keepAnchor = false) {
   reader.previewCleanup?.();
   reader.previewEl?.remove();
   reader.previewEl = null;
+  if (!keepAnchor) reader.previewAnchorRect = null;
 }
 
 function openReaderCopyMenu(reader, anchorEl) {
