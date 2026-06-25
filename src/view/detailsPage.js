@@ -993,7 +993,8 @@ function scrollActiveTabIntoView(reader) {
   const active = tabs?.querySelector('.reader-tab.active');
   if (!tabs || !active) return;
   const left = active.offsetLeft - tabs.offsetLeft;
-  tabs.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
+  const peek = left > 0 ? 22 : 0;
+  tabs.scrollTo({ left: Math.max(0, left - peek), behavior: 'smooth' });
 }
 
 function scrollElement(reader) {
