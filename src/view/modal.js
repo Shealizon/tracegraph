@@ -21,6 +21,7 @@ const TOP_BUTTONS = [
 ];
 // 工具栏行（m-sub 上方）：复制 / 引用 / 被引（带下拉，放大）+ 详情页 / 隐藏
 const TOOL_BUTTONS = [
+  { act: 'to-ai', title: '添加整个内容到 AI', icon: 'aiAdd' },
   { act: 'copy', title: '复制', icon: 'copy', caret: true },
   { act: 'show-deps', title: '引用', icon: 'arrowDeps', caret: true },
   { act: 'show-used', title: '被引', icon: 'arrowUsed', caret: true },
@@ -365,6 +366,7 @@ export class ModalManager {
 
     el.querySelector('[data-act="to-node"]').addEventListener('click', () => this._collapseWithUndo(node, rec));
     el.querySelector('[data-act="details"]').addEventListener('click', () => this.ctx.openDetails(node.id, { newTab: true }));
+    el.querySelector('[data-act="to-ai"]').addEventListener('click', () => this.ctx.aiPanel?.attachNode(node.id));
     el.querySelector('[data-act="hide"]').addEventListener('click', () => this.ctx.hideNode(node.id));
     // 复制：下拉「复制所有内容 / 复制标题」
     el.querySelector('[data-act="copy"]').addEventListener('click', (e) => {

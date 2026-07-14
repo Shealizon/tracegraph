@@ -12,6 +12,9 @@ import { isLeafNode, nodeTag, paperName, typeColor, memberNode, memberType } fro
 
 const HOVER_CLOSE_DELAY = 180;
 const HIT_PAD = 12; // hit-test 容差，便于从 ref 移动到预览
+// AI panel sits above the graph canvas. Reference previews are viewport-level UI
+// and must remain visible when their anchor lives inside that panel.
+const PREVIEW_Z_BASE = 520;
 
 export class RefLayer {
   constructor(ctx, { overlayEl, stageEl }) {
@@ -44,10 +47,10 @@ export class RefLayer {
   }
 
   // ---------- node hover 信息卡 ----------
-  showNodePreview(anchorEl, node) {
+  showNodePreview(anchorEl, node, { force = false } = {}) {
     // 普通节点 hover 显示；展开框仅在远景形态（只剩编号）时也显示具体信息
     if (!node) return;
-    if (node.isModal && !(this.ctx.graph && this.ctx.graph.lodFar)) return;
+    if (!force && node.isModal && !(this.ctx.graph && this.ctx.graph.lodFar)) return;
     this._closeNodePreview();
     const shell = document.createElement('div');
     shell.className = `node-tip type-${node.type || ''}`;
@@ -65,6 +68,7 @@ export class RefLayer {
       + (paper ? `<span class="tip-paper">${ICON.fileText}${escapeHtml(paper)}</span>` : '')
       + (tagHTML ? `<span class="tip-tags">${tagHTML}</span>` : '');
     shell.style.position = 'fixed';
+    shell.style.zIndex = String(PREVIEW_Z_BASE);
     document.body.appendChild(shell);
     this._placePreview(shell, anchorEl, 12);
     this.nodePreview = { el: shell, anchorEl };
@@ -73,6 +77,41 @@ export class RefLayer {
   scheduleNodePreviewClose() {
     // 关闭判定改由实时 pointermove 驱动；这里仅做一次兜底检查。
     setTimeout(() => this._evalNodePreviewClose(), HOVER_CLOSE_DELAY);
+  }
+
+  showLabelPreview(anchorEl, node, label) {
+    if (!anchorEl || !node || !label) return;
+    const info = {
+      target: label.id,
+      cmd: label.kind === 'equation' ? 'eqref' : 'ref',
+      owner: node.id,
+      sourceNode: null,
+    };
+    // 流式 Markdown 会反复替换引用按钮。鼠标保持不动时，新按钮仍会再次
+    // 触发 pointerenter；按语义复用根预览，避免同一张卡无限叠加。
+    const root = this.previews[0];
+    if (root && samePreviewTarget(root.info, info) && root.el?.isConnected) {
+      if (this._closeTimer) { clearTimeout(this._closeTimer); this._closeTimer = null; }
+      if (this.previews.length > 1) {
+        this.previews.splice(1).reverse().forEach((preview) => preview.el.remove());
+      }
+      root.anchorEl = anchorEl;
+      root.info.refEl = anchorEl;
+      this._placePreview(root.el, anchorEl, 10);
+      return;
+    }
+    // AI 正文中的另一个引用成为当前 hover 时，只保留新的根预览。
+    if (this.previews.length) this._closeAllPreviews();
+    this._onRefHover(anchorEl, info);
+  }
+
+  scheduleLabelPreviewClose() {
+    this._scheduleClose();
+  }
+
+  closePreviews() {
+    this._closeNodePreview();
+    this._closeAllPreviews();
   }
 
   // node-tip 自身 pointer-events:none，鼠标进不去，故只看是否仍悬停在锚点节点上。
@@ -156,7 +195,7 @@ export class RefLayer {
     if (!shell) return;
 
     shell.style.position = 'fixed';
-    shell.style.zIndex = String(300 + this.previews.length);
+    shell.style.zIndex = String(PREVIEW_Z_BASE + this.previews.length);
     document.body.appendChild(shell);
     applyHeightCap(shell);
 
@@ -213,9 +252,12 @@ export class RefLayer {
     const pinBtn = [{ act: 'pin', title: '打开为卡片', icon: 'plus' }];
     if (info.cmd === 'cite' || (ownerNode && isLeafNode(this.ctx.model, ownerNode))) {
       const bib = ownerNode || this.ctx.model.nodeById.get(info.target);
+      const bodyHTML = bib?.statementBody
+        ? (this.ctx.getRendered ? this.ctx.getRendered(bib.id, 'statement') : this.ctx.render(bib.statementBody))
+        : `<p>${escapeHtml(bib?.title || info.target)}</p>`;
       return buildModalShell({ type: bib?.type || 'source', color: bib ? typeColor(this.ctx.model, bib.type) : undefined, preview: true, buttons: pinBtn,
-        titleHTML: `${escapeHtml(bib ? nodeTag(this.ctx.model, bib) : info.target)}`,
-        bodyHTML: `<p>${escapeHtml(bib?.title || info.target)}</p>` });
+        titleHTML: bib ? `<span class="m-num">${escapeHtml(nodeTag(this.ctx.model, bib))}</span> · ${escapeHtml(bib.title || '')}` : escapeHtml(info.target),
+        bodyHTML });
     }
     if (!ownerNode) return null;
     const stmt = this.ctx.getRendered ? this.ctx.getRendered(ownerNode.id, 'statement') : this.ctx.render(ownerNode.statementBody);
@@ -223,7 +265,7 @@ export class RefLayer {
       const proof = this.ctx.getRendered ? this.ctx.getRendered(ownerNode.id, 'proof') : this.ctx.render(ownerNode.proofBody || '');
       const stmtFormula = extractFormulaHTML(stmt, info.target);
       const proofFormula = extractFormulaHTML(proof, info.target);
-      const bodyHTML = stmtFormula ? stmt : (proofFormula || stmt);
+      const bodyHTML = stmtFormula || proofFormula || stmt;
       return buildModalShell({ type: ownerNode.type, color: typeColor(this.ctx.model, ownerNode.type), preview: true, buttons: pinBtn,
         titleHTML: `<span class="m-num">${escapeHtml(nodeTag(this.ctx.model, ownerNode))}</span> · ${escapeHtml(ownerNode.title || '')}`, bodyHTML });
     }
@@ -562,6 +604,9 @@ function isElementVisible(el) {
   return r.bottom >= b.top && r.top <= b.bottom;
 }
 function relationKey(fromNode, fromLabel, toNode) { return `${fromNode}|${fromLabel}|${toNode}`; }
+function samePreviewTarget(left, right) {
+  return !!left && !!right && left.owner === right.owner && left.target === right.target && left.cmd === right.cmd;
+}
 function relationKeyFromRef(el, sourceNodeId, ctx) {
   if (!el || !sourceNodeId) return null;
   const target = el.dataset.target;

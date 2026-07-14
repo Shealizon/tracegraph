@@ -15,8 +15,9 @@ let seq = 1;
 
 export function openDetails(ctx, nodeId, opts = {}) {
   const reader = ensureReader(ctx);
-  if (opts.newTab || !reader.tabs.length) addNodeTab(reader, nodeId);
-  else navigate(reader, reader.activeId, nodePage(nodeId, '', [nodeId]));
+  const labelId = opts.labelId || opts.scrollLabel || '';
+  if (opts.newTab || !reader.tabs.length) addNodeTab(reader, nodeId, labelId);
+  else navigate(reader, reader.activeId, nodePage(nodeId, labelId, [nodeId]));
   renderReader(reader);
 }
 
@@ -96,6 +97,8 @@ function ensureReader(ctx) {
 function closeReader(reader) {
   saveScroll(reader);
   persistState(reader);
+  if (reader.chromeRaf) cancelAnimationFrame(reader.chromeRaf);
+  reader.chromeResizeObserver?.disconnect();
   closeReaderCopyMenu(reader);
   closeReaderSelectionMenu(reader);
   closeSearch(reader);
@@ -248,15 +251,21 @@ function renderReader(reader) {
   const tab = activeTab(reader);
   if (!tab && !reader.tabs.length) addLibraryTab(reader);
 
+  if (reader.chromeRaf) cancelAnimationFrame(reader.chromeRaf);
+  reader.chromeRaf = null;
+  reader.chromePendingScrollTop = null;
+  reader.chromeResizeObserver?.disconnect();
+  reader.chromeResizeObserver = null;
+
   el.innerHTML = `
     <div class="reader-shell">
-      <div class="reader-chrome">
-        <div class="reader-chrome-inner">
-          ${renderTabs(reader)}
-          ${renderToolbar(reader)}
-        </div>
-      </div>
       <div class="reader-body">
+        <div class="reader-chrome">
+          <div class="reader-chrome-inner">
+            ${renderTabs(reader)}
+            ${renderToolbar(reader)}
+          </div>
+        </div>
         ${renderActivePage(reader)}
       </div>
       ${reader.searchOpen ? renderSearchDrawer(reader) : ''}
@@ -311,6 +320,7 @@ function renderToolbar(reader) {
     <button class="reader-tool reader-forward" data-forward ${canForward ? '' : 'disabled'} title="前进">${ICON.chevronDown}</button>
     ${canSearch ? `<button class="reader-tool reader-primary" data-search-reader title="搜索阅读列表">${ICON.search}<span>搜索</span></button>` : ''}
     <span class="reader-spacer"></span>
+    <button class="reader-tool" data-add-current-ai ${tab?.kind === 'node' ? '' : 'disabled'} title="添加整个内容到 AI">${ICON.aiAdd}</button>
     <button class="reader-tool" data-copy-current ${tab?.kind === 'node' ? '' : 'disabled'} title="复制">${ICON.copy}</button>
     <button class="reader-tool" data-new-current title="新标签">${ICON.plus}</button>
     <button class="reader-tool" data-close-reader title="关闭">${ICON.close}</button>
@@ -439,13 +449,20 @@ function renderChain(reader, node) {
       const n = reader.ctx.model.nodeById.get(id);
       if (!n) return '';
       const current = id === node.id;
-      return `${i ? '<span class="reader-chain-sep">--</span>' : ''}<button data-chain-jump="${escapeAttr(id)}" ${current ? 'aria-current="page"' : ''} style="--chain-color:${typeColor(reader.ctx.model, n.type)}">${escapeHtml(nodeTag(reader.ctx.model, n))}</button>`;
+      return `${i ? `<span class="reader-chain-sep" aria-hidden="true">${ICON.chevronRight}</span>` : ''}<button data-chain-jump="${escapeAttr(id)}" ${current ? 'aria-current="page"' : ''} style="--chain-color:${typeColor(reader.ctx.model, n.type)}">${escapeHtml(nodeTag(reader.ctx.model, n))}</button>`;
     }).join('')}
   </nav>`;
 }
 
 function bindReader(reader) {
   const { el } = reader;
+  reader.chromeResizeObserver?.disconnect();
+  reader.chromeResizeObserver = null;
+  const chromeInner = el.querySelector('.reader-chrome-inner');
+  if (chromeInner && window.ResizeObserver) {
+    reader.chromeResizeObserver = new ResizeObserver(() => measureReaderChrome(reader));
+    reader.chromeResizeObserver.observe(chromeInner);
+  }
   el.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', (e) => {
     if (e.target.closest('[data-close-tab]')) return;
     saveScroll(reader);
@@ -460,6 +477,10 @@ function bindReader(reader) {
   el.querySelector('[data-back]')?.addEventListener('click', () => goHistory(reader, -1));
   el.querySelector('[data-forward]')?.addEventListener('click', () => goHistory(reader, 1));
   el.querySelector('[data-copy-current]')?.addEventListener('click', (e) => openReaderCopyMenu(reader, e.currentTarget));
+  el.querySelector('[data-add-current-ai]')?.addEventListener('click', () => {
+    const tab = activeTab(reader);
+    if (tab?.kind === 'node') reader.ctx.aiPanel?.attachNode(tab.nodeId);
+  });
   el.querySelector('[data-search-reader]')?.addEventListener('click', () => {
     setReaderChromeOffset(reader, 0);
     reader.searchOpen = true;
@@ -509,7 +530,7 @@ function bindInlineRefs(reader) {
     const target = ref.dataset.target;
     const owner = ref.dataset.owner || ctx.ownerOf(target);
     if (!owner) return;
-    ref.title = '打开引用；长按预览';
+    ref.title = canHoverReader() ? '悬停预览；点击打开' : '打开引用；长按预览';
     ref.addEventListener('click', (e) => {
       if (consumeLongPress(ref)) { e.preventDefault(); return; }
       e.preventDefault();
@@ -521,12 +542,21 @@ function bindInlineRefs(reader) {
       followNode(reader, owner, target);
       renderReader(reader);
     });
-    bindLongPress(ref, () => showPreview(reader, owner, ref, target));
+    if (canHoverReader()) {
+      ref.addEventListener('mouseenter', () => showPreview(reader, owner, ref, target, { hover: true }));
+      ref.addEventListener('mouseleave', () => scheduleHoverPreviewClose(reader, ref));
+    } else {
+      bindLongPress(ref, () => showPreview(reader, owner, ref, target));
+    }
   });
 }
 
 function isMobileReader() {
   return !!window.matchMedia?.('(max-width: 760px)').matches;
+}
+
+function canHoverReader() {
+  return !!window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
 }
 
 function bindSearchDrawer(reader) {
@@ -645,9 +675,10 @@ function closeSearch(reader) {
   reader.searchOpen = false;
 }
 
-function showPreview(reader, nodeId, anchorEl, labelId = '') {
+function showPreview(reader, nodeId, anchorEl, labelId = '', opts = {}) {
   const node = reader.ctx.model.nodeById.get(nodeId);
   if (!node) return;
+  if (opts.hover && reader.previewEl && reader.previewAnchorEl === anchorEl) return;
   const fromPreview = !!reader.previewEl?.contains(anchorEl);
   const anchorRect = fromPreview ? reader.previewAnchorRect : anchorEl?.getBoundingClientRect?.();
   closePreview(reader, fromPreview);
@@ -696,7 +727,8 @@ function showPreview(reader, nodeId, anchorEl, labelId = '') {
   }
   reader.previewEl = el;
   reader.previewAnchorRect = anchorRect;
-  installPreviewDismiss(reader, el);
+  reader.previewAnchorEl = anchorEl;
+  installPreviewDismiss(reader, el, { hover: !!opts.hover, anchorEl });
   if (labelId) requestAnimationFrame(() => scrollPreviewToLabel(el, labelId));
 }
 
@@ -719,7 +751,17 @@ function bindPreviewContent(reader, previewEl) {
   });
 }
 
-function installPreviewDismiss(reader, previewEl) {
+function scheduleHoverPreviewClose(reader, anchorEl) {
+  clearTimeout(reader.previewHoverTimer);
+  reader.previewHoverTimer = setTimeout(() => {
+    const preview = reader.previewEl;
+    if (!preview || reader.previewAnchorEl !== anchorEl) return;
+    if (anchorEl.matches(':hover') || preview.matches(':hover')) return;
+    closePreview(reader);
+  }, 180);
+}
+
+function installPreviewDismiss(reader, previewEl, { hover = false, anchorEl = null } = {}) {
   const dismiss = (e) => {
     if (previewEl.contains(e.target)) return;
     closePreview(reader);
@@ -730,11 +772,23 @@ function installPreviewDismiss(reader, previewEl) {
     document.addEventListener('scroll', dismiss, true);
     document.addEventListener('wheel', dismiss, true);
     document.addEventListener('touchmove', dismiss, { capture: true, passive: true });
+    const onPreviewEnter = () => clearTimeout(reader.previewHoverTimer);
+    const onPreviewLeave = () => { if (hover) scheduleHoverPreviewClose(reader, anchorEl); };
+    if (hover) {
+      previewEl.addEventListener('mouseenter', onPreviewEnter);
+      previewEl.addEventListener('mouseleave', onPreviewLeave);
+    }
     reader.previewCleanup = () => {
       document.removeEventListener('pointerdown', dismiss, true);
       document.removeEventListener('scroll', dismiss, true);
       document.removeEventListener('wheel', dismiss, true);
       document.removeEventListener('touchmove', dismiss, true);
+      if (hover) {
+        previewEl.removeEventListener('mouseenter', onPreviewEnter);
+        previewEl.removeEventListener('mouseleave', onPreviewLeave);
+      }
+      clearTimeout(reader.previewHoverTimer);
+      reader.previewHoverTimer = null;
       reader.previewCleanup = null;
     };
   };
@@ -770,7 +824,10 @@ function closePreview(reader, keepAnchor = false) {
   reader.previewCleanup?.();
   reader.previewEl?.remove();
   reader.previewEl = null;
-  if (!keepAnchor) reader.previewAnchorRect = null;
+  if (!keepAnchor) {
+    reader.previewAnchorRect = null;
+    reader.previewAnchorEl = null;
+  }
 }
 
 function openReaderCopyMenu(reader, anchorEl) {
@@ -825,7 +882,6 @@ function closeReaderCopyMenu(reader) {
 
 function bindReaderSelectionSurface(reader) {
   const schedule = (delay = 180) => {
-    if (!window.matchMedia?.('(max-width: 760px)').matches) return;
     clearTimeout(reader.selectionTimer);
     reader.selectionTimer = setTimeout(() => {
       const sel = selectionInReader(reader);
@@ -867,6 +923,12 @@ function selectionInReader(reader) {
 function showReaderSelectionMenu(reader, sel) {
   const rect = selectionRect(sel);
   if (!rect) return;
+  const selectedEl = sel.anchorNode?.nodeType === 1 ? sel.anchorNode : sel.anchorNode?.parentElement;
+  const content = selectedEl?.closest?.('.reader-content');
+  const tab = activeTab(reader);
+  let base = null;
+  try { base = content && tab?.kind === 'node' ? reader.ctx.spanFromSelection(content, tab.nodeId, sel) : null; } catch { base = null; }
+  reader.aiSelection = base ? { ...base, text: selectionSource(sel) } : null;
   if (!reader.selectionMenu) {
     const menu = document.createElement('div');
     menu.className = 'card-simple-menu reader-selection-menu';
@@ -880,6 +942,16 @@ function showReaderSelectionMenu(reader, sel) {
       closeReaderSelectionMenu(reader);
     });
     menu.appendChild(button);
+    const addAi = document.createElement('button');
+    addAi.className = 'csm-btn';
+    addAi.type = 'button';
+    addAi.title = '添加到 AI';
+    addAi.innerHTML = ICON.aiAdd;
+    addAi.addEventListener('click', () => {
+      if (reader.aiSelection) reader.ctx.aiPanel?.attachSelection(reader.aiSelection);
+      closeReaderSelectionMenu(reader);
+    });
+    menu.appendChild(addAi);
     document.body.appendChild(menu);
     reader.selectionMenu = menu;
   }
@@ -939,7 +1011,7 @@ function bindScrollMemory(reader) {
     const tab = activeTab(reader);
     if (!tab) return;
     tab.scroll[pageKey(pageFromTab(tab))] = scroller.scrollTop;
-    updateReaderChromeOnScroll(reader, scroller);
+    scheduleReaderChromeUpdate(reader, scroller);
     clearTimeout(reader.scrollTimer);
     reader.scrollTimer = setTimeout(() => persistState(reader), 180);
   }, { passive: true });
@@ -947,15 +1019,31 @@ function bindScrollMemory(reader) {
 
 function resetReaderChromeScroll(reader) {
   const scroller = scrollElement(reader);
-  reader.chromeHeight = reader.el.querySelector('.reader-chrome-inner')?.offsetHeight || 0;
+  measureReaderChrome(reader);
   reader.chromeScrollTop = Math.max(0, scroller?.scrollTop || 0);
   if (reader.chromeScrollTop <= CHROME_HIDE_AFTER) setReaderChromeOffset(reader, 0);
   updateReaderChromeAvailability(reader, scroller);
 }
 
+function measureReaderChrome(reader) {
+  reader.chromeHeight = reader.el.querySelector('.reader-chrome-inner')?.offsetHeight || 0;
+  if (reader.chromeHeight > 0) {
+    reader.chromeOffset = Math.max(0, Math.min(reader.chromeHeight, reader.chromeOffset));
+    setReaderChromeOffset(reader, reader.chromeOffset);
+  }
+}
+
+function scheduleReaderChromeUpdate(reader, scroller) {
+  reader.chromePendingScrollTop = Math.max(0, scroller.scrollTop || 0);
+  if (reader.chromeRaf) return;
+  reader.chromeRaf = requestAnimationFrame(() => {
+    reader.chromeRaf = null;
+    updateReaderChromeOnScroll(reader, scroller);
+  });
+}
+
 function updateReaderChromeAvailability(reader, scroller = scrollElement(reader)) {
   const tab = activeTab(reader);
-  reader.chromeHeight = reader.el.querySelector('.reader-chrome-inner')?.offsetHeight || reader.chromeHeight || 0;
   const canCollapse = !!scroller
     && tab?.kind === 'node'
     && !reader.searchOpen
@@ -967,14 +1055,18 @@ function updateReaderChromeAvailability(reader, scroller = scrollElement(reader)
 }
 
 function updateReaderChromeOnScroll(reader, scroller) {
-  const current = Math.max(0, scroller.scrollTop || 0);
+  const current = Number.isFinite(reader.chromePendingScrollTop)
+    ? reader.chromePendingScrollTop
+    : Math.max(0, scroller.scrollTop || 0);
+  reader.chromePendingScrollTop = null;
   const previous = Number.isFinite(reader.chromeScrollTop) ? reader.chromeScrollTop : current;
   const delta = current - previous;
-  reader.chromeScrollTop = current;
 
   if (!updateReaderChromeAvailability(reader, scroller)) {
+    reader.chromeScrollTop = current;
     return;
   }
+  reader.chromeScrollTop = current;
   if (Math.abs(delta) < 1) return;
   setReaderChromeOffset(reader, reader.chromeOffset + delta);
 }
@@ -983,7 +1075,6 @@ function setReaderChromeOffset(reader, offset) {
   const height = reader.chromeHeight || reader.el.querySelector('.reader-chrome-inner')?.offsetHeight || 0;
   const next = Math.max(0, Math.min(height, Number.isFinite(offset) ? offset : 0));
   reader.chromeOffset = next;
-  reader.el.style.setProperty('--reader-chrome-space', `${height}px`);
   reader.el.style.setProperty('--reader-chrome-offset', `${next}px`);
   reader.el.classList.toggle('reader-chrome-hidden', height > 0 && next >= height - 1);
 }
@@ -998,10 +1089,7 @@ function scrollActiveTabIntoView(reader) {
 }
 
 function scrollElement(reader) {
-  if (window.matchMedia?.('(max-width: 760px)').matches) {
-    return reader.el.querySelector('.reader-body');
-  }
-  return reader.el.querySelector('.reader-main') || reader.el.querySelector('.reader-library-page');
+  return reader.el.querySelector('.reader-body');
 }
 
 function saveScroll(reader) {

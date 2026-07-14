@@ -65,7 +65,12 @@ export function initCardMenus(ctx) {
     if (!last) return;
     const menu = el('card-simple-menu');
     // 复制选中（源码）
-    menu.appendChild(iconBtn(ICON.copy, '复制选中', () => { copy(selectionSource(sel)); closeSimple(); }));
+    const selectedSource = selectionSource(sel);
+    menu.appendChild(iconBtn(ICON.copy, '复制选中', () => { copy(selectedSource); closeSimple(); }));
+    menu.appendChild(iconBtn(ICON.aiAdd, '添加到 AI', () => {
+      ctx.aiPanel?.attachSelection({ ...baseSpan, text: selectedSource });
+      closeSimple();
+    }));
     // 常用 3 标签
     for (const tag of ctx.commonTags(3)) menu.appendChild(tagBtn(tag, baseSpan, () => closeSimple()));
     // 省略号 → 其余标签二级
@@ -166,6 +171,7 @@ export function initCardMenus(ctx) {
     const items = [];
     const copyIt = menuItem(ICON.copy, '复制', (e, anchor) => openCopySub(anchor, nodeId), true);
     items.push(copyIt);
+    items.push(menuItem(ICON.aiAdd, '添加整个内容到 AI', () => { ctx.aiPanel?.attachNode(nodeId); closePopup(); }));
     items.push(menuItem(ICON.pin, '固定', () => { ctx.modals.togglePin(node); closePopup(); }));
     items.push(menuItem(ICON.circle, '关闭为节点', () => { ctx.modals.closeModal(nodeId); closePopup(); }));
     items.push(menuItem(ICON.eyeOff, '隐藏', () => { ctx.hideNode(nodeId); closePopup(); }));
@@ -194,7 +200,9 @@ export function initCardMenus(ctx) {
     closeSimple();
     const baseSpan = ctx.spanFromSelection(body, nodeId, sel);
     const items = [];
-    items.push(menuItem(ICON.copy, '复制选中', () => { copy(selectionSource(sel)); closePopup(); }));
+    const selectedSource = selectionSource(sel);
+    items.push(menuItem(ICON.copy, '复制选中', () => { copy(selectedSource); closePopup(); }));
+    items.push(menuItem(ICON.aiAdd, '添加到 AI', () => { ctx.aiPanel?.attachSelection({ ...baseSpan, text: selectedSource }); closePopup(); }));
     for (const tag of ctx.commonTags(3)) items.push(menuItem(tag.kind === 'ordered' ? `<span class="tm-idx" style="--tc:${tag.color}">${tag.members.length + 1}</span>` : (ICON[tag.icon] || ICON.tag), tag.label || '（未命名）', () => { ctx.addMember(tag.id, { ...baseSpan }); closePopup(); }));
     items.push(menuItem(ICON.alphabet, '更多标签文字打标', (e, anchor) => openSubMenu(anchor, ctx.graph.getTags(), () => ({ ...baseSpan })), true));
     openMenuAt(cx, cy, items);

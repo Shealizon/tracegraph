@@ -10,6 +10,7 @@ export const ICON = {
   // 卡片 / 节点（单个 + 多个堆叠，堆叠用偏移的局部路径形成图层遮挡）
   card: S('<rect x="4" y="4" width="16" height="16" rx="2"/><line x1="4" y1="9" x2="20" y2="9"/>'),
   copy: S('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"/>'),
+  aiAdd: S('<path d="M9 3l1.2 3.8L14 8l-3.8 1.2L9 13l-1.2-3.8L4 8l3.8-1.2L9 3z"/><path d="M15.5 11v6M12.5 14h6"/>'),
   // 卡片 + 对角引用箭头：refDeps=引用(↙ 指入)，refUsed=被引(↗ 指出)
   refDeps: S('<rect x="3" y="3" width="18" height="18" rx="3"/><line x1="15.5" y1="8.5" x2="9" y2="15"/><polyline points="9 10 9 15 14 15"/>'),
   refUsed: S('<rect x="3" y="3" width="18" height="18" rx="3"/><line x1="8.5" y1="15.5" x2="15" y2="9"/><polyline points="10 9 15 9 15 14"/>'),
@@ -47,6 +48,7 @@ export const ICON = {
   // 折叠/展开三角（向下=可展开，向上=可收起）
   chevronDown: S('<polyline points="6 9 12 15 18 9"/>'),
   chevronUp: S('<polyline points="6 15 12 9 18 15"/>'),
+  chevronRight: S('<polyline points="9 6 15 12 9 18"/>'),
   // 主题：太阳 / 月亮 / 显示器（跟随系统）
   sun: S('<circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.2" y1="4.2" x2="5.6" y2="5.6"/><line x1="18.4" y1="18.4" x2="19.8" y2="19.8"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.2" y1="19.8" x2="5.6" y2="18.4"/><line x1="18.4" y1="5.6" x2="19.8" y2="4.2"/>'),
   moon: S('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),

@@ -4,6 +4,7 @@
 import 'katex/dist/katex.min.css';
 import './styles/app.css';
 import './styles/modal.css';
+import './styles/ai-panel.css';
 import { buildModel } from './model/graph.js';
 import { createRenderer } from './render/tex.js';
 import { ForceGraph } from './view/forceGraph.js';
@@ -21,6 +22,7 @@ import { toast } from './ui/feedback.js';
 import { initTooltips } from './ui/tooltip.js';
 import { initCardMenus } from './ui/cardMenus.js';
 import { memberNode, memberType } from './data/schema.js';
+import { buildAiPanel } from './ui/aiPanel.js';
 
 initTooltips();
 
@@ -262,6 +264,7 @@ function startMain(db, project) {
   };
   ctx.activateNode = (n) => {
     if (ctx.tagEditing) { ctx.toggleNodeTag(ctx.tagEditing, n.id); return; }
+    ctx.aiPanel?.setSelectedNode(n.id);
     ctx.modals.openFromNode(n);
   };
   // 最近使用过的标签（LRU），供 simple-menu / 右键菜单的「常用三个标签」
@@ -460,6 +463,7 @@ function startMain(db, project) {
   buildSidebar(ctx, document.getElementById('sidebar'));
   buildZoomControl(ctx, stageEl);
   buildReaderLauncher(ctx, stageEl);
+  ctx.aiPanel = buildAiPanel(ctx);
 
   // ---- Deep-link：URL hash 恢复 / 写回 ----
   ctx.writeHash = () => {
