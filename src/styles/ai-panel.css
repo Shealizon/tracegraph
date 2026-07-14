@@ -76,8 +76,9 @@ body.ai-layout-docked #stage, body.ai-layout-docked .details-page { transition: 
 .ai-empty h2 { margin: 14px 0 5px; font-size: 17px; }
 .ai-empty p { margin: 0; color: var(--text-dim); font-size: 12px; line-height: 1.6; }
 .ai-starters { width: min(100%, 310px); display: grid; gap: 7px; margin-top: 22px; }
-.ai-starters button { padding: 9px 11px; color: var(--text); background: transparent; border: 1px solid var(--line-soft); border-radius: 9px; text-align: left; font: 12px var(--font); cursor: pointer; }
-.ai-starters button:hover { border-color: var(--accent-line); background: var(--accent-bg); }
+.ai-starters button { padding: 9px 11px; color: var(--text); background: transparent; border: 1px solid var(--line-soft); border-radius: 9px; text-align: left; font: 12px/1.45 var(--font); cursor: pointer; transition: color .16s, border-color .16s, background .16s, transform .16s; }
+.ai-starters button:hover { color: var(--accent); border-color: var(--accent-line); background: var(--accent-bg); transform: translateY(-1px); }
+.ai-starters button:active { transform: translateY(0); }
 
 .ai-message { position: relative; width: 100%; min-width: 0; display: block; margin: 0 0 30px; font-size: 13px; line-height: 1.72; }
 .ai-message-stack { min-width: 0; width: 100%; max-width: 100%; display: flex; flex-direction: column; align-items: flex-start; }
@@ -381,19 +382,50 @@ details[open] > summary > .ai-chevron { transform: rotate(180deg); }
 .ai-graph-ref-hover.is-visible { opacity: 1; visibility: visible; transform: translateY(0); }
 
 @media (max-width: 720px) {
-  .ai-panel { inset: 0; width: 100%; min-width: 0; max-width: none; height: 100vh; border: 0; border-radius: 0; }
+  .ai-panel { inset: 0; width: 100%; min-width: 0; max-width: none; height: 100dvh; border: 0; border-radius: 0; }
   .ai-panel.is-collapsed { inset: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) auto auto; width: min(320px, calc(100vw - 16px)); height: 54px; border: 1px solid var(--line-soft); border-radius: 14px; }
+  .ai-panel.is-collapsed .ai-head { min-height: 54px; padding-top: 10px; }
+  body:has(.ai-panel.is-open) { overflow: hidden; }
   body.ai-layout-docked #stage, body.ai-layout-docked .details-page { right: 0; }
   .ai-resize { display: none; }
+  .ai-head { min-height: calc(54px + env(safe-area-inset-top)); padding-top: max(10px, env(safe-area-inset-top)); padding-right: max(10px, env(safe-area-inset-right)); padding-left: max(10px, env(safe-area-inset-left)); }
+  .ai-panel [data-layout] { display: none; }
+  .ai-head-primary { gap: 1px; }
+  .ai-head-primary > .icon-btn, .ai-head-actions > .icon-btn { width: 36px; height: 36px; }
+  .ai-brand { max-width: min(54vw, 240px); margin-left: 1px; padding-inline: 5px; }
+  .ai-brand strong { font-size: 13px; }
+  .ai-new-chat { margin-left: 1px; }
   .ai-launcher {
     right: max(12px, env(safe-area-inset-right));
     top: calc(max(12px, env(safe-area-inset-top)) + 56px);
     width: 44px;
     height: 44px;
   }
-  .ai-messages { padding-inline: 13px; }
+  .ai-messages { padding: 18px 13px 18px; }
   .ai-turn-rail { display: none; }
-  .ai-message-actions { opacity: .72; }
+  .ai-composer { padding: 9px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
+  .ai-input-shell textarea, .ai-user-editor textarea, .ai-subpanel input, .ai-subpanel select { font-size: 16px !important; }
+  .ai-input-shell textarea { min-height: 48px; padding-top: 11px; }
+  .ai-input-actions { min-height: 38px; padding-bottom: 5px; }
+  .ai-input-actions > .icon-btn, .ai-send { width: 36px; height: 36px; }
+  .ai-model-label { max-width: 42vw; font-size: 11px; }
+  .ai-attachment-row { padding-bottom: 2px; }
+  .ai-attachment-chip { height: 34px; }
+  .ai-attachment-remove, .ai-file-remove, .ai-message-action { width: 34px; height: 34px; }
+  .ai-message-actions { min-height: 34px; opacity: .9; }
+  .ai-mention-menu { left: 8px; right: 8px; max-height: 42dvh; }
+  .ai-mention-menu > button { min-height: 44px; padding-block: 8px; }
+  .ai-subpanel.is-popover { max-width: calc(100vw - 20px); max-height: min(72dvh, 520px); }
+  .ai-subpanel.is-settings-popover { width: min(360px, calc(100vw - 20px)) !important; }
+  .ai-subpanel.is-files-popover { width: min(360px, calc(100vw - 20px)) !important; }
+  .ai-subpanel input, .ai-subpanel select { height: 40px; }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .ai-panel button, .ai-panel a { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  .ai-brand:hover, .ai-model-label:hover, .ai-send:hover, .ai-starters button:hover { color: inherit; background: transparent; border-color: var(--line-soft); transform: none; filter: none; }
+  .ai-brand:active, .ai-model-label:active, .ai-send:active, .ai-message-action:active, .ai-starters button:active { color: var(--accent); background: var(--accent-bg); }
+  .ai-graph-ref:active, .ai-web-results a:active, .ai-sources a:active { background: var(--accent-bg); }
 }
 
 @media (prefers-reduced-motion: reduce) {

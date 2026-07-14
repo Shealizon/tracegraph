@@ -356,13 +356,41 @@ function createGraphReference(display, entry, handlers, key = display) {
   button.setAttribute('aria-label', `图谱引用：${node?.title || key}`);
   button.classList.toggle('is-equation', label?.kind === 'equation');
   button.dataset.label = key;
-  button.addEventListener('click', () => handlers?.onNavigate?.(node, label));
+  let longPressed = false;
+  let suppressClick = false;
+  let touchTimer;
+  button.addEventListener('click', (event) => {
+    if (suppressClick) {
+      event.preventDefault();
+      event.stopPropagation();
+      suppressClick = false;
+      return;
+    }
+    handlers?.onNavigate?.(node, label);
+  });
 
   if (handlers?.onHover) {
-    button.addEventListener('pointerenter', () => handlers.onHover(button, node, label));
-    button.addEventListener('pointerleave', () => handlers.onLeave?.(button, node, label));
+    button.addEventListener('pointerenter', (event) => { if (event.pointerType !== 'touch') handlers.onHover(button, node, label); });
+    button.addEventListener('pointerleave', (event) => { if (event.pointerType !== 'touch') handlers.onLeave?.(button, node, label); });
     button.addEventListener('focus', () => handlers.onHover(button, node, label));
     button.addEventListener('blur', () => handlers.onLeave?.(button, node, label));
+    button.addEventListener('pointerdown', (event) => {
+      if (event.pointerType !== 'touch') return;
+      clearTimeout(touchTimer);
+      longPressed = false;
+      suppressClick = false;
+      touchTimer = setTimeout(() => {
+        longPressed = true;
+        suppressClick = true;
+        handlers.onHover(button, node, label);
+      }, 480);
+    });
+    button.addEventListener('pointerup', (event) => {
+      if (event.pointerType !== 'touch') return;
+      clearTimeout(touchTimer);
+      if (longPressed) { event.preventDefault(); event.stopPropagation(); }
+    });
+    button.addEventListener('pointercancel', () => clearTimeout(touchTimer));
     return button;
   }
 
@@ -383,6 +411,9 @@ function attachReferenceHover(anchor, hover) {
   let timer;
   let watchFrame;
   let scrollHost;
+  let touchTimer;
+  let longPressed = false;
+  let suppressClick = false;
   const dismiss = () => hide(true);
   const hide = (immediate = false) => {
     cancelAnimationFrame(watchFrame);
@@ -412,11 +443,36 @@ function attachReferenceHover(anchor, hover) {
     window.addEventListener('blur', dismiss, { once: true });
     scrollHost?.addEventListener('scroll', dismiss, { passive: true, once: true });
   };
-  anchor.addEventListener('pointerenter', show);
-  anchor.addEventListener('pointerleave', () => hide());
+  anchor.addEventListener('pointerenter', (event) => { if (event.pointerType !== 'touch') show(); });
+  anchor.addEventListener('pointerleave', (event) => { if (event.pointerType !== 'touch' && !longPressed) hide(); });
+  anchor.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'touch') return;
+    clearTimeout(touchTimer);
+    longPressed = false;
+    suppressClick = false;
+    touchTimer = setTimeout(() => {
+      longPressed = true;
+      suppressClick = true;
+      show();
+    }, 480);
+  });
+  anchor.addEventListener('pointerup', (event) => {
+    if (event.pointerType !== 'touch') return;
+    clearTimeout(touchTimer);
+    if (longPressed) { event.preventDefault(); event.stopPropagation(); }
+  });
+  anchor.addEventListener('pointercancel', () => clearTimeout(touchTimer));
   anchor.addEventListener('focus', show);
   anchor.addEventListener('blur', () => hide());
-  anchor.addEventListener('click', () => hide(true));
+  anchor.addEventListener('click', (event) => {
+    if (suppressClick) {
+      event.preventDefault();
+      event.stopPropagation();
+      suppressClick = false;
+      return;
+    }
+    hide(true);
+  });
 }
 
 function truncatePlainText(value, max) {

@@ -26,6 +26,14 @@ const WIDTH_KEY = 'paper-graph-ai-width';
 const OPEN_KEY = 'paper-graph-ai-open';
 const LAYOUT_KEY = 'paper-graph-ai-layout';
 const COLLAPSED_KEY = 'paper-graph-ai-collapsed';
+const STARTER_PROMPTS = [
+  '概括当前图谱的核心结构',
+  '解释当前图谱中最重要的几个概念及它们之间的关系',
+  '沿着依赖关系梳理一条适合阅读当前图谱的路径',
+  '指出当前图谱中值得进一步核对或补充的关键问题',
+  '用直观语言解释当前图谱涉及的核心定理或公式',
+  '联网搜索当前主题近几年的研究进展',
+];
 
 export function buildAiPanel(ctx) {
   const existing = document.querySelector('.ai-panel');
@@ -220,13 +228,13 @@ export function buildAiPanel(ctx) {
     if (event.key === 'Escape' && !subpanel.hidden && subpanel.classList.contains('is-popover')) closeSubpanel();
   });
 
-  async function submit() {
+  async function submit(prompt = '') {
     const running = tasks.get(activeConversation(conversationState).id);
     if (running) {
       running.aborter.abort();
       return;
     }
-    const text = input.value.trim();
+    const text = String(prompt || input.value).trim();
     if (!text) return;
     closeSubpanel();
     input.value = '';
@@ -382,7 +390,7 @@ export function buildAiPanel(ctx) {
   function renderMessages({ follow = isNearBottom(), immediate = false } = {}) {
     const previousTop = messagesEl.scrollTop;
     messagesEl.replaceChildren();
-    if (!state.messages.length) renderEmpty(messagesEl, input);
+    if (!state.messages.length) renderEmpty(messagesEl, submit);
     state.messages.forEach((message, index) => {
       const row = document.createElement('article');
       row.className = `ai-message ai-message--${message.role}${message.tone ? ` is-${message.tone}` : ''}`;
@@ -729,6 +737,9 @@ export function buildAiPanel(ctx) {
   function attachFloatingHover(anchor, hover) {
     let removeTimer;
     let watchFrame;
+    let touchTimer;
+    let longPressed = false;
+    let suppressClick = false;
     const dismiss = () => hide(true);
     const hide = (immediate = false) => {
       cancelAnimationFrame(watchFrame);
@@ -739,6 +750,23 @@ export function buildAiPanel(ctx) {
       clearTimeout(removeTimer);
       if (immediate) hover.remove();
       else removeTimer = setTimeout(() => hover.remove(), 180);
+    };
+    const clearTouchTimer = () => { clearTimeout(touchTimer); touchTimer = 0; };
+    const onPointerDown = (event) => {
+      if (event.pointerType !== 'touch') return;
+      clearTouchTimer();
+      longPressed = false;
+      suppressClick = false;
+      touchTimer = setTimeout(() => {
+        longPressed = true;
+        suppressClick = true;
+        show();
+      }, 480);
+    };
+    const onPointerUp = (event) => {
+      if (event.pointerType !== 'touch') return;
+      clearTouchTimer();
+      if (longPressed) { event.preventDefault(); event.stopPropagation(); }
     };
     const watchAnchor = () => {
       if (!anchor.isConnected) { hide(true); return; }
@@ -759,10 +787,19 @@ export function buildAiPanel(ctx) {
       window.addEventListener('blur', dismiss, { once: true });
       messagesEl.addEventListener('scroll', dismiss, { passive: true, once: true });
     };
-    anchor.addEventListener('pointerenter', show);
-    anchor.addEventListener('pointerleave', hide);
+    anchor.addEventListener('pointerenter', (event) => { if (event.pointerType !== 'touch') show(); });
+    anchor.addEventListener('pointerleave', () => { if (!longPressed) hide(); });
+    anchor.addEventListener('pointerdown', onPointerDown);
+    anchor.addEventListener('pointerup', onPointerUp);
+    anchor.addEventListener('pointercancel', clearTouchTimer);
     anchor.addEventListener('focus', show);
     anchor.addEventListener('blur', hide);
+    anchor.addEventListener('click', (event) => {
+      if (!suppressClick) return;
+      event.preventDefault();
+      event.stopPropagation();
+      suppressClick = false;
+    });
   }
 
   function switchConversation(id) {
@@ -1474,16 +1511,20 @@ export function isActivityGroupActive(activity, { messageActive = false, isTail 
   return messageActive && isTail;
 }
 
-function renderEmpty(container, input) {
+function renderEmpty(container, submitPrompt) {
   const empty = document.createElement('div');
   empty.className = 'ai-empty';
   empty.innerHTML = `${sparkIcon()}<h2>从哪里开始？</h2><p>我可以理解当前图谱、搜索资料或分析本对话中的文件。</p>`;
-  const prompts = ['概括当前图谱的核心结构', '总结本对话中的 PDF', '联网搜索相关研究进展'];
   const grid = document.createElement('div');
   grid.className = 'ai-starters';
-  for (const prompt of prompts) {
-    const b = button('', prompt, prompt);
-    b.addEventListener('click', () => { input.value = prompt; input.focus(); });
+  for (const prompt of STARTER_PROMPTS) {
+    const b = button('ai-starter', prompt, `填入：${prompt}`);
+    b.type = 'button';
+    b.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      submitPrompt(prompt);
+    });
     grid.append(b);
   }
   empty.append(grid);
