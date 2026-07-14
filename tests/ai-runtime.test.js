@@ -6,7 +6,7 @@ import { canonicalSourceKey, createClientTools, extractDoi } from '../src/ai/too
 import {
   aiQuoteAttachment, contextPrompt, graphNodeAttachment, graphSelectionAttachment, mentionQueryAt, replaceMention, searchMentionCandidates,
 } from '../src/ai/contextAttachments.js';
-import { normalizeCjkStrong, protectMarkdownMath, stripBlockquoteMathMarkers } from '../src/render/markdown.js';
+import { formatGraphReferenceDisplay, normalizeCjkStrong, protectMarkdownMath, stripBlockquoteMathMarkers } from '../src/render/markdown.js';
 import { activityTimelineEntries, isActivityGroupActive, isScrollNearBottom, navigateGraphReference, replaceUserMessageBranch, shouldJoinActivityBlock } from '../src/ui/aiPanel.js';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -296,6 +296,13 @@ T^2 c_0 c_1 > \frac{1}{16}
       .toBe('`方程**唯一延拓性（UCP）**的`');
     expect(normalizeCjkStrong('```md\n方程**唯一延拓性（UCP）**的\n```'))
       .toBe('```md\n方程**唯一延拓性（UCP）**的\n```');
+  });
+
+  it('formats AI graph references with the graph display label', () => {
+    const theorem = { node: { typeLabel: 'Theorem', number: '1', title: 'Sharp one-sided uniqueness' }, label: { id: 'thm:conditional', kind: 'theorem', number: '1' } };
+    const equation = { node: { typeLabel: 'Theorem', number: '1' }, label: { id: 'eq:threshold', kind: 'equation', number: '4' } };
+    expect(formatGraphReferenceDisplay(theorem, 'thm:conditional')).toBe('Theorem 1');
+    expect(formatGraphReferenceDisplay(equation, 'eq:threshold')).toBe('(4)');
   });
 
   it('assigns stable citation markers to web search results', async () => {

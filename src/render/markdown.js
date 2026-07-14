@@ -315,7 +315,7 @@ function injectGraphReferences(root, labelIndex, handlers) {
   for (const code of [...root.querySelectorAll('code:not(pre code)')]) {
     const key = code.textContent?.trim();
     const entry = key && labelIndex.get(key);
-    if (entry) code.replaceWith(createGraphReference(key, entry, handlers));
+    if (entry) code.replaceWith(createGraphReference(formatGraphReferenceDisplay(entry, key), entry, handlers, key));
   }
 
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -335,7 +335,7 @@ function injectGraphReferences(root, labelIndex, handlers) {
       const key = match[2] || match[3];
       const entry = labelIndex.get(key);
       if (!entry) continue;
-      const display = match[1] === 'eqref' && entry.label?.number ? `(${entry.label.number})` : key;
+      const display = formatGraphReferenceDisplay(entry, key, match[1] || 'ref');
       fragment.append(text.slice(from, match.index), createGraphReference(display, entry, handlers, key));
       from = match.index + match[0].length;
       changed = true;
@@ -344,6 +344,20 @@ function injectGraphReferences(root, labelIndex, handlers) {
     fragment.append(text.slice(from));
     node.replaceWith(fragment);
   }
+}
+
+/**
+ * Keep AI citations visually consistent with the graph node and label UI while
+ * retaining the internal id as the navigation key.
+ */
+export function formatGraphReferenceDisplay(entry, key = '', syntax = 'ref') {
+  const label = entry?.label;
+  const node = entry?.node;
+  if (label?.kind === 'equation' && label.number) return `(${label.number})`;
+  if (syntax === 'eqref' && label?.number) return `(${label.number})`;
+  const type = node?.typeLabel || node?.type || '';
+  const number = node?.number || label?.number || '';
+  return [type, number].filter(Boolean).join(' ') || key;
 }
 
 function createGraphReference(display, entry, handlers, key = display) {
