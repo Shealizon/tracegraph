@@ -310,7 +310,7 @@ export function buildAiPanel(ctx) {
     const assistantMessage = { role: 'assistant', content: '', blocks: [], sources: [], model: modelConfig?.displayName || modelConfig?.model || '', createdAt: new Date().toISOString() };
     conversation.messages.push(assistantMessage);
     const aborter = new AbortController();
-    tasks.set(conversation.id, { aborter, message: assistantMessage });
+    tasks.set(conversation.id, { aborter, message: assistantMessage, status: 'running', retryAttempt: 0 });
     syncBusy();
     renderMessages({ follow: shouldFollow });
 
@@ -344,6 +344,13 @@ export function buildAiPanel(ctx) {
         onReasoningDelta: (delta) => {
           appendReasoningBlock(assistantMessage, delta);
           updateAssistantDom(conversation, assistantMessage);
+        },
+        onStatus: (event) => {
+          const task = tasks.get(conversation.id);
+          if (!task) return;
+          task.status = event.type === 'reconnecting' ? 'reconnecting' : 'running';
+          task.retryAttempt = event.attempt || 0;
+          syncBusy();
         },
       });
       if (!assistantMessage.content.trim()) {
@@ -1450,9 +1457,10 @@ export function buildAiPanel(ctx) {
     state.layoutResizeTimer = setTimeout(() => window.dispatchEvent(new Event('resize')), 240);
   }
   function syncPanelStatus() {
-    const busy = tasks.has(activeConversation(conversationState).id);
+    const task = tasks.get(activeConversation(conversationState).id);
+    const busy = !!task;
     const status = panel.querySelector('[data-panel-status]');
-    status.textContent = busy ? '生成中' : '待命';
+    status.textContent = !busy ? '待命' : task.status === 'reconnecting' ? `恢复中${task.retryAttempt ? ` · ${task.retryAttempt}/3` : ''}` : '生成中';
     status.classList.toggle('is-running', busy);
   }
   function setOpen(open) {

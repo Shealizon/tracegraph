@@ -6,7 +6,9 @@ export const DEFAULT_SYSTEM_PROMPT = `你是 Paper Graph 内的研究助手。
 联网搜索结果包含 citation 字段，例如 [S1]。使用搜索结果支持结论时，必须在相应句子后原样写出该 citation；不要杜撰不存在的引用编号，也不要把 citation 改写为 Markdown 链接。
 联网搜索一次会同时检索百科与学术文献。只有当 DOI 原样出现在用户消息或工具结果中时才可使用 resolve_doi，绝对不要根据标题、作者或记忆猜测 DOI；DOI 未找到时不要重复解析，应改用标题/作者搜索或已有网页，并继续基于现有信息回答。已有明确 URL 时使用 open_url，不要通过改写关键词反复寻找同一页面。web_search 返回 no_new_results 时不得再次调用 web_search；应基于已有来源完成回答并说明不确定性，仅可用已有的明确 URL/DOI 做一次精确补充。`;
 
-export async function runAgentTurn({ config, history, userText, tools, onDelta, onReasoningDelta, signal }) {
+const STREAM_RETRY_DELAYS = [800, 1600, 3200];
+
+export async function runAgentTurn({ config, history, userText, tools, onDelta, onReasoningDelta, onStatus, signal }) {
   validateConfig(config);
   const messages = [
     { role: 'system', content: [config.systemPrompt?.trim() || DEFAULT_SYSTEM_PROMPT, config.contextPrompt?.trim()].filter(Boolean).join('\n\n') },
@@ -20,10 +22,29 @@ export async function runAgentTurn({ config, history, userText, tools, onDelta, 
     const availableTools = webSearchDisabled
       ? tools.definitions.filter((definition) => definition.function?.name !== 'web_search')
       : tools.definitions;
-    const response = await streamCompletion(config, messages, availableTools, (delta) => {
-      collected += delta;
-      onDelta?.(delta);
-    }, onReasoningDelta, signal);
+    let response;
+    let retryAttempt = 0;
+    while (true) {
+      let emitted = false;
+      try {
+        onStatus?.({ type: 'streaming' });
+        response = await streamCompletion(config, messages, availableTools, (delta) => {
+          emitted = true;
+          collected += delta;
+          onDelta?.(delta);
+        }, (delta) => {
+          emitted = true;
+          onReasoningDelta?.(delta);
+        }, signal);
+        break;
+      } catch (error) {
+        if (signal?.aborted || emitted || !isRetryableStreamError(error) || retryAttempt >= STREAM_RETRY_DELAYS.length) throw error;
+        retryAttempt += 1;
+        const delay = STREAM_RETRY_DELAYS[retryAttempt - 1];
+        onStatus?.({ type: 'reconnecting', attempt: retryAttempt, maxAttempts: STREAM_RETRY_DELAYS.length, delay, error });
+        await waitBeforeStreamRetry(delay, signal);
+      }
+    }
 
     if (!response.toolCalls.length) return collected || response.content;
 
@@ -52,6 +73,33 @@ export async function runAgentTurn({ config, history, userText, tools, onDelta, 
       messages.push({ role: 'tool', tool_call_id: call.id, content: output });
     }
   }
+}
+
+export function isRetryableStreamError(error) {
+  if (!error) return false;
+  if (error.name === 'AbortError') return false;
+  const message = String(error.message || error);
+  if (error instanceof TypeError || /network|fetch|failed to fetch|load failed|connection|stream|timeout|timed out/i.test(message)) return true;
+  const status = /(?:HTTP|请求失败（)\s*(\d{3})/.exec(message)?.[1];
+  return status ? ['408', '425', '429', '500', '502', '503', '504'].includes(status) : false;
+}
+
+function waitBeforeStreamRetry(delay, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(signal.reason || new DOMException('Aborted', 'AbortError')); return; }
+    const abort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      reject(signal.reason || new DOMException('Aborted', 'AbortError'));
+    };
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      resolve();
+    };
+    const timer = setTimeout(done, delay);
+    signal?.addEventListener('abort', abort, { once: true });
+  });
 }
 
 export async function streamCompletion(config, messages, tools, onDelta, onReasoningDelta, signal) {

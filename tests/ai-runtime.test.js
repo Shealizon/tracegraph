@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_SYSTEM_PROMPT, readReasoningDelta, runAgentTurn, SseDecoder } from '../src/ai/modelClient.js';
+import { DEFAULT_SYSTEM_PROMPT, isRetryableStreamError, readReasoningDelta, runAgentTurn, SseDecoder } from '../src/ai/modelClient.js';
 import { normalizeWorkspacePath } from '../src/ai/workspace.js';
 import { appendReasoningBlock, appendTextBlock, messageBlocks, serializeMessageDebug, upsertToolBlock } from '../src/ai/messageBlocks.js';
 import { canonicalSourceKey, createClientTools, extractDoi } from '../src/ai/tools.js';
@@ -303,6 +303,13 @@ T^2 c_0 c_1 > \frac{1}{16}
     const equation = { node: { typeLabel: 'Theorem', number: '1' }, label: { id: 'eq:threshold', kind: 'equation', number: '4' } };
     expect(formatGraphReferenceDisplay(theorem, 'thm:conditional')).toBe('Theorem 1');
     expect(formatGraphReferenceDisplay(equation, 'eq:threshold')).toBe('(4)');
+  });
+
+  it('classifies transient stream failures for recovery', () => {
+    expect(isRetryableStreamError(new TypeError('Failed to fetch'))).toBe(true);
+    expect(isRetryableStreamError(new Error('模型请求失败（503）：upstream unavailable'))).toBe(true);
+    expect(isRetryableStreamError(new Error('模型请求失败（400）：bad request'))).toBe(false);
+    expect(isRetryableStreamError(new DOMException('Aborted', 'AbortError'))).toBe(false);
   });
 
   it('assigns stable citation markers to web search results', async () => {
