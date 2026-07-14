@@ -29,6 +29,16 @@ describe('progressive graph context', () => {
     expect(result.references.map((node) => node.id)).toEqual(['a']);
   });
 
+  it('reads multiple graph nodes in one bounded call', async () => {
+    const model = graph();
+    const names = graphToolDefinitions().map((item) => item.function.name);
+    expect(names).toContain('get_graph_nodes');
+    const result = await executeGraphTool(model, 'get_graph_nodes', { node_ids: ['a', 'b'], detail: 'content' });
+    expect(result.nodes.map((node) => node.id)).toEqual(['a', 'b']);
+    expect(result.nodes[0].sections[0].body).toContain('Base statement');
+    expect(result.missing).toEqual([]);
+  });
+
   it('locates ref text with section and character offsets', async () => {
     const result = await executeGraphTool(graph(), 'locate_graph_reference', { node_id: 'b', ref_target: 'eq:base' });
     expect(result.matches[0]).toMatchObject({ section: 'statement', query: 'eq:base' });

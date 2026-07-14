@@ -1,4 +1,6 @@
 const BODY_LIMIT = 18000;
+const BATCH_NODE_LIMIT = 12;
+const BATCH_BODY_LIMIT = 60000;
 
 export function buildGraphContext(model, selectedNodeId = '') {
   if (!model?.nodes?.length) return '';
@@ -23,6 +25,14 @@ export function graphToolDefinitions() {
       type: 'object', required: ['node_id'], additionalProperties: false,
       properties: { node_id: { type: 'string' }, detail: { type: 'string', enum: ['summary', 'content', 'full'] } },
     }),
+    tool('get_graph_nodes', '批量读取多个已知图谱节点。已知多个 node_id 时优先使用本工具，一次最多读取 12 个节点；detail=summary 仅返回元数据，content 返回正文，full 还返回标签与引用。', {
+      type: 'object', required: ['node_ids'], additionalProperties: false,
+      properties: {
+        node_ids: { type: 'array', minItems: 1, maxItems: BATCH_NODE_LIMIT, items: { type: 'string' }, description: '需要一起读取的节点 ID 列表' },
+        detail: { type: 'string', enum: ['summary', 'content', 'full'] },
+        max_chars: { type: 'integer', minimum: 2000, maximum: 80000, description: '批量正文总字符上限，默认 60000' },
+      },
+    }),
     tool('get_graph_neighbors', '读取节点的直接依赖（references）、直接使用者（cited_by）或两者。', {
       type: 'object', required: ['node_id'], additionalProperties: false,
       properties: { node_id: { type: 'string' }, direction: { type: 'string', enum: ['references', 'cited_by', 'both'] } },
@@ -42,6 +52,7 @@ export async function executeGraphTool(model, name, args, hooks = {}) {
   if (name === 'graph_overview') return JSON.parse(buildGraphContext(model).replace(/^.*?：\n/s, ''));
   if (name === 'search_graph_nodes') return searchNodes(model, args);
   if (name === 'get_graph_node') return getNode(model, args);
+  if (name === 'get_graph_nodes') return getNodes(model, args);
   if (name === 'get_graph_neighbors') return getNeighbors(model, args);
   if (name === 'locate_graph_reference') return locateReference(model, args);
   if (name === 'focus_graph_node') {
@@ -52,7 +63,7 @@ export async function executeGraphTool(model, name, args, hooks = {}) {
   return null;
 }
 
-export function isGraphTool(name) { return name.startsWith('graph_') || ['search_graph_nodes', 'get_graph_node', 'get_graph_neighbors', 'locate_graph_reference', 'focus_graph_node'].includes(name); }
+export function isGraphTool(name) { return name.startsWith('graph_') || ['search_graph_nodes', 'get_graph_node', 'get_graph_nodes', 'get_graph_neighbors', 'locate_graph_reference', 'focus_graph_node'].includes(name); }
 
 function searchNodes(model, args) {
   const query = String(args.query || '').trim().toLowerCase();
@@ -83,6 +94,43 @@ function getNode(model, args) {
     result.refs = (node.refs || []).map(({ id, target, targetNode, relation, cmd, where, internal, resolved }) => ({ id, target, targetNode, relation: relation || cmd, where, internal, resolved }));
   }
   return result;
+}
+
+function getNodes(model, args) {
+  const ids = [...new Set(Array.isArray(args.node_ids) ? args.node_ids.map((id) => String(id || '').trim()).filter(Boolean) : [])];
+  if (!ids.length) throw new Error('请提供至少一个 node_id');
+  if (ids.length > BATCH_NODE_LIMIT) throw new Error(`一次最多读取 ${BATCH_NODE_LIMIT} 个图谱节点`);
+  const detail = args.detail || 'summary';
+  const maxChars = clamp(args.max_chars, 2000, 80000, BATCH_BODY_LIMIT);
+  let remaining = maxChars;
+  const nodes = [];
+  const missing = [];
+  const truncated = [];
+  for (const id of ids) {
+    const node = model?.nodeById?.get(id);
+    if (!node) { missing.push(id); continue; }
+    const result = getNode(model, { node_id: id, detail });
+    if (result.sections?.length) {
+      const before = JSON.stringify(result).length;
+      result.sections = limitSections(result.sections, Math.max(800, remaining));
+      const after = JSON.stringify(result).length;
+      if (after < before || result.sections.some((section) => String(section.body || '').includes('…（已截断）'))) truncated.push(id);
+      remaining = Math.max(0, remaining - after);
+    }
+    nodes.push(result);
+  }
+  return { detail, requested: ids, nodes, missing, truncated, max_chars: maxChars };
+}
+
+function limitSections(sections, limit) {
+  let remaining = limit;
+  return sections.map((section) => {
+    const body = String(section.body || '');
+    const allowed = Math.max(400, Math.min(body.length, remaining));
+    const next = { ...section, body: truncate(body, allowed) };
+    remaining = Math.max(0, remaining - next.body.length);
+    return next;
+  });
 }
 
 function getNeighbors(model, args) {
