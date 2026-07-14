@@ -60,7 +60,7 @@ export function createClientTools(workspace, hooks = {}) {
         max_chars: { type: 'integer', minimum: 1000, maximum: 30000, description: '最多返回字符数' },
       },
     }),
-    tool('resolve_doi', '通过 DOI 精确获取论文作者、标题、期刊、日期和摘要等元数据。已有 DOI 时优先使用本工具。', {
+    tool('resolve_doi', '仅对用户消息或 web_search 结果中明确出现的 DOI 精确获取论文元数据；不要猜测、改写或凭标题生成 DOI。若 DOI 不存在，工具会返回未找到状态，此时改用标题/作者搜索并继续回答。', {
       type: 'object', required: ['doi'], additionalProperties: false,
       properties: { doi: { type: 'string', description: 'DOI 或 https://doi.org/ URL' } },
     }),
@@ -280,6 +280,15 @@ async function resolveDoi(args, registerSource) {
   if (!doi) throw new Error('请输入有效 DOI，例如 10.1090/cams/50');
   const path = doi.split('/').map(encodeURIComponent).join('/');
   const response = await fetch(`https://api.crossref.org/works/${path}`, { headers: { Accept: 'application/json' } });
+  if (response.status === 404) {
+    return {
+      status: 'not_found',
+      doi,
+      provider: 'Crossref',
+      message: 'Crossref 中未找到该 DOI 的元数据。请不要重复解析这个 DOI，可改用论文标题、作者或明确网页继续检索。',
+      results: [],
+    };
+  }
   if (!response.ok) throw new Error(`DOI 元数据读取失败（Crossref HTTP ${response.status}）`);
   const item = (await response.json()).message || {};
   const authors = (item.author || []).map((author) => ({

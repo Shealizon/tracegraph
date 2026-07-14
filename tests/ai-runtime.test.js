@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readReasoningDelta, runAgentTurn, SseDecoder } from '../src/ai/modelClient.js';
+import { DEFAULT_SYSTEM_PROMPT, readReasoningDelta, runAgentTurn, SseDecoder } from '../src/ai/modelClient.js';
 import { normalizeWorkspacePath } from '../src/ai/workspace.js';
 import { appendReasoningBlock, appendTextBlock, messageBlocks, serializeMessageDebug, upsertToolBlock } from '../src/ai/messageBlocks.js';
 import { canonicalSourceKey, createClientTools, extractDoi } from '../src/ai/tools.js';
@@ -388,6 +388,21 @@ T^2 c_0 c_1 > \frac{1}{16}
       id: 'doi-1', function: { name: 'resolve_doi', arguments: '{"doi":"https://doi.org/10.1090/CAMS/50"}' },
     }));
     expect(result).toMatchObject({ doi: '10.1090/cams/50', citation: '[S1]', authors: [{ name: 'Ada Example' }] });
+  });
+
+  it('treats a missing DOI as a recoverable lookup result', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+    const tools = createClientTools({});
+    const result = JSON.parse(await tools.execute({
+      id: 'doi-missing', function: { name: 'resolve_doi', arguments: '{"doi":"10.1007/s00222-008-0120-9"}' },
+    }));
+    expect(result).toMatchObject({ status: 'not_found', doi: '10.1007/s00222-008-0120-9', results: [] });
+    expect(result.message).toContain('不要重复解析');
+  });
+
+  it('instructs the model never to invent DOI values', () => {
+    expect(DEFAULT_SYSTEM_PROMPT).toContain('绝对不要根据标题、作者或记忆猜测 DOI');
+    expect(DEFAULT_SYSTEM_PROMPT).toContain('DOI 未找到时不要重复解析');
   });
 
   it('uses Crossref as a scholarly fallback for web search', async () => {

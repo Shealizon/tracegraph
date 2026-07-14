@@ -686,10 +686,11 @@ export function buildAiPanel(ctx) {
 
   function renderToolEvent(event) {
     const details = document.createElement('details');
-    details.className = `ai-process-step ai-tool ai-tool--${event.status}`;
+    const outcome = event.result?.status === 'not_found' ? 'not-found' : event.status;
+    details.className = `ai-process-step ai-tool ai-tool--${outcome}`;
     details.open = event.status === 'running';
     const summary = document.createElement('summary');
-    summary.innerHTML = `<span class="ai-tool-state">${event.status === 'running' ? spinnerIcon() : event.status === 'error' ? alertIcon() : toolIcon()}</span><span>${escapeHtml(toolLabel(event.name))}</span><small>${statusLabel(event.status)}</small>${chevronIcon()}`;
+    summary.innerHTML = `<span class="ai-tool-state">${event.status === 'running' ? spinnerIcon() : event.status === 'error' ? alertIcon() : toolIcon()}</span><span>${escapeHtml(toolLabel(event.name))}</span><small>${statusLabel(outcome)}</small>${chevronIcon()}`;
     const pre = document.createElement('pre');
     pre.textContent = event.error || summarizeTool(event);
     details.append(summary, pre);
@@ -1586,7 +1587,7 @@ function toolLabel(name) {
     locate_graph_reference: '定位图谱引用', focus_graph_node: '打开图谱节点',
   })[name] || name;
 }
-function statusLabel(status) { return ({ queued: '等待执行', running: '执行中', done: '完成', error: '失败' })[status] || status; }
+function statusLabel(status) { return ({ queued: '等待执行', running: '执行中', done: '完成', 'not-found': '未找到' , error: '失败' })[status] || status; }
 function displayCitation(value) { const match = /^\[S(\d+)\]$/.exec(value || ''); return match ? `[${match[1]}]` : value || ''; }
 function hostname(url) { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } }
 function uniqueWebResults(results) {
