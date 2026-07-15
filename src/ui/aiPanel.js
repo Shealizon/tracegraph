@@ -697,7 +697,7 @@ export function buildAiPanel(ctx) {
     details.className = `ai-process-step ai-tool ai-tool--${outcome}`;
     details.open = event.status === 'running';
     const summary = document.createElement('summary');
-    summary.innerHTML = `<span class="ai-tool-state">${event.status === 'running' ? spinnerIcon() : event.status === 'error' ? alertIcon() : toolIcon()}</span><span>${escapeHtml(toolLabel(event.name))}</span><small>${statusLabel(outcome)}</small>${chevronIcon()}`;
+    summary.innerHTML = `<span class="ai-tool-state">${event.status === 'running' ? spinnerIcon() : event.status === 'error' ? alertIcon() : toolIconFor(event.name)}</span><span>${escapeHtml(toolLabel(event.name))}</span><small>${statusLabel(outcome)}</small>${chevronIcon()}`;
     const pre = document.createElement('pre');
     pre.textContent = event.error || summarizeTool(event);
     details.append(summary, pre);
@@ -1676,5 +1676,17 @@ function layoutModeIcon(mode) {
 }
 function checkIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 10.2l3.2 3.2 7.8-7.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
 function alertIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10 6.2v4.7M10 14h.01" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>'; }
+function toolIconFor(name) {
+  const group = toolIconGroup(name);
+  if (group === 'graph') return graphContextIcon();
+  if (group === 'web') return globeIcon();
+  return toolIcon();
+}
+function toolIconGroup(name) {
+  const value = String(name || '');
+  if (value.startsWith('graph_') || ['search_graph_nodes', 'get_graph_node', 'get_graph_nodes', 'get_graph_neighbors', 'get_graph_neighbors_batch', 'locate_graph_reference', 'focus_graph_node'].includes(value)) return 'graph';
+  if (['web_search', 'open_url', 'resolve_doi'].includes(value)) return 'web';
+  return 'default';
+}
 function toolIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.2 4.1a4 4 0 004.7 5.2l3.7 3.7a1.8 1.8 0 01-2.6 2.6l-3.7-3.7a4 4 0 01-5.2-4.7l2.5 2.5 2-2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
 function linkIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M8.2 11.8l3.6-3.6M7 14l-1 1a2.8 2.8 0 01-4-4l2.4-2.4a2.8 2.8 0 014 0M13 6l1-1a2.8 2.8 0 014 4l-2.4 2.4a2.8 2.8 0 01-4 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>'; }
