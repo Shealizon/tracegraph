@@ -301,23 +301,16 @@ details[open] > summary > .ai-chevron { transform: rotate(180deg); }
 .ai-subpanel.is-files-popover > p { margin: 9px 7px 11px; }
 .ai-workspace-empty { max-width: 252px; color: var(--text-dim) !important; font-size: 11.5px !important; line-height: 1.65 !important; }
 .ai-subpanel.is-layout-popover { width: 290px !important; }
-.ai-subpanel.is-context-popover { width: min(330px, calc(100% - 20px)) !important; padding: 12px; }
-.ai-context-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
-.ai-context-head > div { min-width: 0; display: grid; gap: 3px; }
-.ai-context-head strong { font-size: 12px; font-weight: 650; }
-.ai-context-head small, .ai-context-note, .ai-context-status { color: var(--text-dim); font-size: 9.5px; line-height: 1.45; }
-.ai-context-meter { --context-ratio: 0%; position: relative; display: grid; gap: 5px; margin: 14px 1px 12px; padding: 12px; overflow: hidden; background: var(--bg-soft); border-radius: 10px; }
-.ai-context-meter::before { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 12%, transparent) var(--context-ratio), transparent 0); pointer-events: none; }
-.ai-context-meter strong, .ai-context-meter small { position: relative; }
-.ai-context-meter strong { font-size: 20px; letter-spacing: -.02em; }
-.ai-context-meter small { color: var(--text-dim); font-size: 10px; }
-.ai-context-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 11px; }
-.ai-context-stats span { display: grid; gap: 3px; padding: 8px; background: var(--bg-soft); border: 1px solid var(--line-soft); border-radius: 8px; }
-.ai-context-stats small { color: var(--text-dim); font-size: 9px; }
-.ai-context-stats strong { font-size: 12px; }
-.ai-context-compact { width: 100%; min-height: 32px; }
-.ai-context-status { min-height: 14px; margin: 8px 2px 0; }
-.ai-context-note { margin: 7px 2px 0; }
+.ai-subpanel.is-context-popover { width: min(300px, calc(100% - 20px)) !important; padding: 7px 8px; }
+.ai-context-inline { min-width: 0; min-height: 30px; display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+.ai-context-panel-ring { --context-ratio: 0%; position: relative; flex: 0 0 15px; width: 15px; height: 15px; display: block; border-radius: 50%; background: conic-gradient(var(--accent) var(--context-ratio), var(--line-soft) 0); }
+.ai-context-panel-ring::after { content: ''; position: absolute; inset: 3px; background: var(--bg-modal-solid); border-radius: 50%; }
+.ai-context-inline > strong { color: var(--text); font-size: 12px; font-weight: 650; letter-spacing: -.01em; }
+.ai-context-inline > small { color: var(--text-dim); font-size: 9.5px; }
+.ai-context-inline .ai-context-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ai-context-compact { flex: 0 0 auto; min-height: 25px; margin-left: auto; padding: 2px 8px; color: var(--accent); background: var(--accent-bg); border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line-soft)); border-radius: 6px; font: 10px var(--font); cursor: pointer; }
+.ai-context-compact:hover { border-color: var(--accent); }
+.ai-context-compact:disabled { opacity: .55; cursor: wait; }
 .ai-layout-picker { display: grid; gap: 2px; }
 .ai-layout-picker > button { width: 100%; display: grid; grid-template-columns: 30px minmax(0, 1fr) 18px; align-items: center; gap: 8px; padding: 8px; color: var(--text); background: transparent; border: 0; border-radius: 8px; text-align: left; cursor: pointer; }
 .ai-layout-picker > button:hover, .ai-layout-picker > button.is-active { background: var(--accent-bg); }

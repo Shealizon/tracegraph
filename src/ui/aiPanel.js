@@ -1380,7 +1380,7 @@ export function buildAiPanel(ctx) {
   function showContextPanel() {
     if (!openSubpanel('context', 'is-popover is-context-popover', true)) return;
     const snapshot = getContextSnapshot();
-    subpanel.innerHTML = `<div class="ai-context-head"><div><strong>上下文使用量</strong><small>发送前估算 · 含系统提示词、历史消息和工具定义</small></div><button class="icon-btn" data-sub-close title="关闭">${closeIcon()}</button></div><div class="ai-context-meter" data-context-meter><span data-context-meter-fill></span><strong data-context-panel-value></strong><small data-context-panel-percent></small></div><div class="ai-context-stats"><span><small>当前上下文</small><strong data-context-stat-current></strong></span><span><small>模型上限</small><strong data-context-stat-total></strong></span></div><button class="btn btn--primary ai-context-compact" data-context-compact>立即压缩</button><p class="ai-context-status" data-context-status></p><p class="ai-context-note">精确 token 数可能因供应商的工具、图片或文件计数方式不同而变化。</p>`;
+    subpanel.innerHTML = `<div class="ai-context-inline" aria-label="上下文使用量"><span class="ai-context-panel-ring" data-context-meter aria-hidden="true"></span><strong data-context-panel-value></strong><small data-context-panel-percent></small><small class="ai-context-status" data-context-status></small><button class="ai-context-compact" data-context-compact title="压缩上下文">压缩</button><button class="icon-btn" data-sub-close title="关闭">${closeIcon()}</button></div>`;
     subpanel.querySelector('[data-sub-close]').addEventListener('click', closeSubpanel);
     subpanel.querySelector('[data-context-compact]').addEventListener('click', async () => {
       const button = subpanel.querySelector('[data-context-compact]');
@@ -1434,12 +1434,8 @@ export function buildAiPanel(ctx) {
     if (meter) meter.style.setProperty('--context-ratio', `${Math.min(1, snapshot.ratio) * 100}%`);
     const value = subpanel.querySelector('[data-context-panel-value]');
     const percent = subpanel.querySelector('[data-context-panel-percent]');
-    const current = subpanel.querySelector('[data-context-stat-current]');
-    const total = subpanel.querySelector('[data-context-stat-total]');
     if (value) value.textContent = `${formatTokenCount(snapshot.tokens)} / ${formatTokenCount(snapshot.total)}`;
     if (percent) percent.textContent = `${snapshot.percent}% · ${snapshot.ratio >= 0.8 ? '接近上限' : '可用空间充足'}`;
-    if (current) current.textContent = formatTokenCount(snapshot.tokens);
-    if (total) total.textContent = formatTokenCount(snapshot.total);
     const compact = subpanel.querySelector('[data-context-compact]');
     if (compact) compact.disabled = state.compacting || tasks.has(activeConversation(conversationState).id) || !activeConversation(conversationState).messages.some((message) => message.role === 'user' || message.role === 'assistant');
   }
