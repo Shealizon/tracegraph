@@ -7,7 +7,7 @@ import {
   aiQuoteAttachment, contextPrompt, graphNodeAttachment, graphSelectionAttachment, mentionQueryAt, replaceMention, searchMentionCandidates,
 } from '../src/ai/contextAttachments.js';
 import { formatGraphReferenceDisplay, normalizeCjkStrong, protectMarkdownMath, stripBlockquoteMathMarkers } from '../src/render/markdown.js';
-import { activityTimelineEntries, isActivityGroupActive, isScrollNearBottom, navigateGraphReference, replaceUserMessageBranch, shouldJoinActivityBlock } from '../src/ui/aiPanel.js';
+import { activityTimelineEntries, isActivityGroupActive, isScrollNearBottom, navigateGraphReference, noteFromAssistantMessage, replaceUserMessageBranch, shouldJoinActivityBlock } from '../src/ui/aiPanel.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -229,6 +229,17 @@ describe('AI runtime helpers', () => {
       messages[0], messages[1],
       { role: 'user', content: '修改后的输入', createdAt: '2026-01-01', editedAt: '2026-07-14' },
     ]);
+  });
+
+  it('converts an assistant answer into a titleless floating note', () => {
+    expect(noteFromAssistantMessage(
+      { role: 'assistant', content: '  **回答正文**\n\n更多内容  ' },
+      { id: 'note-from-ai', now: '2026-07-15T12:00:00.000Z' },
+    )).toEqual({
+      id: 'note-from-ai', title: '', content: '**回答正文**\n\n更多内容', tagPointer: null,
+      createdAt: '2026-07-15T12:00:00.000Z', updatedAt: '2026-07-15T12:00:00.000Z',
+    });
+    expect(noteFromAssistantMessage({ role: 'assistant', content: '   ' })).toBeNull();
   });
 
   it('copies complete debug data including reasoning and tool results', () => {

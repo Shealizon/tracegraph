@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildModel } from '../src/model/graph.js';
 import { buildGraphContext, executeGraphTool, graphToolDefinitions } from '../src/ai/graphContext.js';
+import { memberKey, normalizeTags } from '../src/data/schema.js';
+import { notePointerFromMember } from '../src/data/notes.js';
 
 function graph() {
   return buildModel({
@@ -61,5 +63,30 @@ describe('progressive graph context', () => {
     const result = await executeGraphTool(graph(), 'focus_graph_node', { node_id: 'a', label_id: 'eq:base' }, { revealGraphNode });
     expect(result.opened).toBe(true);
     expect(revealGraphNode).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), 'eq:base');
+  });
+
+  it('lets AI create, read, update, and delete tag notes through confirmed hooks', async () => {
+    const tags = normalizeTags([{ id: 'tag-1', label: 'Review', members: ['a', { node: 'b', type: 'node' }] }]);
+    let notes = [{ id: 'other', title: 'Other', content: 'Keep me', tagPointer: notePointerFromMember(tags[0], tags[0].members[1]), createdAt: '2025-01-01', updatedAt: '2025-01-01' }];
+    const hooks = {
+      getGraphTags: () => tags,
+      getGraphNotes: () => notes,
+      persistGraphNotes: vi.fn((next) => { notes = next; }),
+      confirmTagNoteChange: vi.fn(async () => true),
+    };
+    const sourceKey = memberKey(tags[0].members[0]);
+    const created = await executeGraphTool(graph(), 'create_tag_note', { tag_id: 'tag-1', member_key: sourceKey, title: 'Check', content: '**Markdown**' }, hooks);
+    const noteId = created.note.id;
+    expect(notes.find((note) => note.id === noteId).content).toBe('**Markdown**');
+    expect(notes.find((note) => note.id === 'other').content).toBe('Keep me');
+    const read = await executeGraphTool(graph(), 'get_tag_note', { tag_id: 'tag-1', member_key: sourceKey, note_id: noteId }, hooks);
+    expect(read.note.title).toBe('Check');
+    await executeGraphTool(graph(), 'update_tag_note', { tag_id: 'tag-1', member_key: sourceKey, note_id: noteId, content: 'Updated' }, hooks);
+    expect(notes.find((note) => note.id === noteId).content).toBe('Updated');
+    const listed = await executeGraphTool(graph(), 'list_tag_notes', { tag_id: 'tag-1' }, hooks);
+    expect(listed.tags[0].members[0].notes).toHaveLength(1);
+    await executeGraphTool(graph(), 'delete_tag_note', { tag_id: 'tag-1', member_key: sourceKey, note_id: noteId }, hooks);
+    expect(notes.some((note) => note.id === noteId)).toBe(false);
+    expect(notes.find((note) => note.id === 'other')).toBeTruthy();
   });
 });

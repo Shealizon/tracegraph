@@ -3,7 +3,14 @@
 // =============================================================================
 import { ICON } from './icons.js';
 import { nodeTag, typeColor, TAG_COLORS, isLeafNode, memberNode, memberType, memberKey } from '../data/schema.js';
-import { confirmDialog } from './feedback.js';
+import { confirmDialog, toast } from './feedback.js';
+import { buildModalShell } from '../view/modal.js';
+import { annotationRectsFromRange, groupAnnotationRects } from '../view/annotation.js';
+import { renderMarkdownInto } from '../render/markdown.js';
+import { graphReferenceToMember, noteReferenceFromNote, resolveTagNoteReference } from '../data/graphReference.js';
+import { bindGraphReferencePaste, writeGraphReference, writePlainText } from './graphClipboard.js';
+import { floatingNotes, noteDisplayTitle, notePointerFromMember, removeNote, resolveNotePointer, upsertNote } from '../data/notes.js';
+import { createNoteRow } from './noteUi.js';
 
 const THEME_MODES = [
   { mode: 'dark', icon: 'moon', title: '深色' },
@@ -16,6 +23,8 @@ const LOCK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-
 export function buildSidebar(ctx, root) {
   root.innerHTML = '';
   const { model, graph } = ctx;
+  ctx.openNoteEditor = (noteId = '', options = {}) => openNoteEditor(ctx, noteId, options);
+  ctx.openTagNoteEditor = (tagId, options = {}) => openTagNoteEditor(ctx, tagId, options);
   const app = document.getElementById('app');
   const rail = ensureCollapseRail(app);
   const mobileSidebar = ensureMobileSidebarToggle(app);
@@ -26,6 +35,12 @@ export function buildSidebar(ctx, root) {
     localStorage.setItem('hg-sidebar-collapsed', on ? '1' : '0');
     rail.title = on ? '展开侧栏' : '折叠侧栏';
     ctx.writeHash && ctx.writeHash();
+  };
+  ctx.setSidebarCollapsed = setCollapsed;
+  ctx.revealSidebarNote = (noteId) => {
+    setCollapsed(false);
+    if (window.matchMedia?.('(max-width: 760px)').matches) app.classList.add('mobile-sidebar-open');
+    requestAnimationFrame(() => requestAnimationFrame(() => highlightSidebarNote(root, noteId)));
   };
   rail.onclick = () => setCollapsed(!app.classList.contains('sidebar-collapsed'));
   mobileSidebar.button.onclick = () => app.classList.toggle('mobile-sidebar-open');
@@ -132,7 +147,10 @@ export function buildSidebar(ctx, root) {
   const grpTags = group(root, '标签');
   const tagBody = el('div', 'tag-panel');
   grpTags.appendChild(tagBody);
-  ctx.rebuildTagPanel = () => renderTagPanel(ctx, tagBody);
+  const grpNotes = group(root, '笔记');
+  const noteBody = el('div', 'floating-notes-panel');
+  grpNotes.appendChild(noteBody);
+  ctx.rebuildTagPanel = () => { renderTagPanel(ctx, tagBody); renderFloatingNotes(ctx, noteBody); };
   ctx.rebuildTagPanel();
 
   // ---- 已隐藏（仅在有内容时展开） ----
@@ -406,6 +424,7 @@ function renderSearch(ctx, q, container) {
 
 // ---- 标签面板 ----
 function renderTagPanel(ctx, body) {
+  closeTagMemberPreview(ctx, true);
   body.innerHTML = '';
   const tags = ctx.graph.getTags ? ctx.graph.getTags() : [];
   ctx.tagFilter = ctx.tagFilter || new Set();
@@ -416,6 +435,33 @@ function renderTagPanel(ctx, body) {
   add.appendChild(btn('+ 有序', () => createTag(ctx, 'ordered')));
   add.appendChild(btn('+ 无序', () => createTag(ctx, 'unordered')));
   body.appendChild(add);
+}
+
+function renderFloatingNotes(ctx, body) {
+  body.replaceChildren();
+  const loose = floatingNotes(ctx.getNotes?.() || []);
+  const looseSection = el('div', 'floating-notes-section');
+  const looseHead = el('div', 'floating-notes-head');
+  const looseLabel = el('span', 'floating-notes-label'); looseLabel.innerHTML = `${ICON.note}<span>游离笔记 · ${loose.length}</span>`;
+  looseHead.append(looseLabel, mkIc('plus', '添加游离笔记', (event) => ctx.openNoteEditor?.('', { tagPointer: null, anchor: event.currentTarget })));
+  looseSection.appendChild(looseHead);
+  const looseList = el('div', 'floating-notes-list');
+  if (!loose.length) { const empty = el('div', 'tag-note-empty'); empty.textContent = '暂无游离笔记'; looseList.appendChild(empty); }
+  loose.forEach((note) => looseList.appendChild(createNoteRow(ctx, note, { className: 'sidebar-note-row' })));
+  looseSection.appendChild(looseList);
+  body.appendChild(looseSection);
+}
+
+export function highlightSidebarNote(root, noteId) {
+  const row = [...(root?.querySelectorAll?.('.note-ui-row[data-note-id]') || [])]
+    .find((element) => element.dataset.noteId === String(noteId));
+  if (!row) return null;
+  row.scrollIntoView?.({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+  row.classList.remove('is-note-revealed');
+  void row.offsetWidth;
+  row.classList.add('is-note-revealed');
+  setTimeout(() => row.classList.remove('is-note-revealed'), 2200);
+  return row;
 }
 
 function buildTagRow(ctx, tag) {
@@ -453,7 +499,7 @@ function buildTagRow(ctx, tag) {
   });
   if (filterOn) filt.classList.add('on');
   // 可成卡的成员（非叶子、在场）。全为卡片→显示「折叠为节点」圆点堆叠图标；否则→「打开为卡片」卡片堆叠图标
-  const cardable = tag.members.map((id) => ctx.model.nodeById.get(id)).filter((n) => n && !n._userHidden && !isLeafNode(ctx.model, n));
+  const cardable = tag.members.map(memberNode).map((id) => ctx.model.nodeById.get(id)).filter((n) => n && !n._userHidden && !isLeafNode(ctx.model, n));
   const allCards = cardable.length > 0 && cardable.every((n) => n.isModal);
   const openClose = mkIc(allCards ? 'nodes' : 'cards', allCards ? '全部关闭为节点' : '全部打开为卡片', () => {
     if (allCards) cardable.forEach((n) => ctx.modals.closeModal(n.id));
@@ -537,24 +583,392 @@ function buildMemberList(ctx, tag) {
     const mid = memberNode(m); const mt = memberType(m); const n = ctx.model.nodeById.get(mid); const mkey = memberKey(m);
     const mrow = el('div', 'tag-member');
     const lead = ordered ? `<span class="tm-idx">${i + 1}</span>` : `<span class="tm-mark">${ICON[tag.icon] || ICON.tag}</span>`;
-    const sub = mt === 'span' ? `<span class="tm-sub">「${escapeHtml((m.text || '').slice(0, 16))}」</span>` : mt === 'pos' ? '<span class="tm-sub">📍位置</span>' : '';
-    mrow.innerHTML = `${lead}<span class="tm-label">${escapeHtml(n ? (n.title || n.id) : mid)}</span>${sub}`;
-    mrow.title = '聚焦';
+    const kind = memberKindInfo(mt);
+    mrow.innerHTML = `${lead}<span class="tm-label">${escapeHtml(n ? (n.title || n.id) : mid)}</span><span class="tm-type tm-type-${mt}" title="${kind.label}">${ICON[kind.icon]}</span>`;
+    mrow.title = '点击定位；悬停预览';
+    const notes = ctx.notesForMember?.(tag, m) || [];
+    const notesKey = `${tag.id}:${mkey}`;
+    const noteBtn = el('button', `tm-note-toggle${notes.length ? ' has-notes' : ''}`);
+    noteBtn.type = 'button'; noteBtn.title = notes.length ? '展开笔记' : '添加笔记';
+    noteBtn.innerHTML = `${ICON.note}${notes.length ? `<small>${notes.length}</small>` : ''}`;
+    noteBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (!notes.length) { ctx.openNoteEditor?.('', { tagPointer: notePointerFromMember(tag, m), anchor: noteBtn }); return; }
+      ctx._tagMemberNotesExpanded = ctx._tagMemberNotesExpanded || new Set();
+      if (ctx._tagMemberNotesExpanded.has(notesKey)) ctx._tagMemberNotesExpanded.delete(notesKey); else ctx._tagMemberNotesExpanded.add(notesKey);
+      ctx.rebuildTagPanel();
+    });
     const del = el('button', 'tm-del'); del.type = 'button'; del.textContent = '×'; del.title = '移出';
-    del.addEventListener('click', (e) => { e.stopPropagation(); ctx.persistTags(ctx.graph.getTags().map((t) => (t.id === tag.id ? { ...t, members: t.members.filter((x) => memberKey(x) !== mkey) } : t))); });
-    mrow.appendChild(del);
-    // 点击成员：聚焦该节点（span/pos 后续可滚动定位）
+    del.addEventListener('click', async (e) => { e.stopPropagation(); await ctx.requestDeleteTagMember?.(tag.id, m); });
+    mrow.append(noteBtn, del);
+    mrow.addEventListener('mouseenter', () => showTagMemberPreview(ctx, tag, m, n, mrow));
+    mrow.addEventListener('mouseleave', () => closeTagMemberPreview(ctx));
+    // 点击成员：节点聚焦；文本/位置成员同时滚动到精确锚点。
     mrow.addEventListener('click', () => {
       if (!n) return;
-      if (n._userHidden) ctx.unhideNode(mid);
-      ctx.graph.focusNode(mid, ctx.graph.getZoomScale());
-      const e2 = ctx.graph.nodeEls.get(mid);
-      if (e2) { e2.classList.add('search-hit'); setTimeout(() => e2.classList.remove('search-hit'), 1500); }
+      closeTagMemberPreview(ctx, true);
+      if (ctx.jumpToMember) ctx.jumpToMember(m);
     });
     wrap.appendChild(mrow);
+    if (ctx._tagMemberNotesExpanded?.has(notesKey)) wrap.appendChild(buildMemberNotes(ctx, tag, m, mkey));
     if (ordered) { const b = mkInsert(i + 1); if (b) wrap.appendChild(b); }
   });
   return wrap;
+}
+
+function memberKindInfo(type) {
+  if (type === 'span') return { icon: 'alphabet', label: '文本标注' };
+  if (type === 'pos') return { icon: 'location', label: '位置标注' };
+  return { icon: 'card', label: '节点标注' };
+}
+
+function showTagMemberPreview(ctx, tag, member, node, anchor) {
+  clearTimeout(ctx._tagMemberPreviewTimer);
+  closeTagMemberPreview(ctx, true);
+  if (!node || !anchor?.isConnected) return;
+
+  const type = memberType(member);
+  const statement = ctx.getRendered ? ctx.getRendered(node.id, 'statement') : ctx.render(node.statementBody || '');
+  const proof = node.proofBody ? (ctx.getRendered ? ctx.getRendered(node.id, 'proof') : ctx.render(node.proofBody)) : '';
+  const sectionHTML = type === 'node'
+    ? `<div class="statement">${statement}</div>${proof ? `<div class="proof-wrap">${proof}</div>` : ''}`
+    : member.section === 'proof'
+      ? `<div class="proof-wrap">${proof || statement}</div>`
+      : `<div class="statement">${statement}</div>`;
+  const preview = buildModalShell({
+    type: node.type,
+    color: typeColor(ctx.model, node.type),
+    preview: true,
+    titleHTML: `<span class="m-num">${escapeHtml(nodeTag(ctx.model, node))}</span> · ${escapeHtml(node.title || node.id)}`,
+    bodyHTML: sectionHTML,
+  });
+  preview.classList.add('tag-member-preview', `tag-member-preview-${type}`);
+  preview.dataset.id = node.id;
+  preview.style.setProperty('--tc', tag.color || '#ff9e64');
+  preview.addEventListener('mouseenter', () => clearTimeout(ctx._tagMemberPreviewTimer));
+  preview.addEventListener('mouseleave', () => closeTagMemberPreview(ctx));
+  document.body.appendChild(preview);
+  ctx._tagMemberPreview = preview;
+  positionTagMemberPreview(preview, anchor);
+
+  const body = preview.querySelector('.modal-body');
+  if (!body) return;
+  body.style.maxHeight = type === 'node' ? '320px' : '230px';
+  if (type === 'node') {
+    requestAnimationFrame(() => positionTagMemberPreview(preview, anchor));
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    if (!preview.isConnected) return;
+    const range = type === 'span'
+      ? ctx.modals?._rangeFromMember(body, member)
+      : ctx.modals?._collapsedRangeFromMember(body, member);
+    const targetRect = range?.getBoundingClientRect?.();
+    const bodyRect = body.getBoundingClientRect();
+    if (targetRect) body.scrollTop += targetRect.top - bodyRect.top - body.clientHeight / 2;
+    else if (type === 'pos') body.scrollTop = Math.max(0, (member.y || 0) * body.scrollHeight - body.clientHeight / 2);
+    requestAnimationFrame(() => {
+      if (!preview.isConnected) return;
+      renderTagMemberAnchor(ctx, body, tag, member, type);
+      positionTagMemberPreview(preview, anchor);
+    });
+  });
+}
+
+function renderTagMemberAnchor(ctx, body, tag, member, type) {
+  const bodyRect = body.getBoundingClientRect();
+  let anchorRect = null;
+  if (type === 'span') {
+    const range = ctx.modals?._rangeFromMember(body, member);
+    const rects = range ? groupAnnotationRects(annotationRectsFromRange(range, body)) : [];
+    for (const rect of rects) {
+      const underline = el('div', 'tag-preview-underline');
+      underline.style.left = `${rect.left - bodyRect.left + body.scrollLeft}px`;
+      underline.style.top = `${rect.bottom - bodyRect.top + body.scrollTop - 1}px`;
+      underline.style.width = `${rect.width}px`;
+      body.appendChild(underline);
+    }
+    anchorRect = rects.at(-1) || null;
+  } else {
+    const range = ctx.modals?._collapsedRangeFromMember(body, member);
+    anchorRect = range?.getBoundingClientRect?.() || null;
+  }
+
+  const marker = el('div', `tag-preview-marker tag-preview-marker-${type}`);
+  marker.innerHTML = type === 'span' ? (ICON[tag.icon] || ICON.tag) : ICON.location;
+  if (anchorRect) {
+    marker.style.left = `${anchorRect.right - bodyRect.left + body.scrollLeft + 4}px`;
+    marker.style.top = `${anchorRect.top - bodyRect.top + body.scrollTop + anchorRect.height / 2}px`;
+  } else {
+    marker.style.left = `${Math.max(8, Math.min(body.clientWidth - 8, (member.x || 0) * body.clientWidth))}px`;
+    marker.style.top = `${Math.max(8, (member.y || 0) * body.scrollHeight)}px`;
+  }
+  body.appendChild(marker);
+}
+
+function positionTagMemberPreview(preview, anchor) {
+  if (!preview?.isConnected || !anchor?.isConnected) return;
+  const gap = 10;
+  const ar = anchor.getBoundingClientRect();
+  const width = preview.offsetWidth;
+  const height = preview.offsetHeight;
+  let left = ar.right + gap;
+  if (left + width > window.innerWidth - 8) left = Math.max(8, ar.left - width - gap);
+  let top = ar.top - 10;
+  top = Math.max(8, Math.min(top, window.innerHeight - height - 8));
+  preview.style.left = `${left}px`;
+  preview.style.top = `${top}px`;
+}
+
+function closeTagMemberPreview(ctx, immediate = false) {
+  clearTimeout(ctx._tagMemberPreviewTimer);
+  const close = () => {
+    ctx._tagMemberPreview?.remove();
+    ctx._tagMemberPreview = null;
+    ctx._tagMemberPreviewTimer = null;
+  };
+  if (immediate) close();
+  else ctx._tagMemberPreviewTimer = setTimeout(close, 120);
+}
+
+export function buildMemberNotes(ctx, tag, member, mkey) {
+  const section = el('div', 'tag-notes');
+  const notes = ctx.notesForMember?.(tag, member) || [];
+  const head = el('div', 'tag-notes-head');
+  const label = el('span', 'tag-notes-instance-label'); label.textContent = `此标注的笔记 · ${notes.length}`;
+  const add = mkIc('plus', '添加笔记', (event) => ctx.openNoteEditor?.('', { tagPointer: notePointerFromMember(tag, member), anchor: event.currentTarget }));
+  head.append(label, add);
+  section.appendChild(head);
+  const list = el('div', 'tag-note-list');
+  if (!notes.length) {
+    const empty = el('div', 'tag-note-empty'); empty.textContent = '暂无笔记'; list.appendChild(empty);
+  }
+  for (const note of notes) list.appendChild(createNoteRow(ctx, note, { className: 'sidebar-note-row' }));
+  section.appendChild(list);
+  return section;
+}
+
+export function openTagNoteEditor(ctx, tagId, { memberKey: targetMemberKey = '', noteId = '', anchor = null } = {}) {
+  const tag = (ctx.graph.getTags() || []).find((item) => item.id === tagId);
+  const member = tag?.members?.find((item) => memberKey(item) === targetMemberKey);
+  return openNoteEditor(ctx, noteId, { tagPointer: notePointerFromMember(tag, member), anchor });
+}
+
+export function openNoteEditor(ctx, noteId = '', { tagPointer = undefined, anchor = null } = {}) {
+  ctx._tagNoteEditorClose?.();
+  ctx.noteWindows?.close?.();
+  const tags = ctx.graph.getTags() || [];
+  const existing = (ctx.getNotes?.() || []).find((item) => item.id === noteId) || null;
+  const now = new Date().toISOString();
+  const state = {
+    noteId: existing?.id || `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    createdAt: existing?.createdAt || now,
+    tagPointer: existing ? existing.tagPointer : (tagPointer ?? null),
+    persisted: !!existing,
+    saveTimer: null,
+    initial: existing ? structuredClone(existing) : null,
+  };
+
+  const editor = el('section', 'tag-note-editor');
+  const head = el('header', 'tag-note-editor-head');
+  const identity = el('button', 'tag-note-identity'); identity.type = 'button'; identity.title = '更改依附标签';
+  const status = el('span', 'tag-note-save-status'); status.textContent = existing ? '已保存' : '未创建';
+  const actions = el('div', 'tag-note-editor-actions');
+  const action = (icon, label, handler) => {
+    const button = el('button', `tag-note-editor-action tag-note-editor-action-${icon}`); button.type = 'button'; button.title = label; button.setAttribute('aria-label', label);
+    button.innerHTML = `<span class="tag-note-editor-action-glyph">${ICON[icon] || ''}</span>`;
+    button.addEventListener('click', handler); actions.appendChild(button); return button;
+  };
+  const rollback = action('undo', '回到打开时的状态', () => restoreOpeningState());
+  const copyReference = action('link', '复制笔记引用', () => copyNoteReference());
+  const attachAi = action('aiAdd', '引用到 AI', () => attachNoteToAi());
+  const copyAll = action('copy', '复制所有内容', () => copyAllContent());
+  const previewToggle = action('eye', '预览', () => setMode(editor.dataset.mode === 'preview' ? 'edit' : 'preview'));
+  const close = action('close', '关闭', () => closeEditor());
+  head.append(identity, status, actions);
+
+  const picker = el('div', 'tag-note-tag-picker'); picker.hidden = true;
+  const body = el('div', 'tag-note-editor-body');
+  const editSurface = el('div', 'tag-note-edit-surface');
+  const title = el('input', 'tag-note-title-input'); title.type = 'text'; title.value = existing?.title || '';
+  const textarea = el('textarea', 'tag-note-textarea'); textarea.placeholder = '记录想法，支持 Markdown、公式和图谱引用…'; textarea.value = existing?.content || '';
+  editSurface.append(title, textarea);
+  const preview = el('div', 'tag-note-preview'); preview.hidden = true;
+  body.append(editSurface, preview);
+  editor.append(head, picker, body);
+  document.body.appendChild(editor);
+  ctx._tagNoteEditor = editor;
+  editor.dataset.mode = 'edit';
+  ctx.noteWindows?.applySize?.(editor);
+  if (anchor) ctx.noteWindows?.position?.(editor, anchor);
+  else ctx.noteWindows?.clampPosition?.(editor, ctx.noteWindows?.lastPosition || { left: 292, top: 40 });
+  const disconnectSize = ctx.noteWindows?.observeSize?.(editor) || (() => {});
+  const disconnectEdges = ctx.noteWindows?.attachEdgeResize?.(editor) || (() => {});
+  const onViewportResize = () => ctx.noteWindows?.clampPosition?.(editor);
+  window.addEventListener('resize', onViewportResize);
+
+  const current = () => resolveNotePointer({ tagPointer: state.tagPointer }, ctx.graph.getTags() || []) || { tag: null, member: null };
+  const noteFromInputs = () => ({
+    id: state.noteId,
+    title: title.value.trim(),
+    content: textarea.value,
+    tagPointer: state.tagPointer,
+    createdAt: state.createdAt,
+    updatedAt: new Date().toISOString(),
+  });
+  const hasDraft = () => state.persisted || title.value.trim() || textarea.value;
+  const updateIdentity = () => {
+    const { tag } = current();
+    identity.innerHTML = `<span class="tag-note-identity-icon">${ICON.note}</span><span class="tag-note-identity-label">${escapeHtml(tag?.label || tag?.id || '无标签')}</span><span class="tag-note-identity-caret">${ICON.chevronDown}</span>`;
+  };
+  const persistNow = ({ force = false } = {}) => {
+    clearTimeout(state.saveTimer); state.saveTimer = null;
+    if (!force && !hasDraft()) { status.textContent = '未创建'; return null; }
+    const note = noteFromInputs();
+    ctx.persistNotes(upsertNote(ctx.getNotes?.() || [], note, ctx.graph.getTags() || []));
+    state.persisted = true;
+    status.textContent = '已保存';
+    return note;
+  };
+  const scheduleSave = () => {
+    clearTimeout(state.saveTimer);
+    status.textContent = '保存中…';
+    state.saveTimer = setTimeout(() => persistNow(), 380);
+  };
+  const growTextarea = () => {
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.max(textarea.scrollHeight, editSurface.clientHeight - title.offsetHeight)}px`;
+  };
+  const renderPreview = () => {
+    preview.replaceChildren();
+    if (title.value.trim()) {
+      const previewTitle = el('div', 'tag-note-preview-title'); previewTitle.textContent = title.value.trim(); preview.appendChild(previewTitle);
+    }
+    const previewBody = el('div', 'tag-note-preview-content ai-markdown'); preview.appendChild(previewBody);
+    renderMarkdownInto(previewBody, textarea.value || '*空笔记*', {
+      macros: ctx.model?.meta?.macros,
+      graphLabels: ctx.model?.labelIndex,
+      onGraphReference: (reference) => {
+        const noteRef = resolveTagNoteReference(reference, ctx.graph?.getTags?.() || [], ctx.getNotes?.() || []);
+        if (noteRef) {
+          ctx.openNoteEditor?.(noteRef.note.id, { anchor: editor });
+          return;
+        }
+        const referencedMember = graphReferenceToMember(reference, ctx.graph?.getTags?.() || [], ctx.getNotes?.() || []);
+        if (referencedMember) ctx.jumpToMember?.(referencedMember);
+      },
+    });
+  };
+  const setMode = (mode) => {
+    const showingPreview = mode === 'preview';
+    editor.dataset.mode = showingPreview ? 'preview' : 'edit';
+    editSurface.hidden = showingPreview; editSurface.style.display = showingPreview ? 'none' : '';
+    preview.hidden = !showingPreview; preview.style.display = showingPreview ? 'block' : 'none';
+    previewToggle.classList.toggle('on', showingPreview);
+    previewToggle.title = showingPreview ? '返回编辑' : '预览';
+    if (showingPreview) { persistNow(); renderPreview(); } else textarea.focus();
+  };
+  const renderPicker = () => {
+    picker.replaceChildren();
+    const none = el('button', `tag-note-tag-option${state.tagPointer ? '' : ' current'}`); none.type = 'button';
+    none.innerHTML = `<span>${ICON.note}</span><span>无标签</span>${state.tagPointer ? '' : ICON.check}`;
+    none.addEventListener('click', () => setPointer(null)); picker.appendChild(none);
+    for (const tag of ctx.graph.getTags() || []) {
+      const group = el('div', 'tag-note-picker-group');
+      group.innerHTML = `<span>${ICON[tag.icon] || ICON.tag}</span><strong>${escapeHtml(tag.label || tag.id)}</strong>`;
+      picker.appendChild(group);
+      for (const member of tag.members || []) {
+        const pointer = notePointerFromMember(tag, member);
+        const selected = samePointer(pointer, state.tagPointer);
+        const node = ctx.model.nodeById.get(memberNode(member));
+        const kind = memberKindInfo(memberType(member));
+        const button = el('button', `tag-note-tag-option tag-note-instance-option${selected ? ' current' : ''}`); button.type = 'button';
+        button.innerHTML = `<span>${ICON[kind.icon]}</span><span>${escapeHtml(node?.title || memberNode(member) || '未知节点')}<small>${escapeHtml(kind.label)}</small></span>${selected ? ICON.check : ''}`;
+        button.addEventListener('click', () => setPointer(pointer)); picker.appendChild(button);
+      }
+    }
+  };
+  const setPointer = (pointer) => {
+    state.tagPointer = pointer;
+    picker.hidden = true; updateIdentity(); persistNow({ force: true });
+  };
+  const copyAllContent = async () => {
+    persistNow();
+    const copied = await writePlainText([title.value.trim(), textarea.value].filter(Boolean).join('\n\n'));
+    toast(copied ? '已复制笔记内容' : '复制失败', copied ? {} : { type: 'error' });
+  };
+  const copyNoteReference = async () => {
+    const note = persistNow({ force: true });
+    const copied = await writeGraphReference(noteReferenceFromNote(ctx.model, note, ctx.graph.getTags() || []));
+    toast(copied ? '已复制笔记引用' : '复制失败', copied ? {} : { type: 'error' });
+  };
+  const attachNoteToAi = () => {
+    const note = persistNow({ force: true });
+    const attached = ctx.aiPanel?.attachNote?.(note);
+    toast(attached ? '笔记已附到 AI' : '无法附到 AI', attached ? {} : { type: 'error' });
+  };
+  const restoreOpeningState = () => {
+    clearTimeout(state.saveTimer); state.saveTimer = null;
+    if (state.persisted) {
+      const next = state.initial
+        ? upsertNote(ctx.getNotes?.() || [], { ...state.initial }, ctx.graph.getTags() || [])
+        : removeNote(ctx.getNotes?.() || [], state.noteId);
+      ctx.persistNotes(next);
+    }
+    state.tagPointer = state.initial?.tagPointer || null;
+    state.createdAt = state.initial?.createdAt || now; state.persisted = !!state.initial;
+    title.value = state.initial?.title || ''; textarea.value = state.initial?.content || '';
+    setMode('edit'); updateIdentity(); status.textContent = state.persisted ? '已恢复并保存' : '已恢复';
+    toast('已回到打开时的状态');
+  };
+  let closing = false;
+  const closeEditor = () => {
+    if (closing) return; closing = true;
+    persistNow();
+    disconnectSize();
+    disconnectEdges();
+    window.removeEventListener('resize', onViewportResize);
+    ctx.noteWindows?.saveSize?.(editor);
+    editor.remove();
+    if (ctx._tagNoteEditor === editor) ctx._tagNoteEditor = null;
+    if (ctx._tagNoteEditorClose === closeEditor) ctx._tagNoteEditorClose = null;
+  };
+  ctx._tagNoteEditorClose = closeEditor;
+
+  let drag = null;
+  head.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || event.target.closest('button')) return;
+    const rect = editor.getBoundingClientRect();
+    drag = { x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
+    head.setPointerCapture?.(event.pointerId); event.preventDefault();
+  });
+  head.addEventListener('pointermove', (event) => {
+    if (!drag) return;
+    ctx.noteWindows?.clampPosition?.(editor, { left: drag.left + event.clientX - drag.x, top: drag.top + event.clientY - drag.y });
+  });
+  const endDrag = () => { drag = null; };
+  head.addEventListener('pointerup', endDrag); head.addEventListener('pointercancel', endDrag);
+
+  identity.addEventListener('click', () => { renderPicker(); picker.hidden = !picker.hidden; });
+  title.addEventListener('input', scheduleSave);
+  textarea.addEventListener('input', () => { growTextarea(); scheduleSave(); });
+  bindGraphReferencePaste(textarea);
+  editor.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      if (!picker.hidden) picker.hidden = true; else closeEditor();
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); persistNow({ force: true }); }
+  });
+  updateIdentity();
+  requestAnimationFrame(growTextarea);
+  requestAnimationFrame(() => (existing ? textarea : title).focus());
+  return editor;
+}
+
+function samePointer(a, b) {
+  if (!a || !b) return !a && !b;
+  return a.tagId === b.tagId && ((a.referenceId && b.referenceId && a.referenceId === b.referenceId) || a.instanceId === b.instanceId);
 }
 
 function createTag(ctx, kind) {

@@ -1,12 +1,13 @@
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import renderMathInElement from 'katex/contrib/auto-render';
+import { parseGraphReferenceHref } from '../data/graphReference.js';
 
 marked.setOptions({ gfm: true, breaks: true });
 
 export function renderMarkdownInto(element, markdown, {
   macros = {}, sources = [], graphLabels = null, onGraphNavigate = null,
-  onGraphHover = null, onGraphLeave = null,
+  onGraphHover = null, onGraphLeave = null, onGraphReference = null,
 } = {}) {
   // CommonMark treats backslashes before punctuation as escapes.  Passing the
   // model output straight through marked would therefore turn `\[...\]` into
@@ -19,8 +20,19 @@ export function renderMarkdownInto(element, markdown, {
   restoreMarkdownMath(element, protectedMath.expressions);
 
   for (const anchor of element.querySelectorAll('a[href]')) {
-    anchor.target = '_blank';
-    anchor.rel = 'noopener noreferrer';
+    const reference = parseGraphReferenceHref(anchor.getAttribute('href'));
+    if (reference) {
+      anchor.removeAttribute('target');
+      anchor.removeAttribute('rel');
+      anchor.classList.add('graph-content-reference');
+      anchor.addEventListener('click', (event) => {
+        event.preventDefault();
+        onGraphReference?.(reference, anchor);
+      });
+    } else {
+      anchor.target = '_blank';
+      anchor.rel = 'noopener noreferrer';
+    }
   }
 
   renderMathInElement(element, {

@@ -8,6 +8,9 @@ import { isLeafNode, nodeTag, paperName, typeColor } from '../data/schema.js';
 import { ICON } from '../ui/icons.js';
 import { toast } from '../ui/feedback.js';
 import { selectionSource } from '../ui/cardMenus.js';
+import { annotationRectsFromRange, clampAnnotationChipLeft, groupAnnotationRects, normalizeSelectionForMath } from './annotation.js';
+import { graphReferenceFromMember } from '../data/graphReference.js';
+import { setGraphReferenceClipboardData, writeGraphReference } from '../ui/graphClipboard.js';
 
 const STORE_PREFIX = 'paper-graph:reader:';
 const CHROME_HIDE_AFTER = 36;
@@ -67,6 +70,7 @@ function ensureReader(ctx) {
     storageKey: storageKey(ctx),
   };
   ctx._reader = reader;
+  reader.refreshMarks = () => renderReaderMarks(reader);
   restoreState(reader);
   bindReaderSelectionSurface(reader);
   el.addEventListener('keydown', (e) => {
@@ -99,8 +103,10 @@ function closeReader(reader) {
   persistState(reader);
   if (reader.chromeRaf) cancelAnimationFrame(reader.chromeRaf);
   reader.chromeResizeObserver?.disconnect();
+  reader.markResizeObserver?.disconnect();
   closeReaderCopyMenu(reader);
   closeReaderSelectionMenu(reader);
+  closeReaderTagMenu(reader);
   closeSearch(reader);
   clearTimeout(reader.selectionTimer);
   if (reader.selectionChangeHandler) {
@@ -256,6 +262,8 @@ function renderReader(reader) {
   reader.chromePendingScrollTop = null;
   reader.chromeResizeObserver?.disconnect();
   reader.chromeResizeObserver = null;
+  reader.markResizeObserver?.disconnect();
+  reader.markResizeObserver = null;
 
   el.innerHTML = `
     <div class="reader-shell">
@@ -280,6 +288,8 @@ function renderReader(reader) {
     else restoreScroll(reader);
     resetReaderChromeScroll(reader);
     scrollActiveTabIntoView(reader);
+    renderReaderMarks(reader);
+    document.fonts?.ready?.then(() => renderReaderMarks(reader));
   });
   el.focus();
   reader.ctx.writeHash && reader.ctx.writeHash();
@@ -462,6 +472,11 @@ function bindReader(reader) {
   if (chromeInner && window.ResizeObserver) {
     reader.chromeResizeObserver = new ResizeObserver(() => measureReaderChrome(reader));
     reader.chromeResizeObserver.observe(chromeInner);
+  }
+  const content = el.querySelector('.reader-content');
+  if (content && window.ResizeObserver) {
+    reader.markResizeObserver = new ResizeObserver(() => requestAnimationFrame(() => renderReaderMarks(reader)));
+    reader.markResizeObserver.observe(content);
   }
   el.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', (e) => {
     if (e.target.closest('[data-close-tab]')) return;
@@ -690,6 +705,7 @@ function showPreview(reader, nodeId, anchorEl, labelId = '', opts = {}) {
     : '';
   const el = document.createElement('div');
   el.className = 'reader-preview';
+  el.dataset.nodeId = node.id;
   el.style.setProperty('--reader-color', typeColor(reader.ctx.model, node.type));
   el.innerHTML = `
     <div class="reader-preview-head">
@@ -701,7 +717,7 @@ function showPreview(reader, nodeId, anchorEl, labelId = '', opts = {}) {
       </div>
       <button data-close-preview title="关闭">${ICON.close}</button>
     </div>
-    <div class="reader-preview-body">${statement || '<p class="reader-muted">无正文。</p>'}${proof ? `<div class="proof-wrap">${proof}</div>` : ''}</div>`;
+    <div class="reader-preview-body"><div class="statement">${statement || '<p class="reader-muted">无正文。</p>'}</div>${proof ? `<div class="proof-wrap">${proof}</div>` : ''}</div>`;
   reader.el.appendChild(el);
   positionPreview(el, anchorRect);
   bindPreviewContent(reader, el);
@@ -734,6 +750,17 @@ function showPreview(reader, nodeId, anchorEl, labelId = '', opts = {}) {
 
 function bindPreviewContent(reader, previewEl) {
   const body = previewEl.querySelector('.reader-preview-body');
+  body?.addEventListener('copy', (event) => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !body.contains(selection.anchorNode) || !body.contains(selection.focusNode)) return;
+    let span = null;
+    try { span = reader.ctx.spanFromSelection(body, previewEl.dataset.nodeId, selection); } catch { span = null; }
+    const text = selectionSource(selection);
+    if (text && span && event.clipboardData) {
+      setGraphReferenceClipboardData(event.clipboardData, graphReferenceFromMember(reader.ctx.model, { ...span, text }, text));
+      event.preventDefault();
+    }
+  });
   body?.addEventListener('click', (e) => {
     const ref = e.target.closest('.texref');
     const goto = e.target.closest('[data-goto]');
@@ -849,7 +876,7 @@ function openReaderCopyMenu(reader, anchorEl) {
     button.textContent = item.label;
     button.addEventListener('click', () => {
       closeReaderCopyMenu(reader);
-      copyReaderNode(node, item.mode);
+      copyReaderNode(reader, node, item.mode);
     });
     row.appendChild(button);
     menu.appendChild(row);
@@ -890,7 +917,12 @@ function bindReaderSelectionSurface(reader) {
       reader.selectionTimer = null;
     }, delay);
   };
-  reader.selectionChangeHandler = () => schedule(260);
+  reader.selectionChangeHandler = () => {
+    const sel = window.getSelection();
+    const content = readerContentForSelection(reader, sel);
+    if (content) normalizeSelectionForMath(sel, content);
+    schedule(260);
+  };
   document.addEventListener('selectionchange', reader.selectionChangeHandler);
   reader.el.addEventListener('mouseup', () => schedule(120), true);
   reader.el.addEventListener('touchend', () => schedule(120), true);
@@ -903,7 +935,12 @@ function bindReaderSelectionSurface(reader) {
     if (!sel) return;
     const src = selectionSource(sel);
     if (src && e.clipboardData) {
-      e.clipboardData.setData('text/plain', src);
+      const content = readerContentForSelection(reader, sel);
+      const tab = activeTab(reader);
+      let span = null;
+      try { if (content && tab?.kind === 'node') span = reader.ctx.spanFromSelection(content, tab.nodeId, sel); } catch { span = null; }
+      if (span) setGraphReferenceClipboardData(e.clipboardData, graphReferenceFromMember(reader.ctx.model, { ...span, text: src }, src));
+      else e.clipboardData.setData('text/plain', src);
       e.preventDefault();
     }
   }, true);
@@ -911,23 +948,33 @@ function bindReaderSelectionSurface(reader) {
 
 function selectionInReader(reader) {
   const sel = window.getSelection();
-  if (!sel || sel.isCollapsed || !sel.toString().trim() || !sel.rangeCount) return null;
+  if (!sel || !sel.rangeCount) return null;
+  const content = readerContentForSelection(reader, sel);
+  if (content) normalizeSelectionForMath(sel, content);
+  if (sel.isCollapsed || !selectionSource(sel).trim()) return null;
+  return sel;
+}
+
+function readerContentForSelection(reader, sel) {
+  if (!sel?.rangeCount) return null;
   const nodeEl = (n) => (n?.nodeType === 1 ? n : n?.parentElement);
   const anchor = nodeEl(sel.anchorNode);
   const focus = nodeEl(sel.focusNode);
   const content = anchor?.closest?.('.reader-content');
   if (!content || !reader.el.contains(content) || !content.contains(focus)) return null;
-  return sel;
+  return content;
 }
 
 function showReaderSelectionMenu(reader, sel) {
-  const rect = selectionRect(sel);
-  if (!rect) return;
   const selectedEl = sel.anchorNode?.nodeType === 1 ? sel.anchorNode : sel.anchorNode?.parentElement;
   const content = selectedEl?.closest?.('.reader-content');
   const tab = activeTab(reader);
   let base = null;
   try { base = content && tab?.kind === 'node' ? reader.ctx.spanFromSelection(content, tab.nodeId, sel) : null; } catch { base = null; }
+  if (!base) normalizeSelectionForMath(sel, content);
+  const rect = selectionRect(sel);
+  if (!rect) return;
+  reader.annotationBase = base;
   reader.aiSelection = base ? { ...base, text: selectionSource(sel) } : null;
   if (!reader.selectionMenu) {
     const menu = document.createElement('div');
@@ -938,7 +985,7 @@ function showReaderSelectionMenu(reader, sel) {
     button.title = '复制选中';
     button.innerHTML = ICON.copy;
     button.addEventListener('click', () => {
-      copyReaderSelection(window.getSelection());
+      copyReaderSelection(window.getSelection(), reader, reader.annotationBase);
       closeReaderSelectionMenu(reader);
     });
     menu.appendChild(button);
@@ -952,6 +999,19 @@ function showReaderSelectionMenu(reader, sel) {
       closeReaderSelectionMenu(reader);
     });
     menu.appendChild(addAi);
+    const tags = reader.ctx.graph.getTags ? reader.ctx.graph.getTags().filter((tag) => tag.visible !== false) : [];
+    const common = reader.ctx.commonTags ? reader.ctx.commonTags(3).filter((tag) => tags.includes(tag)) : tags.slice(0, 3);
+    for (const tag of common) menu.appendChild(readerTagButton(reader, tag));
+    const rest = tags.filter((tag) => !common.includes(tag));
+    if (rest.length) {
+      const more = document.createElement('button');
+      more.className = 'csm-btn';
+      more.type = 'button';
+      more.title = '更多标签';
+      more.innerHTML = ICON.more;
+      more.addEventListener('click', (e) => openReaderTagMenu(reader, e.currentTarget, rest));
+      menu.appendChild(more);
+    }
     document.body.appendChild(menu);
     reader.selectionMenu = menu;
   }
@@ -967,11 +1027,10 @@ function selectionRect(sel) {
 function positionReaderSelectionMenu(menu, rect) {
   const mw = menu.offsetWidth;
   const mh = menu.offsetHeight;
-  let x = rect.right + 8;
-  let y = rect.top + rect.height / 2 - mh / 2;
-  if (x + mw > window.innerWidth - 6) x = rect.left - mw - 8;
-  if (x < 6) x = window.innerWidth - mw - 6;
-  if (y + mh > window.innerHeight - 6) y = window.innerHeight - mh - 6;
+  let x = rect.right;
+  let y = rect.bottom + 6;
+  if (x + mw > window.innerWidth - 6) x = window.innerWidth - mw - 6;
+  if (y + mh > window.innerHeight - 6) y = rect.top - mh - 6;
   menu.style.left = `${Math.max(6, x)}px`;
   menu.style.top = `${Math.max(6, y)}px`;
 }
@@ -981,23 +1040,126 @@ function closeReaderSelectionMenu(reader) {
     reader.selectionMenu.remove();
     reader.selectionMenu = null;
   }
+  closeReaderTagMenu(reader);
 }
 
-async function copyReaderSelection(sel) {
+function readerTagButton(reader, tag) {
+  const button = document.createElement('button');
+  button.className = 'csm-btn reader-tag-btn';
+  button.type = 'button';
+  button.title = tag.label || '添加标签';
+  button.style.setProperty('--tc', tag.color || '#ff9e64');
+  button.innerHTML = tag.kind === 'ordered'
+    ? `<span class="tm-idx">${tag.members.length + 1}</span>`
+    : (ICON[tag.icon] || ICON.tag);
+  button.addEventListener('click', () => {
+    if (reader.annotationBase) reader.ctx.addMember(tag.id, { ...reader.annotationBase });
+    closeReaderSelectionMenu(reader);
+  });
+  return button;
+}
+
+function openReaderTagMenu(reader, anchor, tags) {
+  closeReaderTagMenu(reader);
+  const menu = document.createElement('div');
+  menu.className = 'm-menu reader-tag-menu';
+  for (const tag of tags) {
+    const row = document.createElement('div');
+    row.className = 'm-menu-item';
+    const button = document.createElement('button');
+    button.className = 'mm-main';
+    button.type = 'button';
+    button.innerHTML = `<span class="mm-ic" style="color:${escapeAttr(tag.color || '#ff9e64')}">${tag.kind === 'ordered' ? `<span class="tm-idx">${tag.members.length + 1}</span>` : (ICON[tag.icon] || ICON.tag)}</span><span class="mm-txt">${escapeHtml(tag.label || '（未命名）')}</span>`;
+    button.addEventListener('click', () => {
+      if (reader.annotationBase) reader.ctx.addMember(tag.id, { ...reader.annotationBase });
+      closeReaderSelectionMenu(reader);
+    });
+    row.appendChild(button); menu.appendChild(row);
+  }
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  menu.style.left = `${Math.max(6, Math.min(r.left, window.innerWidth - menu.offsetWidth - 6))}px`;
+  menu.style.top = `${Math.max(6, Math.min(r.bottom + 6, window.innerHeight - menu.offsetHeight - 6))}px`;
+  reader.tagMenu = menu;
+  const close = (e) => { if (!menu.contains(e.target) && e.target !== anchor) closeReaderTagMenu(reader); };
+  setTimeout(() => { document.addEventListener('pointerdown', close, true); reader.tagMenuClose = close; }, 0);
+}
+
+function closeReaderTagMenu(reader) {
+  reader.tagMenu?.remove();
+  reader.tagMenu = null;
+  if (reader.tagMenuClose) {
+    document.removeEventListener('pointerdown', reader.tagMenuClose, true);
+    reader.tagMenuClose = null;
+  }
+}
+
+function renderReaderMarks(reader) {
+  const content = reader.el.querySelector('.reader-content');
+  const tab = activeTab(reader);
+  if (!content || tab?.kind !== 'node') return;
+  content.querySelectorAll('.reader-mark-underline, .reader-mark-chip').forEach((el) => el.remove());
+  const tags = reader.ctx.graph.getTags ? reader.ctx.graph.getTags() : [];
+  const contentRect = content.getBoundingClientRect();
+  for (const tag of tags) {
+    if (tag.visible === false) continue;
+    tag.members.forEach((member, index) => {
+      if (!member || typeof member === 'string' || member.node !== tab.nodeId || member.type !== 'span') return;
+      const range = reader.ctx.modals?._rangeFromMember(content, member);
+      if (!range) return;
+      const rects = groupAnnotationRects(annotationRectsFromRange(range, content));
+      if (!rects.length) return;
+      for (const rect of rects) {
+        const underline = document.createElement('div');
+        underline.className = 'reader-mark-underline';
+        underline.style.setProperty('--tc', tag.color || '#ff9e64');
+        underline.style.left = `${rect.left - contentRect.left + content.scrollLeft}px`;
+        underline.style.top = `${rect.bottom - contentRect.top + content.scrollTop - 1}px`;
+        underline.style.width = `${rect.width}px`;
+        content.appendChild(underline);
+      }
+      const last = rects.at(-1);
+      const chip = document.createElement('div');
+      chip.className = `reader-mark-chip tag-pill ${tag.kind === 'ordered' ? 'tag-step' : 'tag-mark'}`;
+      chip.style.setProperty('--tc', tag.color || '#ff9e64');
+      if (tag.kind === 'ordered') {
+        chip.textContent = `${tag.marker ? `${tag.marker} ` : ''}${index + 1}`;
+      } else {
+        chip.innerHTML = (ICON[tag.icon] || ICON.tag) + (tag.marker ? `<span class="tag-mark-txt">${escapeHtml(tag.marker)}</span>` : '');
+      }
+      const noteCount = reader.ctx.notesForMember?.(tag, member).length || 0;
+      if (noteCount) chip.insertAdjacentHTML('beforeend', `<span class="m-mark-note-count" title="${noteCount} 条笔记">${noteCount}</span>`);
+      chip.style.top = `${last.top - contentRect.top + content.scrollTop - 3}px`;
+      chip.addEventListener('click', (event) => {
+        event.stopPropagation();
+        reader.ctx.openTagInstanceMenu?.(chip, tag, member);
+      });
+      content.appendChild(chip);
+      const desiredLeft = last.right - contentRect.left + content.scrollLeft + 4;
+      chip.style.left = `${clampAnnotationChipLeft(content, chip, desiredLeft)}px`;
+    });
+  }
+}
+
+async function copyReaderSelection(sel, reader, span = null) {
   try {
-    await navigator.clipboard.writeText(selectionSource(sel));
+    const text = selectionSource(sel);
+    const reference = span ? graphReferenceFromMember(reader.ctx.model, { ...span, text }, text) : null;
+    if (reference) await writeGraphReference(reference); else await navigator.clipboard.writeText(text);
     toast('已复制');
   } catch {
     toast('复制失败', { type: 'error' });
   }
 }
 
-async function copyReaderNode(node, mode) {
+async function copyReaderNode(reader, node, mode) {
   const text = mode === 'title'
     ? (node.title || node.id || '')
     : [node.title, node.statementBody, node.proofBody].filter(Boolean).join('\n\n');
   try {
-    await navigator.clipboard.writeText(text);
+    const model = reader?.ctx?.model || window.__ctx?.model;
+    if (model) await writeGraphReference(graphReferenceFromMember(model, node.id, text));
+    else await navigator.clipboard.writeText(text);
     toast(mode === 'title' ? '已复制标题' : '已复制内容');
   } catch {
     toast('复制失败', { type: 'error' });

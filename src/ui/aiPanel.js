@@ -3,12 +3,16 @@ import { createClientTools } from '../ai/tools.js';
 import { runAgentTurn } from '../ai/modelClient.js';
 import { buildGraphContext } from '../ai/graphContext.js';
 import {
-  aiQuoteAttachment, appendUniqueContext, contextPrompt, graphFileAttachment, graphNodeAttachment, graphSelectionAttachment,
+  aiQuoteAttachment, appendUniqueContext, contextPrompt, graphFileAttachment, graphMemberAttachment, graphNodeAttachment, graphNoteAttachment, graphReferenceAttachment, graphSelectionAttachment, graphTagAttachment,
   mentionQueryAt, replaceMention, searchMentionCandidates,
 } from '../ai/contextAttachments.js';
 import { appendReasoningBlock, appendTextBlock, mergeToolSources, messageBlocks, serializeMessageDebug, upsertToolBlock } from '../ai/messageBlocks.js';
 import { renderMarkdownInto } from '../render/markdown.js';
-import { toast } from './feedback.js';
+import { confirmDialog, toast } from './feedback.js';
+import { graphReferenceToMember, resolveTagNoteReference } from '../data/graphReference.js';
+import { memberKey } from '../data/schema.js';
+import { upsertNote } from '../data/notes.js';
+import { bindGraphReferencePaste } from './graphClipboard.js';
 import {
   activeConversation, addConversation, isConversationEmpty, loadConversationState, removeConversation,
   renameConversation, saveConversationState, updateAutomaticTitle,
@@ -193,6 +197,10 @@ export function buildAiPanel(ctx) {
     input.style.height = `${Math.min(150, input.scrollHeight)}px`;
     updateMentionMenu();
   });
+  bindGraphReferencePaste(input, {
+    insertMarkdown: false,
+    onReference: (reference) => addContextAttachment(graphReferenceAttachment(ctx.model, reference, ctx.graph?.getTags?.() || [], ctx.getNotes?.() || [])),
+  });
   input.addEventListener('click', updateMentionMenu);
   input.addEventListener('blur', () => setTimeout(() => closeMentionMenu(), 140));
   initResize(panel);
@@ -317,6 +325,16 @@ export function buildAiPanel(ctx) {
     const turnWorkspace = workspace;
     const tools = createClientTools(turnWorkspace, {
       graphModel: ctx.model,
+      getGraphTags: () => ctx.graph?.getTags?.() || [],
+      persistGraphTags: (tags) => ctx.persistTags?.(tags),
+      getGraphNotes: () => ctx.getNotes?.() || [],
+      persistGraphNotes: (notes) => ctx.persistNotes?.(notes),
+      confirmTagNoteChange: ({ action, tag, member, note, title, content }) => confirmDialog({
+        title: `${action === 'delete_tag_note' ? '删除' : action === 'create_tag_note' ? '创建' : '更新'}标签笔记`,
+        message: `标签「${tag.label || tag.id}」\n实例：${memberKey(member)}\n\n${title ?? note?.title ?? ''}\n${String(content ?? note?.content ?? '').slice(0, 500)}`,
+        okText: action === 'delete_tag_note' ? '删除' : '允许',
+        danger: action === 'delete_tag_note',
+      }),
       revealGraphNode: (node, labelId) => {
         selectedNodeId = node.id;
         ctx.modals?.openFromNode(node, labelId ? { scrollLabel: labelId } : {});
@@ -326,7 +344,11 @@ export function buildAiPanel(ctx) {
       onStart: (event) => updateToolEvent(conversation, assistantMessage, event, 'running'),
       onEnd: (event) => updateToolEvent(conversation, assistantMessage, event, 'done'),
       onError: (event) => updateToolEvent(conversation, assistantMessage, event, 'error'),
-      confirm: ({ path, preview }) => window.confirm(`AI 请求在当前对话中写入本地文件：\n\n${path}\n\n内容预览：\n${preview}\n\n是否允许？`),
+      confirm: ({ path, preview }) => confirmDialog({
+        title: '允许 AI 写入文件？',
+        message: `${path}\n\n内容预览：\n${preview}`,
+        okText: '允许写入',
+      }),
     });
 
     try {
@@ -419,8 +441,8 @@ export function buildAiPanel(ctx) {
         if (message.role === 'assistant') renderAssistantBody(body, message);
         else {
           const content = document.createElement('div');
-          content.className = 'ai-message-content';
-          content.textContent = message.content;
+          content.className = 'ai-message-content ai-markdown';
+          renderMarkdownInto(content, message.content, markdownRenderOptions(message));
           body.append(content);
           if (message.contextAttachments?.length || message.fileAttachments?.length) {
             body.append(renderSentAttachments(message.contextAttachments || [], message.fileAttachments || []));
@@ -530,6 +552,20 @@ export function buildAiPanel(ctx) {
       });
       actions.append(edit);
     } else if (message.role === 'assistant') {
+      const addToNotes = button('ai-message-action ai-message-action--note', '', '添加到笔记');
+      addToNotes.setAttribute('aria-label', '添加到笔记');
+      addToNotes.innerHTML = noteAddIcon();
+      addToNotes.addEventListener('click', () => {
+        const activeTask = tasks.get(activeConversation(conversationState).id);
+        if (activeTask?.message === message) { toast('请等待回答生成完成'); return; }
+        const note = noteFromAssistantMessage(message);
+        if (!note) { toast('回答正文为空，无法添加', { type: 'error' }); return; }
+        if (!ctx.persistNotes) { toast('当前项目无法保存笔记', { type: 'error' }); return; }
+        ctx.persistNotes(upsertNote(ctx.getNotes?.() || [], note, ctx.graph?.getTags?.() || []));
+        ctx.revealSidebarNote?.(note.id);
+        toast('已添加到游离笔记');
+      });
+      actions.append(addToNotes);
       const debug = button('ai-message-action', '', '复制全部调试内容');
       debug.setAttribute('aria-label', '复制全部调试内容');
       debug.innerHTML = debugCopyIcon();
@@ -546,7 +582,7 @@ export function buildAiPanel(ctx) {
         const userIndex = findPreviousUserIndex(index);
         if (userIndex < 0) return;
         if (state.messages.slice(index + 1).some((item) => item.role === 'user' || item.role === 'assistant')
-          && !window.confirm('重新生成这条回答会移除其后的对话，是否继续？')) return;
+          && !await confirmDialog({ title: '重新生成回答？', message: '这会移除该回答之后的对话。', okText: '重新生成', danger: true })) return;
         await startTurn(state.messages[userIndex].content, { regenerateIndex: index });
       });
       actions.append(regenerate);
@@ -837,7 +873,7 @@ export function buildAiPanel(ctx) {
       const chip = document.createElement('span');
       chip.className = `ai-attachment-chip ai-context-chip is-${attachment.kind}`;
       chip.title = contextAttachmentTitle(attachment);
-      chip.innerHTML = `${attachment.kind === 'file-reference' ? fileIcon() : attachment.kind === 'ai-quote' ? quoteIcon() : graphContextIcon()}<span>${escapeHtml(attachment.label || attachment.nodeId || attachment.path)}</span><small>${attachment.kind === 'graph-selection' ? '片段' : attachment.kind === 'graph-node' ? '节点' : attachment.kind === 'ai-quote' ? '引用' : '文件'}</small>`;
+      chip.innerHTML = `${attachment.kind === 'file-reference' ? fileIcon() : attachment.kind === 'ai-quote' ? quoteIcon() : graphContextIcon()}<span>${escapeHtml(attachment.label || attachment.nodeId || attachment.path)}</span><small>${attachment.kind === 'graph-tag-note' ? '笔记' : attachment.kind === 'graph-tag' ? '标签' : attachment.kind === 'graph-selection' ? '片段' : attachment.kind === 'graph-position' ? '位置' : attachment.kind === 'graph-node' ? '节点' : attachment.kind === 'ai-quote' ? '引用' : '文件'}</small>`;
       const remove = button('ai-attachment-remove', '', `移除 ${attachment.label || '上下文'}`);
       remove.innerHTML = closeIcon();
       remove.addEventListener('click', () => removeContextAttachment(attachment.id));
@@ -907,7 +943,8 @@ export function buildAiPanel(ctx) {
   }
 
   function contextAttachmentTitle(attachment) {
-    if (attachment.kind === 'graph-selection') return `${attachment.label}\n${attachment.text || ''}`;
+    if (attachment.kind === 'graph-tag-note') return `${attachment.label}\n${attachment.content || ''}`;
+    if (attachment.kind === 'graph-selection' || attachment.kind === 'graph-tag') return `${attachment.label}\n${attachment.text || ''}`;
     if (attachment.kind === 'ai-quote') return `${attachment.label}\n${attachment.text || ''}`;
     return attachment.label || attachment.name || attachment.nodeId || attachment.path || '上下文';
   }
@@ -931,7 +968,7 @@ export function buildAiPanel(ctx) {
       const remove = button('ai-conversation-action', '', '删除对话');
       remove.innerHTML = trashIcon();
       remove.addEventListener('click', async () => {
-        if (conversation.messages.length && !window.confirm(`删除对话“${conversation.title}”？`)) return;
+        if (conversation.messages.length && !await confirmDialog({ title: '删除对话？', message: `删除“${conversation.title}”及其本地工作区文件。`, okText: '删除', danger: true })) return;
         tasks.get(conversation.id)?.aborter.abort();
         tasks.delete(conversation.id);
         const removedWorkspace = createBrowserWorkspace(`${projectId}--${conversation.id}`);
@@ -1067,8 +1104,8 @@ export function buildAiPanel(ctx) {
       card.innerHTML = `<div class="ai-provider-head"><strong>${escapeHtml(provider.name)}</strong><span class="ai-provider-status is-${escapeAttr(provider.status)}"><i></i>${provider.status === 'ok' ? '可用' : provider.status === 'error' ? '不可用' : '未检测'}</span><span class="ai-provider-actions"><button class="icon-btn" data-refresh title="检测并刷新模型">${regenerateIcon()}</button><button class="icon-btn" data-edit title="编辑提供商">${editIcon()}</button><button class="icon-btn" data-remove title="删除提供商">${trashIcon()}</button></span></div><button class="ai-provider-toggle" data-provider-toggle aria-expanded="${expanded}"><span>${provider.modelsCache.length ? `${provider.modelsCache.length} 个可用模型` : '尚未获取模型'}</span>${chevronIcon()}</button><div class="ai-provider-models"${expanded ? '' : ' hidden'}></div>`;
       card.querySelector('[data-refresh]').addEventListener('click', () => refreshProvider(provider, card));
       card.querySelector('[data-edit]').addEventListener('click', () => showProviderEditor(provider));
-      card.querySelector('[data-remove]').addEventListener('click', () => {
-        if (!window.confirm(`删除服务商“${provider.name}”及其已启用模型？`)) return;
+      card.querySelector('[data-remove]').addEventListener('click', async () => {
+        if (!await confirmDialog({ title: '删除服务商？', message: `删除“${provider.name}”及其已启用模型。`, okText: '删除', danger: true })) return;
         removeProvider(providerState, provider.id); persistProviders(); renderProviderSettings(); syncModelLabel();
       });
       card.querySelector('[data-provider-toggle]').addEventListener('click', () => {
@@ -1365,6 +1402,14 @@ export function buildAiPanel(ctx) {
         selectedNodeId = node.id;
         navigateGraphReference(ctx, node, label);
       },
+      onGraphReference: (reference) => {
+        const tags = ctx.graph?.getTags?.() || [];
+        const notes = ctx.getNotes?.() || [];
+        const resolvedNote = resolveTagNoteReference(reference, tags, notes);
+        if (resolvedNote) { ctx.openNoteEditor?.(resolvedNote.note.id); return; }
+        const member = graphReferenceToMember(reference, tags, notes);
+        if (member) ctx.jumpToMember?.(member);
+      },
     };
   }
   function persist() {
@@ -1478,6 +1523,10 @@ export function buildAiPanel(ctx) {
     open() { setOpen(true); },
     attachSelection(span) { return addContextAttachment(graphSelectionAttachment(ctx.model, span)); },
     attachNode(nodeId) { return addContextAttachment(graphNodeAttachment(ctx.model, nodeId)); },
+    attachMember(member) { return addContextAttachment(graphMemberAttachment(ctx.model, member)); },
+    attachTag(tag, member) { return addContextAttachment(graphTagAttachment(ctx.model, tag, member)); },
+    attachNote(note) { return addContextAttachment(graphNoteAttachment(ctx.model, note, ctx.graph?.getTags?.() || [])); },
+    attachTagNote(tag, member, note) { return addContextAttachment(graphNoteAttachment(ctx.model, note, ctx.graph?.getTags?.() || [tag])); },
   };
   panel._aiPanelApi = api;
   return api;
@@ -1504,6 +1553,20 @@ export function replaceUserMessageBranch(messages, index, content, editedAt = ne
   const original = messages[index];
   if (original?.role !== 'user') return [...messages];
   return [...messages.slice(0, index), { ...original, content, editedAt }];
+}
+
+export function noteFromAssistantMessage(message, { id = '', now = '' } = {}) {
+  const content = String(message?.content || '').trim();
+  if (!content) return null;
+  const timestamp = now || new Date().toISOString();
+  return {
+    id: id || `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    title: '',
+    content,
+    tagPointer: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
 }
 
 export function activityTimelineEntries(activity) {
@@ -1592,6 +1655,7 @@ function toolLabel(name) {
     list_workspace: '查看对话文件', read_file: '读取文件', search_files: '搜索文件', read_pdf: '解析 PDF', write_file: '写入文件',
     web_search: '联网搜索', open_url: '读取网页', resolve_doi: '解析 DOI', graph_overview: '理解图谱',
     search_graph_nodes: '搜索图谱节点', get_graph_node: '读取图谱节点', get_graph_nodes: '批量读取图谱节点', get_graph_neighbors: '读取节点关系', get_graph_neighbors_batch: '批量读取节点关系',
+    list_tag_notes: '查看标签笔记', get_tag_note: '读取标签笔记', create_tag_note: '创建标签笔记', update_tag_note: '更新标签笔记', delete_tag_note: '删除标签笔记',
     locate_graph_reference: '定位图谱引用', focus_graph_node: '打开图谱节点',
   })[name] || name;
 }
@@ -1657,6 +1721,7 @@ function copyIcon() { return '<svg viewBox="0 0 24 24"><rect x="8" y="8" width="
 function editIcon() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h4l10-10-4-4L5 15v4zM13.8 6.2l4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
 function debugCopyIcon() { return '<svg viewBox="0 0 24 24"><path d="M8 7L4 12l4 5M16 7l4 5-4 5M14 4l-4 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
 function regenerateIcon() { return '<svg viewBox="0 0 24 24"><path d="M19 8V4l-2 2a8 8 0 10.6 11.3M19 4h-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
+function noteAddIcon() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3.5h11l3 3V20.5H5zM16 3.5v4h3M8 12h8M12 8v8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
 function globeIcon() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3.8 12h16.4M12 3.5c2.2 2.3 3.3 5.1 3.3 8.5S14.2 18.2 12 20.5C9.8 18.2 8.7 15.4 8.7 12S9.8 5.8 12 3.5z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>'; }
 function folderIcon() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5h6l2-2h9v13h-17z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>'; }
 function fileIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.8h6l4 4v10.4H5zM11 2.8v4h4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>'; }
@@ -1684,7 +1749,7 @@ function toolIconFor(name) {
 }
 function toolIconGroup(name) {
   const value = String(name || '');
-  if (value.startsWith('graph_') || ['search_graph_nodes', 'get_graph_node', 'get_graph_nodes', 'get_graph_neighbors', 'get_graph_neighbors_batch', 'locate_graph_reference', 'focus_graph_node'].includes(value)) return 'graph';
+  if (value.startsWith('graph_') || ['search_graph_nodes', 'get_graph_node', 'get_graph_nodes', 'get_graph_neighbors', 'get_graph_neighbors_batch', 'locate_graph_reference', 'focus_graph_node', 'list_tag_notes', 'get_tag_note', 'create_tag_note', 'update_tag_note', 'delete_tag_note'].includes(value)) return 'graph';
   if (['web_search', 'open_url', 'resolve_doi'].includes(value)) return 'web';
   return 'default';
 }

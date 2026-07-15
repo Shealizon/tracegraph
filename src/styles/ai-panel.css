@@ -131,6 +131,8 @@ body.ai-layout-docked #stage, body.ai-layout-docked .details-page { transition: 
 .ai-message-action:hover { color: var(--accent); background: var(--accent-bg); }
 .ai-message-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .ai-message-action svg { width: 14px; height: 14px; }
+.ai-message-action.ai-message-action--note { width: 26px; min-width: 26px; padding: 0; }
+.ai-message-action--note svg { width: 14px; height: 14px; }
 .ai-quote-selection { position: absolute; z-index: 9; display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 9px; color: var(--text); background: var(--bg-modal-solid); border: 1px solid var(--line); border-radius: 9px; box-shadow: var(--shadow-pop); transform: translateX(-50%); font: 10.5px var(--font); cursor: pointer; animation: aiReveal .14s ease-out; }
 .ai-quote-selection[hidden] { display: none; }
 .ai-quote-selection:hover { color: var(--accent); border-color: var(--accent-line); }

@@ -13,16 +13,21 @@ import { RefLayer } from './view/refLayer.js';
 import { buildSidebar, buildZoomControl } from './ui/sidebar.js';
 import { ICON } from './ui/icons.js';
 import { getReaderRoute, openDetails, openReaderLibrary, openReaderRoute } from './view/detailsPage.js';
-import { isLeafNode } from './data/schema.js';
+import { createTagMember, isLeafNode, memberKey, memberNode, memberType, normalizeTags } from './data/schema.js';
 import { renderLeadingPage } from './view/leadingPage.js';
 import { initProjectStore, saveProject, setCurrentProjectId } from './project/store.js';
 import { compileProject } from './project/projectAdapter.js';
 import { downloadProject, goLeading, importGenericTex, importStructuredJson, openProjectConfigDialog } from './project/projectConfig.js';
-import { toast } from './ui/feedback.js';
+import { choiceDialog, toast } from './ui/feedback.js';
+import {
+  normalizeProjectNotes, notePointerFromMember, notesForMember,
+  reassignNotesFromMember, resolveNotePointer, stripEmbeddedNotes,
+} from './data/notes.js';
 import { initTooltips } from './ui/tooltip.js';
 import { initCardMenus } from './ui/cardMenus.js';
-import { memberNode, memberType } from './data/schema.js';
+import { annotationTextLengthToBoundary, markdownTextFromRange, normalizeSelectionForMath } from './view/annotation.js';
 import { buildAiPanel } from './ui/aiPanel.js';
+import { createNoteWindowController } from './ui/noteUi.js';
 
 initTooltips();
 
@@ -109,6 +114,7 @@ function startMain(db, project) {
     graph: null,
     modals: null,
     refLayer: null,
+    notes: normalizeProjectNotes(project.config?.notes, model.meta?.tags || model.tags || []),
     mode: initialState.mode || 'show-all',
     refsRaiseEnabled: initialState.refsRaiseEnabled ?? (localStorage.getItem('hg-refs-raise') !== '0'),
     // 主题模式：dark | light | system（跟随系统）
@@ -216,14 +222,73 @@ function startMain(db, project) {
   ctx.tagEditing = null;       // 正在编辑成员的 tagId（打标模式）
   ctx.tagFilter = new Set();   // 启用了「仅看此标签」的 tagId 集合
   ctx.persistTags = (tags) => {
-    project.config = { ...(project.config || {}), tags };
-    ctx.graph && ctx.graph.setTags(tags);
+    const normalizedTags = stripEmbeddedNotes(normalizeTags(tags));
+    ctx.notes = (ctx.notes || []).map((note) => resolveNotePointer(note, normalizedTags) ? note : { ...note, tagPointer: null });
+    project.config = { ...(project.config || {}), tags: normalizedTags, notes: ctx.notes };
+    ctx.graph && ctx.graph.setTags(normalizedTags);
+    // 标签/批注刷新只更新 tag-layer，但卡片正文的 DOM 可能在同一帧
+    // 发生变化；显式重建两类连线，避免边层停留在旧的可见集合或旧锚点。
+    ctx.graph?._renderEdges?.();
+    ctx.refLayer?.refreshRelations?.();
     saveProject(db, project).catch((e) => console.warn('save tags failed', e));
     ctx.rebuildTagPanel && ctx.rebuildTagPanel();
     ctx.refreshMainpathButton && ctx.refreshMainpathButton();
     ctx.applyTagFilter && ctx.applyTagFilter();
     ctx.updateTagHint && ctx.updateTagHint();
     ctx.modals && ctx.modals.refreshAllMarks && ctx.modals.refreshAllMarks();
+    ctx._reader?.refreshMarks?.();
+  };
+  ctx.getNotes = () => ctx.notes || [];
+  ctx.notesForMember = (tag, member) => notesForMember(ctx.notes, tag, member);
+  ctx.persistNotes = (notes) => {
+    ctx.notes = normalizeProjectNotes(notes, ctx.graph?.getTags?.() || []);
+    project.config = { ...(project.config || {}), notes: ctx.notes };
+    saveProject(db, project).catch((e) => console.warn('save notes failed', e));
+    ctx.rebuildTagPanel?.();
+    ctx.modals?.refreshAllMarks?.();
+    ctx._reader?.refreshMarks?.();
+    ctx.graph?._renderTagChips?.();
+  };
+  ctx.requestDeleteTagMember = async (tagId, targetMember) => {
+    const tag = (ctx.graph.getTags() || []).find((item) => item.id === tagId);
+    const member = tag?.members?.find((item) => memberKey(item) === memberKey(targetMember));
+    if (!tag || !member) return false;
+    const notes = ctx.notesForMember(tag, member);
+    let mode = 'delete';
+    if (notes.length) {
+      mode = await choiceDialog({
+        title: '删除该标注',
+        message: `此标注附有 ${notes.length} 条笔记。请选择笔记的处理方式。`,
+        cancelValue: 'cancel',
+        className: 'confirm-member-delete',
+        actions: [
+          { value: 'delete', label: '删除标签并同时删除所有笔记', tone: 'danger' },
+          ...(memberType(member) === 'span' ? [{ value: 'move-to-node', label: '删除标签并将所有笔记归属到节点' }] : []),
+          { value: 'cancel', label: '取消删除', autofocus: true },
+        ],
+      });
+      if (mode === 'cancel') return false;
+    }
+    const tags = ctx.graph.getTags().map((item) => ({ ...item, members: [...item.members] }));
+    const nextTag = tags.find((item) => item.id === tag.id);
+    const targetIndex = nextTag.members.findIndex((item) => memberKey(item) === memberKey(member));
+    if (targetIndex < 0) return false;
+    let nextPointer = null;
+    if (mode === 'move-to-node') {
+      let nodeMember = nextTag.members.find((item) => memberType(item) === 'node' && memberNode(item) === memberNode(member));
+      if (!nodeMember) {
+        nodeMember = createTagMember(nextTag, { node: memberNode(member), type: 'node' });
+        nextTag.members.push(nodeMember);
+      }
+      nextPointer = notePointerFromMember(nextTag, nodeMember);
+    }
+    nextTag.members.splice(targetIndex, 1);
+    const noteIds = new Set(notes.map((note) => note.id));
+    ctx.notes = mode === 'delete'
+      ? ctx.notes.filter((note) => !noteIds.has(note.id))
+      : reassignNotesFromMember(ctx.notes, tag, member, nextPointer);
+    ctx.persistTags(tags);
+    return true;
   };
   // 跳转到成员：node 聚焦；span/pos 打开卡片并滚动到该处
   ctx.jumpToMember = (member) => {
@@ -240,7 +305,13 @@ function startMain(db, project) {
         const range = ctx.modals._rangeFromMember(body, member);
         if (range) { const r = range.getBoundingClientRect(); const br = body.getBoundingClientRect(); body.scrollTop += (r.top - br.top) - body.clientHeight / 2; }
       } else if (member.type === 'pos') {
-        body.scrollTop = (member.y || 0) * body.scrollHeight - body.clientHeight / 2;
+        const range = member.start != null ? ctx.modals._collapsedRangeFromMember(body, member) : null;
+        if (range) {
+          const r = range.getBoundingClientRect(); const br = body.getBoundingClientRect();
+          body.scrollTop += (r.top - br.top) - body.clientHeight / 2;
+        } else {
+          body.scrollTop = (member.y || 0) * body.scrollHeight - body.clientHeight / 2;
+        }
       }
     }, 140);
   };
@@ -258,7 +329,7 @@ function startMain(db, project) {
       t.members.splice(at, 0, nodeId);
       ctx.tagInsertAt = at + 1;
     } else if (i >= 0) t.members.splice(i, 1);
-    else t.members.push(nodeId); // 追加：点击顺序即步骤顺序
+    else t.members.push(createTagMember(t, nodeId)); // 追加：点击顺序即步骤顺序
     ctx.noteRecentTag(tagId);
     ctx.persistTags(tags);
   };
@@ -285,30 +356,24 @@ function startMain(db, project) {
       if (t.id !== tagId) return t;
       const ms = [...t.members];
       const at = index == null ? ms.length : Math.max(0, Math.min(index, ms.length));
-      ms.splice(at, 0, member);
+      ms.splice(at, 0, createTagMember(t, member));
       return { ...t, members: ms };
     }));
     ctx.noteRecentTag(tagId);
   };
   // 选区 → span 成员（记录 section + 字符偏移 + 原文，供后续重建 Range）
   ctx.spanFromSelection = (body, nodeId, sel) => {
+    normalizeSelectionForMath(sel, body);
     const range = sel.getRangeAt(0);
     const startEl = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
     const proof = startEl && startEl.closest('.proof-wrap');
     const container = proof || (startEl && startEl.closest('.statement')) || body;
-    const off = (n, o) => { const r = document.createRange(); r.selectNodeContents(container); r.setEnd(n, o); return r.toString().length; };
+    const off = (n, o) => annotationTextLengthToBoundary(container, n, o);
     const start = off(range.startContainer, range.startOffset);
     const end = off(range.endContainer, range.endOffset);
-    const text = range.toString();
+    const text = markdownTextFromRange(range);
     if (end <= start || !text.trim()) return null;
-    return { node: nodeId, type: 'span', section: proof ? 'proof' : 'statement', start, end, text };
-  };
-  // 点击点 → pos 成员（相对正文宽度/滚动高度的 0–1 坐标）
-  ctx.posFromPoint = (body, nodeId, cx, cy) => {
-    const r = body.getBoundingClientRect();
-    const x = Math.max(0, Math.min(1, (cx - r.left) / Math.max(1, r.width)));
-    const y = Math.max(0, Math.min(1, (cy - r.top + body.scrollTop) / Math.max(1, body.scrollHeight)));
-    return { node: nodeId, type: 'pos', x: +x.toFixed(4), y: +y.toFixed(4) };
+    return { node: nodeId, type: 'span', section: proof ? 'proof' : 'statement', start, end, text, offsetMode: 'annotation-md' };
   };
   // 打标模式：氛围（页面变化）+ 底部提示 + Enter 完成
   ctx.setTagEditing = (tagId, insertAt = null) => {
@@ -358,13 +423,25 @@ function startMain(db, project) {
     if (ctx._tagHint) { ctx._tagHint.remove(); ctx._tagHint = null; }
     if (snap) ctx.persistTags(snap); else ctx.rebuildTagPanel && ctx.rebuildTagPanel();
   };
-  // 打标模式：卡片正文交互——拖选文字→span 标记；双击→位置标记；单击→整卡片标记
+  // 打标模式：卡片正文交互——拖选文字/公式→span 标记；单击→整卡片标记
   const cardBodyAt = (target) => {
     for (const [nodeId, rec] of ctx.modals.open) {
       if (rec.el.contains(target)) { const body = rec.el.querySelector('.modal-body'); return { nodeId, body, inBody: !!(body && body.contains(target)) }; }
     }
     return null;
   };
+  const normalizeCardSelection = () => {
+    const sel = window.getSelection();
+    if (!sel?.rangeCount || sel.isCollapsed) return;
+    const nodeEl = (n) => (n?.nodeType === 1 ? n : n?.parentElement);
+    const anchor = nodeEl(sel.anchorNode);
+    const focus = nodeEl(sel.focusNode);
+    const body = anchor?.closest?.('.modal-body');
+    if (body && body.contains(focus)) normalizeSelectionForMath(sel, body);
+  };
+  // selectionchange fires during the drag, so formulas snap to their atomic
+  // boundary while the selection is being made, not only on mouseup.
+  document.addEventListener('selectionchange', normalizeCardSelection, true);
   let pressX = 0, pressY = 0, dragged = false, spanHandled = false, clickTimer = null;
   overlayEl.addEventListener('pointerdown', (e) => { if (!ctx.tagEditing) return; pressX = e.clientX; pressY = e.clientY; dragged = false; spanHandled = false; }, true);
   overlayEl.addEventListener('pointermove', (e) => { if (ctx.tagEditing && Math.hypot(e.clientX - pressX, e.clientY - pressY) > 5) dragged = true; }, true);
@@ -390,9 +467,14 @@ function startMain(db, project) {
     if (!ctx.tagEditing) return;
     const c = cardBodyAt(e.target); if (!c || !c.inBody) return;
     e.stopPropagation(); e.preventDefault();
-    clearTimeout(clickTimer);                               // 取消单击的整卡片
-    const sel = window.getSelection(); if (sel) sel.removeAllRanges(); // 取消双击选词
-    ctx.addMember(ctx.tagEditing, ctx.posFromPoint(c.body, c.nodeId, e.clientX, e.clientY));
+    clearTimeout(clickTimer); // 双击公式/单词时不切换整卡片标签
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !c.body.contains(sel.anchorNode) || !c.body.contains(sel.focusNode)) return;
+    const span = ctx.spanFromSelection(c.body, c.nodeId, sel);
+    if (span) {
+      ctx.addMember(ctx.tagEditing, span);
+      sel.removeAllRanges();
+    }
   }, true);
   // Enter 完成 / Esc 取消（输入框聚焦时不触发）
   window.addEventListener('keydown', (e) => {
@@ -421,6 +503,7 @@ function startMain(db, project) {
   });
   ctx.graph = graph;
   graph.ctx = ctx;
+  ctx.noteWindows = createNoteWindowController(ctx);
   if (initialState.force) {
     if (Number.isFinite(initialState.force.center)) graph.setForce('center', initialState.force.center);
     if (Number.isFinite(initialState.force.charge)) graph.setForce('charge', initialState.force.charge);

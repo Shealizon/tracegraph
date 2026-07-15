@@ -1,3 +1,7 @@
+import { graphReferenceHref, graphReferenceMarkdown, graphReferenceToMember, noteReferenceFromNote, resolveTagNoteReference, tagReferenceFromInstance } from '../data/graphReference.js';
+import { notePointerFromMember, resolveNotePointer } from '../data/notes.js';
+import { memberInstanceId, memberNode, memberReferenceId, memberType } from '../data/schema.js';
+
 const CONTEXT_LIMIT = 18000;
 
 export function graphSelectionAttachment(model, span) {
@@ -25,6 +29,101 @@ export function graphNodeAttachment(model, nodeId) {
   const node = model?.nodeById?.get(nodeId);
   if (!node) return null;
   return { id: `node:${node.id}`, kind: 'graph-node', nodeId: node.id, label: `${nodeNumber(node)} · 整个节点` };
+}
+
+export function graphMemberAttachment(model, member) {
+  if (!member) return null;
+  if (typeof member === 'string' || member.type === 'node') return graphNodeAttachment(model, typeof member === 'string' ? member : member.node);
+  if (member.type === 'span') return graphSelectionAttachment(model, member);
+  const node = model?.nodeById?.get(member.node);
+  if (!node) return null;
+  return {
+    id: `position:${node.id}:${member.section || 'statement'}:${member.start ?? `${member.x},${member.y}`}`,
+    kind: 'graph-position',
+    nodeId: node.id,
+    section: member.section === 'proof' ? 'proof' : 'statement',
+    start: Number.isFinite(member.start) ? member.start : null,
+    x: Number.isFinite(member.x) ? member.x : null,
+    y: Number.isFinite(member.y) ? member.y : null,
+    label: `${nodeNumber(node)} · 标注位置`,
+  };
+}
+
+export function graphTagAttachment(model, tag, member) {
+  const nodeId = memberNode(member);
+  const node = model?.nodeById?.get(nodeId);
+  const reference = tagReferenceFromInstance(model, tag, member);
+  if (!node || !reference) return null;
+  const type = memberType(member);
+  const section = member?.section === 'proof' ? 'proof' : 'statement';
+  const source = section === 'proof' ? (node.proofBody || '') : (node.statementBody || '');
+  const start = Number.isFinite(member?.start) ? clamp(member.start, 0, source.length) : null;
+  const end = Number.isFinite(member?.end) ? clamp(member.end, start ?? 0, source.length) : null;
+  const text = String(member?.text || (start !== null && end !== null ? source.slice(start, end) : '')).trim();
+  return {
+    id: `tag:${tag.id}:${memberInstanceId(member)}`,
+    kind: 'graph-tag',
+    tagId: tag.id,
+    tagLabel: tag.label || tag.id,
+    instanceId: memberInstanceId(member),
+    referenceId: memberReferenceId(member),
+    memberType: type,
+    nodeId,
+    section,
+    start,
+    end,
+    x: Number.isFinite(member?.x) ? member.x : null,
+    y: Number.isFinite(member?.y) ? member.y : null,
+    text,
+    before: start !== null ? source.slice(Math.max(0, start - 160), start) : '',
+    after: end !== null ? source.slice(end, Math.min(source.length, end + 240)) : '',
+    label: reference.label,
+    referenceHref: graphReferenceHref(reference),
+    referenceMarkdown: graphReferenceMarkdown(reference),
+  };
+}
+
+export function graphTagNoteAttachment(model, tag, member, note) {
+  return graphNoteAttachment(model, { ...note, tagPointer: note?.tagPointer || notePointerFromMember(tag, member) }, tag && member ? [tag] : []);
+}
+
+export function graphNoteAttachment(model, note, tags = []) {
+  const resolved = resolveNotePointer(note, tags);
+  const tag = resolved?.tag || null;
+  const member = resolved?.member || null;
+  const reference = noteReferenceFromNote(model, note, tags);
+  const nodeId = member ? memberNode(member) : null;
+  if (!reference) return null;
+  return {
+    id: `note:${note.id}`,
+    kind: 'graph-tag-note',
+    tagId: tag?.id || null,
+    tagLabel: tag ? (tag.label || tag.id) : '',
+    instanceId: member ? memberInstanceId(member) : '',
+    referenceId: member ? memberReferenceId(member) : '',
+    memberType: member ? memberType(member) : null,
+    noteId: note.id,
+    noteTitle: reference.noteTitle,
+    nodeId,
+    title: String(note.title || ''),
+    content: String(note.content || ''),
+    label: reference.label,
+    referenceHref: graphReferenceHref(reference),
+    referenceMarkdown: graphReferenceMarkdown(reference),
+  };
+}
+
+export function graphReferenceAttachment(model, reference, tags = [], notes = []) {
+  if (reference?.kind === 'tag-note-reference' || reference?.type === 'tag-note') {
+    const resolved = resolveTagNoteReference(reference, tags, notes);
+    return resolved ? graphNoteAttachment(model, resolved.note, tags) : null;
+  }
+  if (reference?.kind === 'tag-reference' || reference?.type === 'tag') {
+    const tag = (tags || []).find((item) => item.id === reference.tagId);
+    const member = graphReferenceToMember(reference, tags);
+    return tag && member ? graphTagAttachment(model, tag, member) : null;
+  }
+  return graphMemberAttachment(model, graphReferenceToMember(reference));
 }
 
 export function graphFileAttachment(file) {
@@ -60,7 +159,7 @@ export function appendUniqueContext(items, attachment) {
 export function contextPrompt(text, attachments, model) {
   const blocks = (attachments || []).map((item) => describeContext(item, model)).filter(Boolean);
   if (!blocks.length) return String(text || '');
-  const selectionScoped = (attachments || []).some((item) => item.kind === 'graph-selection')
+  const selectionScoped = (attachments || []).some((item) => item.kind === 'graph-selection' || (item.kind === 'graph-tag' && item.memberType === 'span'))
     && !(attachments || []).some((item) => item.kind === 'graph-node');
   const quoteScoped = (attachments || []).some((item) => item.kind === 'ai-quote');
   const scopeRules = `${selectionScoped ? `
@@ -114,10 +213,28 @@ function describeContext(item, model) {
     return `[AI 对话引用片段]\n<quoted_text>\n${item.text}\n</quoted_text>\n来源：${item.conversationTitle || '当前对话'}第 ${Number(item.messageIndex) + 1} 条消息\n<disambiguation_context>\n前文：${item.before || ''}\n后文：${item.after || ''}\n</disambiguation_context>`;
   }
   const node = model?.nodeById?.get(item.nodeId);
+  if (item.kind === 'graph-tag-note') {
+    const location = item.tagId
+      ? `标签：${item.tagLabel}\ntag_id：${item.tagId}\nreference_id：${item.referenceId || ''}`
+      : '标签：无（游离笔记）';
+    const nodeMeta = node ? `\n节点：${nodeNumber(node)}\nnode_id：${node.id}\n标题：${node.title || ''}` : '';
+    return `[图谱笔记]\n${location}\nnote_id：${item.noteId}\n引用链接：${item.referenceMarkdown}${nodeMeta}\n笔记标题：${item.title || '（无标题）'}\n<note_content>\n${String(item.content || '').slice(0, CONTEXT_LIMIT)}\n</note_content>`;
+  }
   if (!node) return '';
   const meta = `节点：${nodeNumber(node)}\nnode_id：${node.id}\n标题：${node.title || ''}\n图谱位置：全局第 ${(model.nodes || []).indexOf(node) + 1} 个节点；坐标 (${round(node.x)}, ${round(node.y)})`;
   if (item.kind === 'graph-selection') {
     return `[图谱选中片段]\n<selected_text>\n${item.text}\n</selected_text>\n${meta}\n所在部分：${item.section}\n字符范围：${item.start}-${item.end}\n<disambiguation_context>\n前文：${item.before}\n后文：${item.after}\n</disambiguation_context>`;
+  }
+  if (item.kind === 'graph-position') {
+    return `[图谱标注位置]\n${meta}\n所在部分：${item.section}\n字符位置：${item.start ?? '未记录'}\n相对坐标：(${item.x ?? '未知'}, ${item.y ?? '未知'})`;
+  }
+  if (item.kind === 'graph-tag') {
+    const target = item.memberType === 'span'
+      ? `标注文本：\n<selected_text>\n${item.text || ''}\n</selected_text>\n字符范围：${item.start ?? '未记录'}-${item.end ?? '未记录'}\n<disambiguation_context>\n前文：${item.before || ''}\n后文：${item.after || ''}\n</disambiguation_context>`
+      : item.memberType === 'pos'
+        ? `标注位置：${item.section}，字符位置 ${item.start ?? '未记录'}，相对坐标 (${item.x ?? '未知'}, ${item.y ?? '未知'})`
+        : `标注对象：整个节点\n${[`正文：\n${node.statementBody || ''}`, node.proofBody ? `证明/详情：\n${node.proofBody}` : ''].filter(Boolean).join('\n\n').slice(0, CONTEXT_LIMIT)}`;
+    return `[图谱标签实例]\n标签：${item.tagLabel}\ntag_id：${item.tagId}\nreference_id：${item.referenceId}\n引用链接：${item.referenceMarkdown}\n${meta}\n标签实例类型：${item.memberType}\n${target}`;
   }
   if (item.kind === 'graph-node') {
     const content = [`正文：\n${node.statementBody || ''}`, node.proofBody ? `证明/详情：\n${node.proofBody}` : ''].filter(Boolean).join('\n\n');

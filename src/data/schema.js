@@ -75,10 +75,19 @@ export const DEFAULT_PROFILE = PAPER_PROFILE;
 export const TAG_COLORS = ['#4f7cff', '#ff4f87', '#1ec8b6', '#a64bf4', '#f5a300', '#ef4d4d'];
 export const MAINPATH_TAG_ID = 'mainpath';
 
-// 成员可为「nodeId 字符串（整卡片）」或对象 { node, type:'span'|'pos', … }
+// 输入兼容 nodeId 字符串；normalizeTag 后统一为带内部 instanceId 与隐藏 referenceId 的实例对象。
 export function memberNode(m) { return typeof m === 'string' ? m : (m && m.node) || null; }
 export function memberType(m) { return typeof m === 'string' ? 'node' : (m && m.type) || 'node'; }
+export function memberInstanceId(m) { return typeof m === 'object' && m ? String(m.instanceId || '') : ''; }
+export function memberReferenceId(m) { return typeof m === 'object' && m ? String(m.referenceId || '') : ''; }
 export function memberKey(m) {
+  if (typeof m === 'string') return m;
+  if (!m || !m.node) return '';
+  if (m.instanceId) return String(m.instanceId);
+  return memberAnchorKey(m);
+}
+
+export function memberAnchorKey(m) {
   if (typeof m === 'string') return m;
   if (!m || !m.node) return '';
   if (m.type === 'span') return `${m.node}@span:${m.section || ''}:${m.start}-${m.end}`;
@@ -86,15 +95,52 @@ export function memberKey(m) {
   return m.node;
 }
 
+export function createTagMember(tag, member) {
+  if (!member) return null;
+  const source = typeof member === 'string' ? { node: member, type: 'node' } : { ...member };
+  if (!source.node) return null;
+  const instanceId = source.instanceId || `ti-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const legacyNotes = normalizeMemberNotes(source.notes, `${tag?.id || 'tag'}-${instanceId}`);
+  const result = {
+    ...source,
+    type: memberType(source),
+    instanceId,
+    referenceId: '',
+  };
+  if (legacyNotes.length) result.notes = legacyNotes;
+  return result;
+}
+
 export function normalizeTag(t, i = 0) {
   const kind = t?.kind === 'ordered' ? 'ordered' : 'unordered';
+  const tagId = t?.id || (kind === 'ordered' ? MAINPATH_TAG_ID : `tag-${i + 1}`);
   const raw = Array.isArray(t?.members) ? t.members.filter((m) => typeof m === 'string' || (m && typeof m === 'object' && m.node)) : [];
-  // 按 memberKey 去重，保序
-  const seenM = new Set();
+  // 按锚点去重、保序；instanceId 只负责存储身份，referenceId 在下方按内容哈希生成。
+  const seenAnchors = new Set();
+  const usedIds = new Set();
   const members = [];
-  for (const m of raw) { const k = memberKey(m); if (!k || seenM.has(k)) continue; seenM.add(k); members.push(m); }
-  return {
-    id: t?.id || (kind === 'ordered' ? MAINPATH_TAG_ID : `tag-${i + 1}`),
+  for (const m of raw) {
+    const anchor = memberAnchorKey(m); if (!anchor || seenAnchors.has(anchor)) continue;
+    seenAnchors.add(anchor);
+    const rawSource = typeof m === 'string' ? { node: m, type: 'node' } : { ...m };
+    const { number: _legacyNumber, ...source } = rawSource;
+    const instanceBase = memberInstanceId(source) || `ti-${stableReferenceHash(`${tagId}\0${anchor}`)}`;
+    let instanceId = instanceBase;
+    let collision = 2;
+    while (usedIds.has(instanceId)) instanceId = `${instanceBase}-${collision++}`;
+    usedIds.add(instanceId);
+    const legacyNotes = normalizeMemberNotes(source.notes, `${tagId}-${instanceId}`);
+    const normalizedMember = {
+      ...source,
+      type: memberType(source),
+      instanceId,
+      referenceId: memberReferenceId(source),
+    };
+    if (legacyNotes.length) normalizedMember.notes = legacyNotes;
+    members.push(normalizedMember);
+  }
+  const tag = {
+    id: tagId,
     label: typeof t?.label === 'string' ? t.label : '', // 允许空标题（可重名，靠 id 区分）
     kind,
     icon: t?.icon || (kind === 'ordered' ? 'route' : 'tag'),
@@ -102,8 +148,54 @@ export function normalizeTag(t, i = 0) {
     visible: t?.visible !== false,
     // 图中贴片标记文字：有序为序号前缀（如 Step），无序为图标后缀（如 Section）；默认空
     marker: typeof t?.marker === 'string' ? t.marker : '',
-    members, // 已按 memberKey 去重保序（成员可为字符串或 span/pos 对象）
+    members,
   };
+  return assignReferenceIds([tag])[0];
+}
+
+function memberReferenceSeed(member) {
+  if (memberType(member) === 'span') {
+    const text = String(member?.text || '').replace(/\s+/g, ' ').trim();
+    if (text) return `text\0${text}`;
+  }
+  return `anchor\0${memberAnchorKey(member)}`;
+}
+
+export function stableReferenceHash(value) {
+  let hash = 0x811c9dc5;
+  const input = String(value || '');
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36).padStart(7, '0');
+}
+
+function assignReferenceIds(tags) {
+  const used = new Set();
+  for (const tag of tags) {
+    for (const member of tag.members || []) {
+      const base = `tr-${stableReferenceHash(memberReferenceSeed(member))}`;
+      const saved = memberReferenceId(member);
+      const validSaved = saved === base || new RegExp(`^${base}-[2-9]\\d*$`).test(saved);
+      let referenceId = validSaved && !used.has(saved) ? saved : base;
+      let collision = 2;
+      while (used.has(referenceId)) referenceId = `${base}-${collision++}`;
+      member.referenceId = referenceId;
+      used.add(referenceId);
+    }
+  }
+  return tags;
+}
+
+function normalizeMemberNotes(notes, prefix) {
+  return (Array.isArray(notes) ? notes : []).filter((note) => note && typeof note === 'object').map((note, index) => ({
+    id: String(note.id || `note-${prefix}-${index + 1}`),
+    title: typeof note.title === 'string' ? note.title : '',
+    content: typeof note.content === 'string' ? note.content : '',
+    createdAt: note.createdAt || new Date(0).toISOString(),
+    updatedAt: note.updatedAt || note.createdAt || new Date(0).toISOString(),
+  }));
 }
 
 export function normalizeTags(tags) {
@@ -116,7 +208,7 @@ export function normalizeTags(tags) {
     seen.add(nt.id);
     out.push(nt);
   });
-  return out;
+  return assignReferenceIds(out);
 }
 
 export const isOrderedTag = (t) => t?.kind === 'ordered';

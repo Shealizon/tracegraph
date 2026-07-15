@@ -1,3 +1,7 @@
+import { memberInstanceId, memberKey, memberNode, memberReferenceId, memberType } from '../data/schema.js';
+import { graphReferenceMarkdown, tagReferenceFromInstance } from '../data/graphReference.js';
+import { notePointerFromMember, notesForMember, removeNote, upsertNote } from '../data/notes.js';
+
 const BODY_LIMIT = 18000;
 const BATCH_NODE_LIMIT = 12;
 const BATCH_BODY_LIMIT = 60000;
@@ -52,6 +56,26 @@ export function graphToolDefinitions() {
       type: 'object', required: ['node_id'], additionalProperties: false,
       properties: { node_id: { type: 'string' }, label_id: { type: 'string' } },
     }),
+    tool('list_tag_notes', '列出标签组中的具体标签实例及其笔记摘要。可按 tag_id 和 member_key 过滤；创建笔记前先用本工具取得实例 member_key。', {
+      type: 'object', additionalProperties: false,
+      properties: { tag_id: { type: 'string' }, member_key: { type: 'string' } },
+    }),
+    tool('get_tag_note', '读取某个具体标签实例下的一条 Markdown 笔记。', {
+      type: 'object', required: ['tag_id', 'member_key', 'note_id'], additionalProperties: false,
+      properties: { tag_id: { type: 'string' }, member_key: { type: 'string' }, note_id: { type: 'string' } },
+    }),
+    tool('create_tag_note', '为指定的具体标签实例创建一条 Markdown 笔记。写入前需要用户确认。', {
+      type: 'object', required: ['tag_id', 'member_key', 'content'], additionalProperties: false,
+      properties: { tag_id: { type: 'string' }, member_key: { type: 'string' }, title: { type: 'string' }, content: { type: 'string' } },
+    }),
+    tool('update_tag_note', '更新指定标签实例下某条笔记的标题或 Markdown 内容。写入前需要用户确认。', {
+      type: 'object', required: ['tag_id', 'member_key', 'note_id'], additionalProperties: false,
+      properties: { tag_id: { type: 'string' }, member_key: { type: 'string' }, note_id: { type: 'string' }, title: { type: 'string' }, content: { type: 'string' } },
+    }),
+    tool('delete_tag_note', '删除指定标签实例下的一条笔记。执行前需要用户确认。', {
+      type: 'object', required: ['tag_id', 'member_key', 'note_id'], additionalProperties: false,
+      properties: { tag_id: { type: 'string' }, member_key: { type: 'string' }, note_id: { type: 'string' } },
+    }),
   ];
 }
 
@@ -68,10 +92,108 @@ export async function executeGraphTool(model, name, args, hooks = {}) {
     await hooks.revealGraphNode?.(node, args.label_id || '');
     return { opened: true, node: nodeSummary(node), label_id: args.label_id || null };
   }
+  if (name === 'list_tag_notes') return listTagNotes(model, hooks, args);
+  if (name === 'get_tag_note') return getTagNote(hooks, args);
+  if (name === 'create_tag_note') return mutateTagNote(hooks, name, args);
+  if (name === 'update_tag_note') return mutateTagNote(hooks, name, args);
+  if (name === 'delete_tag_note') return mutateTagNote(hooks, name, args);
   return null;
 }
 
-export function isGraphTool(name) { return name.startsWith('graph_') || ['search_graph_nodes', 'get_graph_node', 'get_graph_nodes', 'get_graph_neighbors', 'get_graph_neighbors_batch', 'locate_graph_reference', 'focus_graph_node'].includes(name); }
+export function isGraphTool(name) { return name.startsWith('graph_') || ['search_graph_nodes', 'get_graph_node', 'get_graph_nodes', 'get_graph_neighbors', 'get_graph_neighbors_batch', 'locate_graph_reference', 'focus_graph_node', 'list_tag_notes', 'get_tag_note', 'create_tag_note', 'update_tag_note', 'delete_tag_note'].includes(name); }
+
+function listTagNotes(model, hooks, args = {}) {
+  const tags = graphTags(hooks);
+  const filtered = args.tag_id ? tags.filter((tag) => tag.id === args.tag_id) : tags;
+  if (args.tag_id && !filtered.length) throw new Error(`找不到标签：${args.tag_id}`);
+  const listedTags = filtered.map((tag) => ({
+    id: tag.id,
+    label: tag.label || '',
+    members: (tag.members || []).map((member) => {
+      const reference = tagReferenceFromInstance(model, tag, member);
+      return {
+        member_key: memberKey(member),
+        instance_id: memberInstanceId(member) || null,
+        reference_id: memberReferenceId(member) || null,
+        node_id: memberNode(member),
+        type: memberType(member),
+        reference: reference ? graphReferenceMarkdown(reference) : '',
+        notes: notesForMember(graphNotes(hooks), tag, member).map(noteSummary),
+      };
+    }).filter((member) => !args.member_key || member.member_key === args.member_key),
+  }));
+  if (args.member_key && !listedTags.some((tag) => tag.members.length)) throw new Error(`找不到标签实例：${args.member_key}`);
+  return { tags: listedTags };
+}
+
+function getTagNote(hooks, args) {
+  const tag = requireGraphTag(hooks, args.tag_id);
+  const member = requireTagMember(tag, args.member_key);
+  const note = notesForMember(graphNotes(hooks), tag, member).find((item) => item.id === args.note_id);
+  if (!note) throw new Error(`找不到标签笔记：${args.note_id}`);
+  return { tag: { id: tag.id, label: tag.label || '' }, member: memberSummary(member), note: { ...note } };
+}
+
+async function mutateTagNote(hooks, action, args) {
+  if (!hooks.persistGraphNotes) throw new Error('当前界面未开放标签笔记写入接口');
+  const tags = graphTags(hooks);
+  const tag = tags.find((item) => item.id === args.tag_id);
+  if (!tag) throw new Error(`找不到标签：${args.tag_id}`);
+  const member = requireTagMember(tag, args.member_key);
+  let notes = graphNotes(hooks);
+  const memberNotes = notesForMember(notes, tag, member);
+  const index = memberNotes.findIndex((item) => item.id === args.note_id);
+  if (action !== 'create_tag_note' && index < 0) throw new Error(`找不到标签笔记：${args.note_id}`);
+  const current = index >= 0 ? memberNotes[index] : null;
+  const allowed = await hooks.confirmTagNoteChange?.({ action, tag, member, note: current, title: args.title, content: args.content });
+  if (!allowed) throw new Error('用户取消了标签笔记变更');
+  const now = new Date().toISOString();
+  let result;
+  if (action === 'create_tag_note') {
+    result = { id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title: String(args.title || ''), content: String(args.content || ''), tagPointer: notePointerFromMember(tag, member), createdAt: now, updatedAt: now };
+    notes = upsertNote(notes, result, tags);
+  } else if (action === 'update_tag_note') {
+    result = { ...current, ...(args.title !== undefined ? { title: String(args.title) } : {}), ...(args.content !== undefined ? { content: String(args.content) } : {}), updatedAt: now };
+    notes = upsertNote(notes, result, tags);
+  } else {
+    result = current;
+    notes = removeNote(notes, current.id);
+  }
+  await hooks.persistGraphNotes(notes);
+  return { action, tag_id: tag.id, member_key: args.member_key, note: result };
+}
+
+function noteSummary(note) {
+  return { id: note.id, title: note.title || '', excerpt: truncate(String(note.content || '').replace(/\s+/g, ' '), 240), updatedAt: note.updatedAt };
+}
+
+function memberSummary(member) {
+  return { member_key: memberKey(member), instance_id: memberInstanceId(member) || null, reference_id: memberReferenceId(member) || null, node_id: memberNode(member), type: memberType(member) };
+}
+
+function requireTagMember(tag, key) {
+  const member = (tag.members || []).find((item) => memberKey(item) === key);
+  if (!member) throw new Error(`找不到标签实例：${key}`);
+  return member;
+}
+
+function graphTags(hooks) {
+  const tags = hooks.getGraphTags?.();
+  if (!Array.isArray(tags)) throw new Error('当前界面未开放标签笔记读取接口');
+  return tags;
+}
+
+function graphNotes(hooks) {
+  const notes = hooks.getGraphNotes?.();
+  if (!Array.isArray(notes)) throw new Error('当前界面未开放独立笔记读取接口');
+  return notes;
+}
+
+function requireGraphTag(hooks, id) {
+  const tag = graphTags(hooks).find((item) => item.id === id);
+  if (!tag) throw new Error(`找不到标签：${id}`);
+  return tag;
+}
 
 function searchNodes(model, args) {
   const query = String(args.query || '').trim().toLowerCase();

@@ -2,13 +2,15 @@
 // ui/cardMenus.js  —  卡片正文的「选中文字 simple-menu」与「右键菜单」
 //   · 选中文字（非打标模式）→ 横向 simple-menu：复制 / 最近3标签 / 省略号二级；
 //     有序标签项显示 n+1 的 tm-idx，hover≥1.5s 展开插入序号行。
-//   · 右键空白/未选中 → menu-blank（图标+文字）：复制▸ / 固定 / 关闭为节点 / 隐藏 /
-//     常用3标签 / 更多标签此处打标(location)▸  —— 标签动作建 pos 成员。
+//   · 右键空白/未选中 → menu-blank（图标+文字）：复制▸ / 固定 / 关闭为节点 / 隐藏。
 //   · 右键选中文字 → 关闭 simple-menu，光标处普通 menu：常用3标签 / 更多标签文字打标(alphabet)▸
 //     —— 标签动作建 span 成员。
 // =============================================================================
 import { ICON } from './icons.js';
 import { toast } from './feedback.js';
+import { graphReferenceFromMember } from '../data/graphReference.js';
+import { setGraphReferenceClipboardData, writeGraphReference } from './graphClipboard.js';
+import { markdownTextFromRange, normalizeSelectionForMath } from '../view/annotation.js';
 
 const el = (cls, tag = 'div') => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -16,15 +18,7 @@ const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</
 // 选区 → 源码文本：把 KaTeX 渲染块还原为其原始 LaTeX（取 annotation），而非逐符号渲染文本
 export function selectionSource(sel) {
   if (!sel || sel.rangeCount === 0) return '';
-  const div = document.createElement('div');
-  div.appendChild(sel.getRangeAt(0).cloneContents());
-  div.querySelectorAll('.katex').forEach((k) => {
-    const ann = k.querySelector('annotation[encoding="application/x-tex"]');
-    const src = ann ? ann.textContent : '';
-    const display = !!k.closest('.math-display, .katex-display');
-    k.replaceWith(document.createTextNode(src ? (display ? `$$${src}$$` : `$${src}$`) : (k.textContent || '')));
-  });
-  return div.textContent.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  return markdownTextFromRange(sel.getRangeAt(0));
 }
 
 export function initCardMenus(ctx) {
@@ -41,7 +35,7 @@ export function initCardMenus(ctx) {
   };
   const selInBody = (body) => {
     const sel = window.getSelection();
-    if (!sel || sel.isCollapsed || !sel.toString().trim()) return null;
+    if (!sel || sel.isCollapsed || !selectionSource(sel).trim()) return null;
     if (!body.contains(sel.anchorNode) || !body.contains(sel.focusNode)) return null;
     return sel;
   };
@@ -66,7 +60,8 @@ export function initCardMenus(ctx) {
     const menu = el('card-simple-menu');
     // 复制选中（源码）
     const selectedSource = selectionSource(sel);
-    menu.appendChild(iconBtn(ICON.copy, '复制选中', () => { copy(selectedSource); closeSimple(); }));
+    const selectedReference = graphReferenceFromMember(ctx.model, { ...baseSpan, text: selectedSource }, selectedSource);
+    menu.appendChild(iconBtn(ICON.copy, '复制选中', () => { copy(selectedSource, selectedReference); closeSimple(); }));
     menu.appendChild(iconBtn(ICON.aiAdd, '添加到 AI', () => {
       ctx.aiPanel?.attachSelection({ ...baseSpan, text: selectedSource });
       closeSimple();
@@ -163,11 +158,10 @@ export function initCardMenus(ctx) {
     window.__cardSub = sub;
   }
 
-  // 右键空白 → menu-blank（标签动作建 pos）
+  // 右键空白 → menu-blank（不创建位置标签）
   function showBlankMenu(body, nodeId, cx, cy) {
     closeSimple();
-    const rec = ctx.modals.open.get(nodeId); const node = ctx.model.nodeById.get(nodeId);
-    const posFactory = () => ctx.posFromPoint(body, nodeId, cx, cy);
+    const node = ctx.model.nodeById.get(nodeId);
     const items = [];
     const copyIt = menuItem(ICON.copy, '复制', (e, anchor) => openCopySub(anchor, nodeId), true);
     items.push(copyIt);
@@ -175,19 +169,21 @@ export function initCardMenus(ctx) {
     items.push(menuItem(ICON.pin, '固定', () => { ctx.modals.togglePin(node); closePopup(); }));
     items.push(menuItem(ICON.circle, '关闭为节点', () => { ctx.modals.closeModal(nodeId); closePopup(); }));
     items.push(menuItem(ICON.eyeOff, '隐藏', () => { ctx.hideNode(nodeId); closePopup(); }));
-    for (const tag of ctx.commonTags(3)) items.push(menuItem(tag.kind === 'ordered' ? `<span class="tm-idx" style="--tc:${tag.color}">${tag.members.length + 1}</span>` : (ICON[tag.icon] || ICON.tag), tag.label || '（未命名）', () => { ctx.addMember(tag.id, posFactory()); closePopup(); }));
-    items.push(menuItem(ICON.location, '更多标签此处打标', (e, anchor) => openSubMenu(anchor, ctx.graph.getTags(), posFactory), true));
     openMenuAt(cx, cy, items);
   }
   function openCopySub(anchor, nodeId) {
     if (window.__cardSub) window.__cardSub.remove();
     const node = ctx.model.nodeById.get(nodeId);
     const sub = el('m-menu card-submenu');
-    const add = (label, text) => { const it = menuItem('', label, () => { copy(text); closePopup(); }); sub.appendChild(it); };
-    add('复制所有内容', [node.title, node.statementBody, node.proofBody].filter(Boolean).join('\n\n'));
-    add('复制标题', node.title || node.id);
+    const add = (label, text, reference) => { const it = menuItem('', label, () => { copy(text, reference); closePopup(); }); sub.appendChild(it); };
+    add('复制所有内容', [node.title, node.statementBody, node.proofBody].filter(Boolean).join('\n\n'), graphReferenceFromMember(ctx.model, nodeId, [node.title, node.statementBody, node.proofBody].filter(Boolean).join('\n\n')));
+    add('复制标题', node.title || node.id, graphReferenceFromMember(ctx.model, nodeId, node.title || node.id));
     const selText = window.getSelection() ? selectionSource(window.getSelection()) : '';
-    if (selText.trim()) add('复制选中', selText);
+    if (selText.trim()) {
+      const body = ctx.modals.open.get(nodeId)?.el.querySelector('.modal-body');
+      const span = body ? ctx.spanFromSelection(body, nodeId, window.getSelection()) : null;
+      add('复制选中', selText, span ? graphReferenceFromMember(ctx.model, { ...span, text: selText }, selText) : null);
+    }
     document.body.appendChild(sub);
     const r = anchor.getBoundingClientRect();
     sub.style.left = `${Math.min(r.right + 2, window.innerWidth - sub.offsetWidth - 6)}px`;
@@ -201,7 +197,8 @@ export function initCardMenus(ctx) {
     const baseSpan = ctx.spanFromSelection(body, nodeId, sel);
     const items = [];
     const selectedSource = selectionSource(sel);
-    items.push(menuItem(ICON.copy, '复制选中', () => { copy(selectedSource); closePopup(); }));
+    const selectedReference = graphReferenceFromMember(ctx.model, { ...baseSpan, text: selectedSource }, selectedSource);
+    items.push(menuItem(ICON.copy, '复制选中', () => { copy(selectedSource, selectedReference); closePopup(); }));
     items.push(menuItem(ICON.aiAdd, '添加到 AI', () => { ctx.aiPanel?.attachSelection({ ...baseSpan, text: selectedSource }); closePopup(); }));
     for (const tag of ctx.commonTags(3)) items.push(menuItem(tag.kind === 'ordered' ? `<span class="tm-idx" style="--tc:${tag.color}">${tag.members.length + 1}</span>` : (ICON[tag.icon] || ICON.tag), tag.label || '（未命名）', () => { ctx.addMember(tag.id, { ...baseSpan }); closePopup(); }));
     items.push(menuItem(ICON.alphabet, '更多标签文字打标', (e, anchor) => openSubMenu(anchor, ctx.graph.getTags(), () => ({ ...baseSpan })), true));
@@ -210,7 +207,12 @@ export function initCardMenus(ctx) {
 
   // ---------- 工具 ----------
   function iconBtn(svg, title, onClick) { const b = el('csm-btn', 'button'); b.title = title; b.innerHTML = svg || ''; b.addEventListener('click', onClick); return b; }
-  function copy(text) { try { navigator.clipboard.writeText(text || ''); toast('已复制'); } catch { toast('复制失败', { type: 'error' }); } }
+  async function copy(text, reference = null) {
+    try {
+      if (reference) await writeGraphReference(reference); else await navigator.clipboard.writeText(text || '');
+      toast('已复制');
+    } catch { toast('复制失败', { type: 'error' }); }
+  }
 
   // ---------- 事件绑定 ----------
   document.addEventListener('mouseup', (e) => {
@@ -218,7 +220,7 @@ export function initCardMenus(ctx) {
     const c = bodyAt(e.target); if (!c) return;
     setTimeout(() => {
       const sel = selInBody(c.body); if (!sel) return;
-      const key = sel.toString();
+      const key = selectionSource(sel);
       lastSelKey = key;
       showSimple(c.body, c.nodeId, sel);
     }, 0);
@@ -230,8 +232,18 @@ export function initCardMenus(ctx) {
     if (!sel || sel.isCollapsed) return;
     const anc = sel.anchorNode; const ael = anc && (anc.nodeType === 1 ? anc : anc.parentElement);
     if (!ael || !ael.closest('.modal-body')) return;
+    const body = ael.closest('.modal-body');
+    normalizeSelectionForMath(sel, body);
     const src = selectionSource(sel);
-    if (src && e.clipboardData) { e.clipboardData.setData('text/plain', src); e.preventDefault(); }
+    if (src && e.clipboardData) {
+      const modal = body?.closest('.modal');
+      const nodeId = modal?.dataset.id;
+      let span = null;
+      try { if (nodeId) span = ctx.spanFromSelection(body, nodeId, sel); } catch { span = null; }
+      if (span) setGraphReferenceClipboardData(e.clipboardData, graphReferenceFromMember(ctx.model, { ...span, text: src }, src));
+      else e.clipboardData.setData('text/plain', src);
+      e.preventDefault();
+    }
   }, true);
 
   document.addEventListener('contextmenu', (e) => {

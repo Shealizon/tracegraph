@@ -8,6 +8,15 @@ describe('projectAdapter · normalizeProject', () => {
     expect(p.config.enabledDocumentIds).toEqual(['d1']);
     expect(p.documents[0].sourceType).toBe('structured-json');
   });
+  it('migrates embedded member notes into standalone project notes', () => {
+    const p = normalizeProject({
+      config: { tags: [{ id: 'review', members: [{ node: 'n1', type: 'span', start: 1, end: 4, notes: [{ id: 'note-a', title: 'A', content: 'Body' }] }] }] },
+      documents: [],
+    });
+    expect(p.config.tags[0].members[0].notes).toBeUndefined();
+    expect(p.config.notes).toHaveLength(1);
+    expect(p.config.notes[0]).toMatchObject({ id: 'note-a', title: 'A', tagPointer: { tagId: 'review' } });
+  });
 });
 
 describe('projectAdapter · graphToDocument', () => {

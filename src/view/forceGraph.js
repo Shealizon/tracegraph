@@ -524,8 +524,8 @@ export class ForceGraph {
       if (tag.visible === false) continue;
       const mk = (tag.marker || '').trim();
       // 仅「整卡片(node)」成员渲染为节点贴片；span/pos 成员在卡片内单独渲染（见 span/pos 层）
-      if (tag.kind === 'ordered') tag.members.forEach((m, i) => { if (memberType(m) !== 'node') return; push(memberNode(m), { type: 'step', text: (mk ? `${mk} ` : '') + (i + 1), color: tag.color, title: tag.label, tagId: tag.id, kind: 'ordered' }); });
-      else tag.members.forEach((m) => { if (memberType(m) !== 'node') return; push(memberNode(m), { type: 'mark', icon: tag.icon, marker: mk, color: tag.color, title: tag.label, tagId: tag.id, kind: 'unordered' }); });
+      if (tag.kind === 'ordered') tag.members.forEach((m, i) => { if (memberType(m) !== 'node') return; push(memberNode(m), { type: 'step', text: (mk ? `${mk} ` : '') + (i + 1), color: tag.color, title: tag.label, tagId: tag.id, kind: 'ordered', member: m }); });
+      else tag.members.forEach((m) => { if (memberType(m) !== 'node') return; push(memberNode(m), { type: 'mark', icon: tag.icon, marker: mk, color: tag.color, title: tag.label, tagId: tag.id, kind: 'unordered', member: m }); });
     }
     this.tagsEl.textContent = '';
     this._tagChipEls = new Map();
@@ -537,9 +537,17 @@ export class ForceGraph {
         pill.className = c.type === 'step' ? 'tag-pill tag-step' : 'tag-pill tag-mark';
         pill.style.setProperty('--tc', c.color || '#ff9e64');
         if (c.type === 'step') pill.textContent = c.text;
-        else pill.innerHTML = (ICON[c.icon] || ICON.tag) + (c.marker ? `<span class="tag-mark-txt">${c.marker.replace(/[&<>]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]))}</span>` : '');
+        else pill.innerHTML = (ICON[c.icon] || ICON.tag) + (c.marker ? `<span class="tag-mark-txt">${escapeHtml(c.marker)}</span>` : '');
+        const tag = (this._tags || []).find((item) => item.id === c.tagId);
+        const noteCount = tag ? (this.ctx?.notesForMember?.(tag, c.member).length || 0) : 0;
+        if (noteCount) pill.insertAdjacentHTML('beforeend', `<span class="m-mark-note-count" title="${noteCount} 条笔记">${noteCount}</span>`);
         if (c.title) pill.title = c.title;
-        this._attachChipGesture(pill, { tagId: c.tagId, kind: c.kind, nodeId });
+        pill.addEventListener('click', (event) => {
+          event.stopPropagation();
+          const clickedTag = (this._tags || []).find((item) => item.id === c.tagId);
+          if (clickedTag) this.ctx?.openTagInstanceMenu?.(pill, clickedTag, c.member);
+        });
+        this._attachChipGesture(pill, { tagId: c.tagId, kind: c.kind, nodeId, memberKey: memberKey(c.member) });
         wrap.appendChild(pill);
       }
       this.tagsEl.appendChild(wrap);

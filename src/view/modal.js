@@ -4,6 +4,11 @@
 import { ICON } from '../ui/icons.js';
 import { isLeafNode, nodeTag, paperName, typeColor, memberKey } from '../data/schema.js';
 import { toast } from '../ui/feedback.js';
+import { annotationBoundaryAtOffset, annotationRectsFromRange, clampAnnotationChipLeft, forEachVisibleTextNode, groupAnnotationRects } from './annotation.js';
+import { graphReferenceFromMember, tagReferenceFromInstance } from '../data/graphReference.js';
+import { writeGraphReference } from '../ui/graphClipboard.js';
+import { notePointerFromMember } from '../data/notes.js';
+import { createNoteRow } from '../ui/noteUi.js';
 
 const DEFAULT_W = 380;
 const A4 = 1.414;
@@ -71,6 +76,18 @@ export class ModalManager {
     this.overlayEl = overlayEl;
     this.stageEl = stageEl;
     this.open = new Map();
+    this._markChipPointer = { x: -10000, y: -10000 };
+    this._markChipMove = (event) => {
+      this._markChipPointer = { x: event.clientX, y: event.clientY };
+      if (this._markChipFrame) return;
+      this._markChipFrame = requestAnimationFrame(() => {
+        this._markChipFrame = 0;
+        this._updateMarkChipProximity();
+      });
+    };
+    document.addEventListener('pointermove', this._markChipMove, { passive: true });
+    ctx.openTagInstanceMenu = (anchor, tag, member) => this._openMarkChipMenu(anchor, tag, member);
+    ctx.closeTagInstanceMenu = () => this._closeCardMenu();
     ctx.graph.setOverlaySync(() => this._syncPositions());
   }
 
@@ -315,7 +332,7 @@ export class ModalManager {
     // 打标模式 hover 提示遮罩（仅视觉，pointer-events:none）
     const editOverlay = document.createElement('div');
     editOverlay.className = 'm-edit-overlay';
-    editOverlay.innerHTML = '<div class="meo-text"><div>单击操作整体卡片标签</div><div>双击操作具体位置标签</div></div>';
+    editOverlay.innerHTML = '<div class="meo-text"><div>单击操作整体卡片标签</div><div>拖选文字或公式添加片段标签</div></div>';
     el.appendChild(editOverlay);
     const body = el.querySelector('.modal-body');
     this.overlayEl.appendChild(el);
@@ -441,17 +458,26 @@ export class ModalManager {
     const menu = document.createElement('div');
     menu.className = 'm-menu';
     for (const it of items) {
+      if (it.element) { menu.appendChild(it.element); continue; }
       const mi = document.createElement('div');
-      mi.className = 'm-menu-item' + (it.disabled ? ' dim' : '') + (it.head ? ' head' : '');
+      mi.className = 'm-menu-item'
+        + (it.disabled ? ' dim' : '')
+        + (it.head ? ' head' : '')
+        + (it.danger ? ' danger' : '')
+        + (it.separatorBefore ? ' separator-before' : '')
+        + (it.noteHeading ? ' note-heading' : '')
+        + (it.noteItem ? ' note-item' : '');
       const main = document.createElement('button');
       main.className = 'mm-main';
       if (it.html) main.innerHTML = it.html; else main.textContent = it.label;
       if (it.disabled) main.disabled = true;
       else main.addEventListener('click', () => { this._closeCardMenu(); it.onClick && it.onClick(); });
+      if (it.onHover) main.addEventListener('pointerenter', () => it.onHover(main));
+      if (it.onLeave) main.addEventListener('pointerleave', it.onLeave);
       mi.appendChild(main);
       if (it.action) {
         const ab = document.createElement('button');
-        ab.className = 'mm-action'; ab.title = it.action.title || '展开细节';
+        ab.className = `mm-action${it.action.className ? ` ${it.action.className}` : ''}`; ab.title = it.action.title || '展开细节';
         ab.innerHTML = ICON[it.action.icon] || ICON.expand;
         ab.addEventListener('click', (e) => { e.stopPropagation(); this._closeCardMenu(); it.action.onClick && it.action.onClick(); });
         mi.appendChild(ab);
@@ -464,18 +490,23 @@ export class ModalManager {
     menu.style.top = `${r.bottom + 4}px`;
     menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
     this._cardMenu = menu;
-    const close = (ev) => { if (!menu.contains(ev.target)) this._closeCardMenu(); };
+    const close = (ev) => {
+      if (!menu.contains(ev.target) && !this.ctx.noteWindows?.contains?.(ev.target)) this._closeCardMenu();
+    };
     setTimeout(() => { document.addEventListener('pointerdown', close, true); this._cardMenuClose = close; }, 0);
   }
   _closeCardMenu() {
     if (this._cardMenu) { this._cardMenu.remove(); this._cardMenu = null; }
     if (this._cardMenuClose) { document.removeEventListener('pointerdown', this._cardMenuClose, true); this._cardMenuClose = null; }
   }
-  _copyNode(node, mode) {
+  async _copyNode(node, mode) {
     const text = mode === 'title'
       ? (node.title || node.id || '')
       : [node.title, node.statementBody, node.proofBody].filter(Boolean).join('\n\n');
-    try { navigator.clipboard.writeText(text); toast(mode === 'title' ? '已复制标题' : '已复制内容'); } catch { toast('复制失败', { type: 'error' }); }
+    try {
+      await writeGraphReference(graphReferenceFromMember(this.ctx.model, node.id, text));
+      toast(mode === 'title' ? '已复制标题' : '已复制内容');
+    } catch { toast('复制失败', { type: 'error' }); }
   }
   _openRelatedMenu(anchorEl, node, dir) {
     const word = dir === 'used' ? '被引' : '引用';
@@ -528,6 +559,7 @@ export class ModalManager {
         else if (m.type === 'pos') this._renderPosMark(body, tag, m, label);
       });
     }
+    this._updateMarkChipProximity();
   }
   _markChip(tag, label, member) {
     const pill = document.createElement('div');
@@ -535,46 +567,140 @@ export class ModalManager {
     pill.style.setProperty('--tc', tag.color || '#ff9e64');
     if (tag.kind === 'ordered') pill.textContent = label;
     else pill.innerHTML = (ICON[tag.icon] || ICON.tag) + (tag.marker ? `<span class="tag-mark-txt">${escapeHtml(tag.marker)}</span>` : '');
-    pill.addEventListener('click', (e) => { e.stopPropagation(); this.ctx.jumpToMember && this.ctx.jumpToMember(member); });
+    const noteCount = this.ctx.notesForMember?.(tag, member).length || 0;
+    if (noteCount) pill.insertAdjacentHTML('beforeend', `<span class="m-mark-note-count" title="${noteCount} 条笔记">${noteCount}</span>`);
+    pill.addEventListener('click', (e) => { e.stopPropagation(); this._openMarkChipMenu(pill, tag, member); });
     if (this.ctx.graph._attachChipGesture) this.ctx.graph._attachChipGesture(pill, { tagId: tag.id, kind: tag.kind, nodeId: member.node, memberKey: memberKey(member) });
     return pill;
   }
+  _openMarkChipMenu(anchor, tag, member) {
+    const items = [];
+    const notes = this.ctx.notesForMember?.(tag, member) || [];
+    if (member?.type === 'span') {
+      items.push({
+        html: `<span class="mm-ic">${ICON.copy}</span><span class="mm-txt">复制文本</span>`,
+        onClick: async () => {
+          try { await writeGraphReference(tagReferenceFromInstance(this.ctx.model, tag, member)); toast('已复制标签引用'); }
+          catch { toast('复制失败', { type: 'error' }); }
+        },
+      });
+    } else {
+      items.push({
+        html: `<span class="mm-ic">${ICON.copy}</span><span class="mm-txt">复制标签引用</span>`,
+        onClick: async () => {
+          try { await writeGraphReference(tagReferenceFromInstance(this.ctx.model, tag, member)); toast('已复制标签引用'); }
+          catch { toast('复制失败', { type: 'error' }); }
+        },
+      });
+    }
+    items.push({
+      html: `<span class="mm-ic">${ICON.aiAdd}</span><span class="mm-txt">附到 AI</span>`,
+      onClick: () => this.ctx.aiPanel?.attachTag?.(tag, member),
+    });
+    items.push({
+      noteHeading: true,
+      disabled: true,
+      separatorBefore: true,
+      html: `<span class="mm-ic">${ICON.note}</span><span class="mm-txt">笔记${notes.length ? ` · ${notes.length}` : ''}</span>`,
+      action: {
+        icon: 'plus',
+        title: '添加笔记',
+        onClick: () => this.ctx.openNoteEditor?.('', { tagPointer: notePointerFromMember(tag, member), anchor }),
+      },
+    });
+    for (const note of notes) items.push({ element: createNoteRow(this.ctx, note, { className: 'menu-note-row' }) });
+    if (!notes.length) items.push({ noteItem: true, label: '暂无笔记', disabled: true });
+    items.push({
+      danger: true,
+      separatorBefore: true,
+      html: `<span class="mm-ic">${ICON.trash}</span><span class="mm-txt">删除该标注</span>`,
+      onClick: () => this.ctx.requestDeleteTagMember?.(tag.id, member),
+    });
+    this._openCardMenu(anchor, items);
+  }
+
+  _updateMarkChipProximity() {
+    const { x, y } = this._markChipPointer;
+    for (const chip of this.overlayEl.querySelectorAll('.m-mark-chip.tag-mark')) {
+      if (chip.matches(':hover')) { chip.style.setProperty('--mark-chip-opacity', '1'); continue; }
+      const rect = chip.getBoundingClientRect();
+      const dx = x < rect.left ? rect.left - x : x > rect.right ? x - rect.right : 0;
+      const dy = y < rect.top ? rect.top - y : y > rect.bottom ? y - rect.bottom : 0;
+      const ratio = Math.max(0, Math.min(1, Math.hypot(dx, dy) / 110));
+      chip.style.setProperty('--mark-chip-opacity', (0.14 + 0.86 * Math.pow(ratio, 0.72)).toFixed(3));
+    }
+  }
   _renderSpanMark(body, bodyRect, tag, m, label) {
     const range = this._rangeFromMember(body, m); if (!range) return;
-    const rects = range.getClientRects(); let last = null;
+    const k = this.ctx.graph?.transform?.k || 1;
+    const rects = groupAnnotationRects(annotationRectsFromRange(range, body)); let last = null;
     for (const r of rects) {
       if (r.width < 1) continue;
       const u = document.createElement('div'); u.className = 'm-mark-underline'; u.style.setProperty('--tc', tag.color || '#ff9e64');
-      u.style.left = `${r.left - bodyRect.left + body.scrollLeft}px`;
-      u.style.top = `${r.bottom - bodyRect.top + body.scrollTop - 1}px`;
-      u.style.width = `${r.width}px`;
+      u.style.left = `${(r.left - bodyRect.left) / k + body.scrollLeft}px`;
+      u.style.top = `${(r.bottom - bodyRect.top) / k + body.scrollTop - 1}px`;
+      u.style.width = `${r.width / k}px`;
       body.appendChild(u); last = r;
     }
     if (!last) return;
     const chip = this._markChip(tag, label, m);
-    chip.style.left = `${last.right - bodyRect.left + body.scrollLeft + 3}px`;
-    chip.style.top = `${last.top - bodyRect.top + body.scrollTop - 3}px`;
+    chip.style.top = `${(last.top - bodyRect.top) / k + body.scrollTop - 3}px`;
     body.appendChild(chip);
+    const desiredLeft = (last.right - bodyRect.left) / k + body.scrollLeft + 3;
+    chip.style.left = `${clampAnnotationChipLeft(body, chip, desiredLeft)}px`;
   }
   _renderPosMark(body, tag, m, label) {
     const chip = this._markChip(tag, label, m); chip.classList.add('m-mark-pos');
-    chip.style.left = `${(m.x || 0) * body.clientWidth}px`;
-    chip.style.top = `${(m.y || 0) * body.scrollHeight}px`;
+    const k = this.ctx.graph?.transform?.k || 1;
+    const bodyRect = body.getBoundingClientRect();
+    const range = this._collapsedRangeFromMember(body, m);
+    const point = range?.getBoundingClientRect?.();
+    if (point && point.top >= bodyRect.top - 2 && point.top <= bodyRect.bottom + 2) {
+      chip.style.left = `${(point.left - bodyRect.left) / k + body.scrollLeft}px`;
+      chip.style.top = `${(point.top - bodyRect.top) / k + body.scrollTop}px`;
+    } else {
+      chip.style.left = `${(m.x || 0) * body.clientWidth}px`;
+      chip.style.top = `${(m.y || 0) * body.scrollHeight}px`;
+    }
     body.appendChild(chip);
   }
   _rangeFromMember(body, m) {
     const container = m.section === 'proof' ? body.querySelector('.proof-wrap') : body.querySelector('.statement');
     if (!container) return null;
+    const markdownOffsets = m.offsetMode === 'annotation-md';
+    const visible = m.offsetMode === 'visible';
+    // At an exact text-node boundary, the start belongs to the following node
+    // and the end belongs to the preceding node. Choosing the preceding node
+    // for both can leave a visually empty range endpoint inside an adjacent
+    // KaTeX display and make that formula appear annotated.
+    const start = markdownOffsets
+      ? annotationBoundaryAtOffset(container, m.start, 'forward')
+      : textBoundaryAtOffset(container, visible, m.start, 'forward');
+    const end = markdownOffsets
+      ? annotationBoundaryAtOffset(container, m.end, 'backward')
+      : textBoundaryAtOffset(container, visible, m.end, 'backward');
+    if (!start || !end) return null;
     const range = document.createRange();
-    let acc = 0, started = false, node;
-    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-    while ((node = walker.nextNode())) {
-      const len = node.textContent.length;
-      if (!started && acc + len >= m.start) { range.setStart(node, Math.max(0, m.start - acc)); started = true; }
-      if (started && acc + len >= m.end) { range.setEnd(node, Math.max(0, m.end - acc)); return range; }
-      acc += len;
+    try {
+      range.setStart(start.node, start.offset);
+      range.setEnd(end.node, end.offset);
+      return range;
+    } catch {
+      return null;
     }
-    return started ? range : null;
+  }
+
+  _collapsedRangeFromMember(body, m) {
+    if (!Number.isFinite(m?.start)) return null;
+    const container = m.section === 'proof' ? body.querySelector('.proof-wrap') : body.querySelector('.statement');
+    if (!container) return null;
+    const point = m.offsetMode === 'annotation-md'
+      ? annotationBoundaryAtOffset(container, m.start, 'forward')
+      : textBoundaryAtOffset(container, m.offsetMode === 'visible', m.start, 'forward');
+    if (!point) return null;
+    const range = document.createRange();
+    range.setStart(point.node, point.offset); range.collapse(true);
+    return range;
   }
 
   _syncPositions() {
@@ -665,3 +791,34 @@ export class ModalManager {
 function escapeHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 function proofLabelOf(ctx) { return ctx.model.meta.proofLabel || '细节'; }
 function cssEscape(s) { return String(s).replace(/"/g, '\\"'); }
+
+function visitTextNodes(container, visible, visit) {
+  if (visible) {
+    forEachVisibleTextNode(container, visit);
+    return;
+  }
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let node;
+  while ((node = walker.nextNode())) visit(node);
+}
+
+function textBoundaryAtOffset(container, visible, rawOffset, bias) {
+  const target = Math.max(0, Number(rawOffset) || 0);
+  let acc = 0;
+  let found = null;
+  let last = null;
+  visitTextNodes(container, visible, (node) => {
+    if (found) return;
+    const len = node.textContent.length;
+    if (!len) return;
+    const end = acc + len;
+    const ownsBoundary = bias === 'backward' ? target <= end : target < end;
+    if (ownsBoundary) {
+      found = { node, offset: Math.max(0, Math.min(len, target - acc)) };
+      return;
+    }
+    last = { node, offset: len };
+    acc = end;
+  });
+  return found || last;
+}

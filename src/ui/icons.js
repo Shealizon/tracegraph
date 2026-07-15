@@ -10,6 +10,8 @@ export const ICON = {
   // 卡片 / 节点（单个 + 多个堆叠，堆叠用偏移的局部路径形成图层遮挡）
   card: S('<rect x="4" y="4" width="16" height="16" rx="2"/><line x1="4" y1="9" x2="20" y2="9"/>'),
   copy: S('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"/>'),
+  edit: S('<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/>'),
+  undo: S('<polyline points="9 7 4 12 9 17"/><path d="M4 12h8.5A7.5 7.5 0 0 1 20 19.5"/>'),
   aiAdd: S('<path d="M9 3l1.2 3.8L14 8l-3.8 1.2L9 13l-1.2-3.8L4 8l3.8-1.2L9 3z"/><path d="M15.5 11v6M12.5 14h6"/>'),
   // 卡片 + 对角引用箭头：refDeps=引用(↙ 指入)，refUsed=被引(↗ 指出)
   refDeps: S('<rect x="3" y="3" width="18" height="18" rx="3"/><line x1="15.5" y1="8.5" x2="9" y2="15"/><polyline points="9 10 9 15 14 15"/>'),
@@ -37,6 +39,7 @@ export const ICON = {
   arrowDeps: S('<circle cx="5" cy="12" r="2.6"/><line x1="9" y1="12" x2="21" y2="12"/><polyline points="17 8 21 12 17 16"/>'),
   // 文献/论文（带折角的文档）
   fileText: S('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 3 14 8 19 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="16" x2="13" y2="16"/>'),
+  note: S('<path d="M5 4h14v16H5z"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/>'),
   // 隐藏（眼睛划线）
   eyeOff: S('<path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 8 10 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="M6.61 6.61A18.5 18.5 0 0 0 2 12s3 8 10 8a9.12 9.12 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/>'),
   // 详情（全屏展开）
@@ -73,5 +76,5 @@ export const ICON = {
   // 折叠为节点（向内收拢）
   collapse: S('<polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/>'),
   // 吸附链接（两环相扣）
-  link: S('<path d="M9 12a3 3 0 0 1 3-3h3a3 3 0 0 1 0 6h-1.5"/><path d="M15 12a3 3 0 0 1-3 3H9a3 3 0 0 1 0-6h1.5"/>'),
+  link: S('<path d="M10 13a5 5 0 0 0 7.1.1l2-2A5 5 0 0 0 12 4l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 20l1.1-1.1"/>'),
 };

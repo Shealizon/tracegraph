@@ -1,5 +1,6 @@
 import { compileGraph } from '../data/adapter.js';
 import { mergeProfile, normalizeTags } from '../data/schema.js';
+import { normalizeProjectNotes, stripEmbeddedNotes } from '../data/notes.js';
 
 export const PROJECT_FORMAT = 'paper-graph-project@1';
 
@@ -33,6 +34,9 @@ export function normalizeProject(project) {
   const now = new Date().toISOString();
   const docs = Array.isArray(project?.documents) ? project.documents : [];
   const enabled = project?.config?.enabledDocumentIds?.length ? project.config.enabledDocumentIds : docs.map((d) => d.id);
+  const tagsWithLegacyNotes = normalizeTags(Array.isArray(project?.config?.tags) ? project.config.tags : []);
+  const notes = normalizeProjectNotes(project?.config?.notes, tagsWithLegacyNotes);
+  const tags = stripEmbeddedNotes(tagsWithLegacyNotes);
   return {
     format: PROJECT_FORMAT,
     id: project?.id || `project-${Date.now()}`,
@@ -44,7 +48,8 @@ export function normalizeProject(project) {
       enabledDocumentIds: enabled,
       disabledNodeIds: project?.config?.disabledNodeIds || [],
       disabledRelationKeys: project?.config?.disabledRelationKeys || [],
-      tags: Array.isArray(project?.config?.tags) ? project.config.tags : [],
+      tags,
+      notes,
       viewState: project?.config?.viewState || {},
     },
     documents: docs.map((doc, i) => ({
