@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DEPLOY_BRANCH="refs/heads/main"
+WORK_TREE="/root/Desktop/paper-graph"
+APP_DIR="/opt/paper-graph"
+PUBLISH_DIR="/var/www/paper-graph"
+LOG_FILE="/tmp/paper-graph-deploy.log"
+
+while read -r oldrev newrev refname; do
+  if [ "$refname" != "$DEPLOY_BRANCH" ]; then
+    echo "Skipping $refname; deploy branch is $DEPLOY_BRANCH"
+    continue
+  fi
+
+  {
+    echo "=== paper-graph deploy $(date -Is) ==="
+    echo "ref: $refname"
+    echo "old: $oldrev"
+    echo "new: $newrev"
+
+    if ! id papergraph >/dev/null 2>&1; then
+      useradd --system --home-dir /var/lib/paper-graph --create-home --shell /sbin/nologin papergraph
+    fi
+    mkdir -p "$WORK_TREE" "$APP_DIR" "$PUBLISH_DIR"
+    install -d -o papergraph -g papergraph -m 0750 /var/lib/paper-graph /var/lib/paper-graph/data
+    git --work-tree="$WORK_TREE" --git-dir=/root/repos/paper-graph.git checkout -f main
+
+    cd "$WORK_TREE"
+    npm ci
+    npm audit
+    npm run test:run
+    npm run build
+
+    rm -rf "${APP_DIR:?}"/*
+    tar \
+      --exclude=./.git \
+      --exclude=./node_modules \
+      --exclude=./server-data \
+      --exclude=./output \
+      -cf - . | tar -C "$APP_DIR" -xf -
+    cd "$APP_DIR"
+    npm ci --omit=dev
+
+    rm -rf "${PUBLISH_DIR:?}"/*
+    cp -a dist/. "$PUBLISH_DIR"/
+    chown -R papergraph:papergraph "$APP_DIR" /var/lib/paper-graph
+
+    install -m 0644 deploy/paper-graph.service /etc/systemd/system/paper-graph.service
+    install -m 0644 deploy/nginx-graph.conf /etc/nginx/conf.d/graph.conf
+    systemctl daemon-reload
+    systemctl enable paper-graph.service
+    systemctl restart paper-graph.service
+
+    nginx -t
+    systemctl reload nginx
+    echo "Deploy complete."
+  } 2>&1 | tee "$LOG_FILE"
+done

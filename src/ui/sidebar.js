@@ -51,7 +51,8 @@ export function buildSidebar(ctx, root) {
   const head = el('div', 'side-head');
   const homeBtn = iconBtn('返回项目首页', 'home', () => ctx.goLeading && ctx.goLeading());
   const titleWrap = el('div', 'side-head-text');
-  titleWrap.innerHTML = `<div class="side-title">${escapeHtml(model.meta.title || '关系图')}</div><div class="side-sub">${model.meta.counts.statements} 节点 · ${model.meta.counts.edges} 关系${model.hasCycle ? ' · 含环' : ''}</div>`;
+  const locationLabel = projectLocationLabel(ctx.project, ctx.cloud?.user);
+  titleWrap.innerHTML = `<div class="side-title">${escapeHtml(model.meta.title || '关系图')}</div><div class="side-sub">${model.meta.counts.statements} 节点 · ${model.meta.counts.edges} 关系${model.hasCycle ? ' · 含环' : ''}<span class="side-cloud-state">${locationLabel}</span></div>`;
   const moreBtn = iconBtn('更多操作', 'more', null);
   head.appendChild(homeBtn);
   head.appendChild(titleWrap);
@@ -1053,3 +1054,9 @@ function btn(text, onClick, icon) { const b = el('button', 'btn btn--sm btn--blo
 function iconBtn(title, icon, onClick) { const b = el('button', 'icon-btn'); b.type = 'button'; b.title = title; b.setAttribute('aria-label', title); b.innerHTML = ICON[icon] || ''; if (onClick) b.addEventListener('click', onClick); return b; }
 function el(tag, cls) { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
 function escapeHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+function projectLocationLabel(project, user) {
+  if (project?.sync?.state === 'synced') return '云端';
+  if (user && project?.sync?.location === 'cloud') return '待同步';
+  return '本地';
+}

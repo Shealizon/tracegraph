@@ -9,3 +9,5 @@ coverage/
 .codex-remote-attachments/
 output/
 output.json
+server-data/
+.env

@@ -22,6 +22,9 @@ import {
   PROVIDER_PROTOCOLS, addProvider, disableModel, discoverProviderModels, enableModel,
   loadProviderState, removeProvider, renameEnabledModel, resolveModelConfig, saveProviderState, updateProvider,
 } from '../ai/providerStore.js';
+import { serverApi } from '../cloud/api.js';
+import { sessionSnapshot } from '../cloud/session.js';
+import { saveCloudConversations, saveCloudProviders } from '../cloud/aiState.js';
 
 const SETTINGS_KEY = 'paper-graph-ai-settings';
 const KEY_SESSION = 'paper-graph-ai-api-key';
@@ -184,6 +187,7 @@ export function buildAiPanel(ctx) {
       try {
         const imported = await workspace.importFile(file);
         activeConversation(conversationState).attachments.push(imported);
+        if (sessionSnapshot().user) uploadCloudFiles(workspace, [imported], `${projectId}--${activeConversation(conversationState).id}`).catch((error) => console.warn('cloud file upload failed', error));
       } catch (error) {
         state.messages.push({ role: 'notice', tone: 'error', createdAt: new Date().toISOString(), content: `文件导入失败：${error?.message || error}` });
       }
@@ -452,10 +456,40 @@ export function buildAiPanel(ctx) {
     });
 
     try {
-      await runAgentTurn({
+      const resolvedUserText = contextPrompt(text.trim(), [...turnContexts, ...turnFiles.map(graphFileAttachment).filter(Boolean)], ctx.model);
+      if (modelConfig?.runtime === 'server') {
+        if (!sessionSnapshot().user) throw new Error('云端模型需要先登录');
+        const workspaceScope = `${projectId}--${conversation.id}`;
+        await uploadCloudFiles(turnWorkspace, turnFiles, workspaceScope);
+        const created = await serverApi.createTask({
+          providerId: modelConfig.providerId,
+          model: modelConfig.model,
+          projectId,
+          conversationId: conversation.id,
+          workspaceScope,
+          history,
+          userText: resolvedUserText,
+          systemPrompt: [modelConfig.systemPrompt?.trim() || DEFAULT_SYSTEM_PROMPT, buildGraphContext(ctx.model, selectedNodeId)].filter(Boolean).join('\n\n'),
+        });
+        assistantMessage.cloudTaskId = created.task.id;
+        assistantMessage.cloud = true;
+        persistConversation(conversation);
+        await saveCloudConversations(projectId, conversationState);
+        const cloudTask = await waitForCloudTask(created.task.id, aborter.signal, (task) => {
+          const activeTask = tasks.get(conversation.id);
+          if (activeTask) activeTask.status = task.status === 'queued' ? 'queued' : 'running';
+          syncBusy();
+        });
+        if (cloudTask.status === 'failed') throw new Error(cloudTask.error || '云端任务失败');
+        if (cloudTask.status === 'cancelled') throw new DOMException('Aborted', 'AbortError');
+        assistantMessage.cloudTaskStatus = cloudTask.status;
+        assistantMessage.content = cloudTask.output || '操作已完成。';
+        appendTextBlock(assistantMessage, assistantMessage.content);
+        updateAssistantDom(conversation, assistantMessage);
+      } else await runAgentTurn({
         config: { ...(modelConfig || {}), contextPrompt: buildGraphContext(ctx.model, selectedNodeId) },
         history,
-        userText: contextPrompt(text.trim(), [...turnContexts, ...turnFiles.map(graphFileAttachment).filter(Boolean)], ctx.model),
+        userText: resolvedUserText,
         tools,
         signal: aborter.signal,
         onDelta: (delta) => {
@@ -1009,6 +1043,7 @@ export function buildAiPanel(ctx) {
     if (current.id !== id && isConversationEmpty(current)) removeConversation(conversationState, current.id);
     conversationState.activeId = id;
     workspace = createBrowserWorkspace(`${projectId}--${id}`);
+    syncActiveWorkspaceFiles();
     state.editingIndex = -1;
     closeSubpanel();
     syncConversationUi();
@@ -1259,11 +1294,15 @@ export function buildAiPanel(ctx) {
       card.className = 'ai-provider';
       card.dataset.providerId = provider.id;
       const expanded = expandedProviders.has(provider.id);
-      card.innerHTML = `<div class="ai-provider-head"><strong>${escapeHtml(provider.name)}</strong><span class="ai-provider-status is-${escapeAttr(provider.status)}"><i></i>${provider.status === 'ok' ? '可用' : provider.status === 'error' ? '不可用' : '未检测'}</span><span class="ai-provider-actions"><button class="icon-btn" data-refresh title="检测并刷新模型">${regenerateIcon()}</button><button class="icon-btn" data-edit title="编辑提供商">${editIcon()}</button><button class="icon-btn" data-remove title="删除提供商">${trashIcon()}</button></span></div><button class="ai-provider-toggle" data-provider-toggle aria-expanded="${expanded}"><span>${provider.modelsCache.length ? `${provider.modelsCache.length} 个可用模型` : '尚未获取模型'}</span>${chevronIcon()}</button><div class="ai-provider-models"${expanded ? '' : ' hidden'}></div>`;
+      card.innerHTML = `<div class="ai-provider-head"><strong>${escapeHtml(provider.name)}</strong><span class="ai-runtime-badge is-${provider.runtime || 'local'}">${provider.runtime === 'server' ? '云端' : '本地'}</span><span class="ai-provider-status is-${escapeAttr(provider.status)}"><i></i>${provider.status === 'ok' ? '可用' : provider.status === 'error' ? '不可用' : '未检测'}</span><span class="ai-provider-actions"><button class="icon-btn" data-refresh title="检测并刷新模型">${regenerateIcon()}</button><button class="icon-btn" data-edit title="编辑提供商">${editIcon()}</button><button class="icon-btn" data-remove title="删除提供商">${trashIcon()}</button></span></div><button class="ai-provider-toggle" data-provider-toggle aria-expanded="${expanded}"><span>${provider.modelsCache.length ? `${provider.modelsCache.length} 个可用模型` : '尚未获取模型'}</span>${chevronIcon()}</button><div class="ai-provider-models"${expanded ? '' : ' hidden'}></div>`;
       card.querySelector('[data-refresh]').addEventListener('click', () => refreshProvider(provider, card));
       card.querySelector('[data-edit]').addEventListener('click', () => showProviderEditor(provider));
       card.querySelector('[data-remove]').addEventListener('click', async () => {
         if (!await confirmDialog({ title: '删除服务商？', message: `删除“${provider.name}”及其已启用模型。`, okText: '删除', danger: true })) return;
+        if (provider.runtime === 'server' && provider.protocol !== 'server-codex' && sessionSnapshot().user) {
+          try { await serverApi.deleteProvider(provider.id); }
+          catch (error) { toast(`云端配置删除失败：${error.message}`, { type: 'error' }); return; }
+        }
         removeProvider(providerState, provider.id); persistProviders(); renderProviderSettings(); syncModelLabel();
       });
       card.querySelector('[data-provider-toggle]').addEventListener('click', () => {
@@ -1326,7 +1365,11 @@ export function buildAiPanel(ctx) {
     action.title = '正在检测模型';
     try {
       const key = sessionStorage.getItem(`${PROVIDER_KEY_SESSION}:${provider.id}`) || '';
-      const result = await discoverProviderModels(provider, key);
+      const result = provider.protocol === 'server-codex'
+        ? { models: ['codex'], latencyMs: 0 }
+        : provider.runtime === 'server'
+          ? { ...(await serverApi.discoverServerModels(provider.id)), latencyMs: 0 }
+          : await discoverProviderModels(provider, key);
       updateProvider(providerState, provider.id, { modelsCache: result.models, status: 'ok', statusText: `${result.models.length} 个模型 · ${result.latencyMs} ms`, checkedAt: new Date().toISOString() });
       expandedProviders.add(provider.id);
       toast(`已发现 ${result.models.length} 个模型`);
@@ -1344,17 +1387,37 @@ export function buildAiPanel(ctx) {
     let card = provider ? list.querySelector(`[data-provider-id="${CSS.escape(provider.id)}"]`) : null;
     if (!card) { card = document.createElement('article'); list.append(card); }
     card.className = 'ai-provider is-editing';
-    card.innerHTML = `<div class="ai-inline-provider-head"><strong>${provider ? '编辑提供商' : '新提供商'}</strong></div><label>名称<input data-provider-name value="${escapeAttr(provider?.name || '')}" placeholder="例如 DeepSeek"></label><label>接口<select data-provider-protocol>${PROVIDER_PROTOCOLS.map((item) => `<option value="${item.id}"${item.id === protocol ? ' selected' : ''}>${item.label}</option>`).join('')}</select></label><label>Base URL<input data-provider-base value="${escapeAttr(baseUrl)}"></label><label>API Key<input data-provider-key type="password" value="${escapeAttr(provider ? sessionStorage.getItem(`${PROVIDER_KEY_SESSION}:${provider.id}`) || '' : '')}" placeholder="仅保存在当前会话"></label><div class="ai-provider-editor-actions"><button class="btn" data-cancel>取消</button><button class="btn btn--primary" data-save>保存</button></div>`;
+    const runtime = provider?.runtime || 'local';
+    card.innerHTML = `<div class="ai-inline-provider-head"><strong>${provider ? '编辑提供商' : '新提供商'}</strong></div><label>运行位置<select data-provider-runtime><option value="local"${runtime === 'local' ? ' selected' : ''}>本地 · 浏览器运行</option><option value="server"${runtime === 'server' ? ' selected' : ''}>云端 · 关闭网页后继续</option></select></label><label>名称<input data-provider-name value="${escapeAttr(provider?.name || '')}" placeholder="例如 DeepSeek"></label><label>接口<select data-provider-protocol>${PROVIDER_PROTOCOLS.map((item) => `<option value="${item.id}"${item.id === protocol ? ' selected' : ''}>${item.label}</option>`).join('')}</select></label><label data-base-field>Base URL<input data-provider-base value="${escapeAttr(baseUrl)}"></label><label data-key-field>API Key<input data-provider-key type="password" value="${escapeAttr(provider?.runtime === 'local' ? sessionStorage.getItem(`${PROVIDER_KEY_SESSION}:${provider.id}`) || '' : '')}" placeholder="${runtime === 'server' ? '已加密保存在云端；留空则不修改' : '仅保存在当前会话'}"></label><p class="ai-provider-runtime-note" data-runtime-note></p><div class="ai-provider-editor-actions"><button class="btn" data-cancel>取消</button><button class="btn btn--primary" data-save>保存</button></div>`;
     const protocolSelect = card.querySelector('[data-provider-protocol]');
+    const runtimeSelect = card.querySelector('[data-provider-runtime]');
+    const syncRuntimeFields = () => {
+      const codex = protocolSelect.value === 'server-codex';
+      if (codex) runtimeSelect.value = 'server';
+      runtimeSelect.disabled = codex;
+      card.querySelector('[data-base-field]').hidden = codex;
+      card.querySelector('[data-key-field]').hidden = codex;
+      card.querySelector('[data-runtime-note]').textContent = codex ? 'Codex 使用服务器唯一实例，只能在云端运行。' : runtimeSelect.value === 'server' ? 'API Key 将进入你的加密服务端工作区。' : '请求和 API Key 均不会发送到 Entail 服务端。';
+    };
     protocolSelect.addEventListener('change', () => {
       const item = PROVIDER_PROTOCOLS.find((entry) => entry.id === protocolSelect.value);
       card.querySelector('[data-provider-base]').value = item?.defaultBaseUrl || '';
+      syncRuntimeFields();
     });
+    runtimeSelect.addEventListener('change', syncRuntimeFields);
+    syncRuntimeFields();
     card.querySelector('[data-cancel]').addEventListener('click', renderProviderSettings);
-    card.querySelector('[data-save]').addEventListener('click', () => {
-      const input = { name: card.querySelector('[data-provider-name]').value.trim(), protocol: protocolSelect.value, baseUrl: card.querySelector('[data-provider-base]').value.trim() };
+    card.querySelector('[data-save]').addEventListener('click', async () => {
+      const input = { name: card.querySelector('[data-provider-name]').value.trim(), protocol: protocolSelect.value, baseUrl: card.querySelector('[data-provider-base]').value.trim(), runtime: runtimeSelect.value };
       const saved = provider ? updateProvider(providerState, provider.id, input) : addProvider(providerState, input);
-      sessionStorage.setItem(`${PROVIDER_KEY_SESSION}:${saved.id}`, card.querySelector('[data-provider-key]').value.trim());
+      const apiKey = card.querySelector('[data-provider-key]').value.trim();
+      if (saved.runtime === 'server' && saved.protocol !== 'server-codex') {
+        if (!sessionSnapshot().user) { toast('请先登录，再保存云端服务商', { type: 'error' }); return; }
+        try { await serverApi.saveProvider(saved.id, { ...saved, apiKey }); }
+        catch (error) { toast(error.message, { type: 'error' }); return; }
+        sessionStorage.removeItem(`${PROVIDER_KEY_SESSION}:${saved.id}`);
+      } else if (saved.runtime === 'local') sessionStorage.setItem(`${PROVIDER_KEY_SESSION}:${saved.id}`, apiKey);
+      if (saved.protocol === 'server-codex' && !providerState.enabledModels.some((item) => item.providerId === saved.id)) enableModel(providerState, saved.id, 'codex', 'Codex Cloud');
       expandedProviders.add(saved.id);
       persistProviders(); renderProviderSettings();
     });
@@ -1371,7 +1434,8 @@ export function buildAiPanel(ctx) {
     if (!providerState.enabledModels.length) picker.innerHTML = '<p>尚未启用模型。</p>';
     for (const model of providerState.enabledModels) {
       const row = button('ai-model-picker-item', '', model.displayName);
-      row.innerHTML = `<span><strong>${escapeHtml(model.displayName)}</strong></span>${activeConversation(conversationState).modelId === model.id ? checkIcon() : ''}`;
+      const provider = providerState.providers.find((item) => item.id === model.providerId);
+      row.innerHTML = `<span><strong>${escapeHtml(model.displayName)}</strong><small>${provider?.runtime === 'server' ? '云端' : '本地'}</small></span>${activeConversation(conversationState).modelId === model.id ? checkIcon() : ''}`;
       row.addEventListener('click', () => { selectConversationModel(model.id); closeSubpanel(); });
       picker.append(row);
     }
@@ -1487,6 +1551,10 @@ export function buildAiPanel(ctx) {
     try {
       await workspace.deleteFile(path);
       const conversation = activeConversation(conversationState);
+      if (sessionSnapshot().user) {
+        try { await serverApi.deleteFile(`${projectId}--${conversation.id}`, path); }
+        catch (error) { if (error.status !== 404) throw error; }
+      }
       conversation.attachments = (conversation.attachments || []).filter((attachment) => attachment.path !== path);
       persist();
       renderAttachments();
@@ -1646,6 +1714,13 @@ export function buildAiPanel(ctx) {
   function persistConversation(conversation) {
     if (conversationState.conversations.includes(conversation)) conversation.updatedAt = new Date().toISOString();
     saveConversationState(localStorage, conversationsKey, conversationState);
+    clearTimeout(state.cloudConversationTimer);
+    state.cloudConversationTimer = setTimeout(() => saveCloudConversations(projectId, conversationState), 650);
+  }
+  function syncActiveWorkspaceFiles() {
+    if (!sessionSnapshot().user) return;
+    const conversation = activeConversation(conversationState);
+    syncWorkspaceFiles(workspace, `${projectId}--${conversation.id}`).catch((error) => console.warn('failed to sync AI workspace files', error));
   }
   function isNearBottom() { return isScrollNearBottom(messagesEl, 56); }
   function stopFollowing() {
@@ -1697,7 +1772,11 @@ export function buildAiPanel(ctx) {
     const conversation = activeConversation(conversationState);
     return resolveModelConfig(providerState, conversation.modelId || providerState.activeModelId, sessionStorage, PROVIDER_KEY_SESSION);
   }
-  function persistProviders() { saveProviderState(localStorage, PROVIDERS_KEY, providerState); }
+  function persistProviders() {
+    saveProviderState(localStorage, PROVIDERS_KEY, providerState);
+    clearTimeout(state.cloudProviderTimer);
+    state.cloudProviderTimer = setTimeout(() => saveCloudProviders(providerState), 650);
+  }
   function syncModelLabel() {
     const config = currentModelConfig();
     panel.querySelector('[data-model-label]').textContent = config?.displayName || '选择模型';
@@ -1747,6 +1826,54 @@ export function buildAiPanel(ctx) {
     status.textContent = !busy ? '待命' : task.status === 'reconnecting' ? `恢复中${task.retryAttempt ? ` · ${task.retryAttempt}/3` : ''}` : '生成中';
     status.classList.toggle('is-running', busy);
   }
+  async function restoreCloudMessages() {
+    if (!sessionSnapshot().user) return;
+    let remote;
+    try { remote = (await serverApi.listTasks({ projectId })).tasks || []; }
+    catch { return; }
+    const byId = new Map(remote.map((task) => [task.id, task]));
+    for (const conversation of conversationState.conversations) {
+      for (const message of conversation.messages) {
+        if (!message.cloudTaskId) continue;
+        const cloudTask = byId.get(message.cloudTaskId);
+        if (!cloudTask || message.cloudTaskStatus === cloudTask.status) continue;
+        if (cloudTask.status === 'completed') {
+          message.content = cloudTask.output || '操作已完成。';
+          message.blocks = [];
+          appendTextBlock(message, message.content);
+          message.cloudTaskStatus = cloudTask.status;
+          persistConversation(conversation);
+          updateAssistantDom(conversation, message);
+        } else if (['failed', 'cancelled'].includes(cloudTask.status)) {
+          message.content = cloudTask.status === 'cancelled' ? '（已停止）' : `请求失败：${cloudTask.error || '云端任务失败'}`;
+          message.blocks = [];
+          appendTextBlock(message, message.content);
+          message.cloudTaskStatus = cloudTask.status;
+          persistConversation(conversation);
+          updateAssistantDom(conversation, message);
+        } else if (!tasks.has(conversation.id)) {
+          const aborter = new AbortController();
+          tasks.set(conversation.id, { aborter, message, status: cloudTask.status });
+          syncBusy();
+          waitForCloudTask(message.cloudTaskId, aborter.signal).then((finished) => {
+            message.cloudTaskStatus = finished.status;
+            message.content = finished.status === 'completed' ? (finished.output || '操作已完成。') : `请求失败：${finished.error || '云端任务未完成'}`;
+            message.blocks = [];
+            appendTextBlock(message, message.content);
+          }).catch((error) => {
+            message.content = `请求失败：${error?.message || error}`;
+            message.blocks = [];
+            appendTextBlock(message, message.content);
+          }).finally(() => {
+            tasks.delete(conversation.id);
+            persistConversation(conversation);
+            updateAssistantDom(conversation, message);
+            syncBusy();
+          });
+        }
+      }
+    }
+  }
   function setOpen(open) {
     panel.classList.toggle('is-open', open);
     launcher.classList.toggle('is-hidden', open);
@@ -1768,6 +1895,8 @@ export function buildAiPanel(ctx) {
     attachTagNote(tag, member, note) { return addContextAttachment(graphNoteAttachment(ctx.model, note, ctx.graph?.getTags?.() || [tag])); },
   };
   panel._aiPanelApi = api;
+  syncActiveWorkspaceFiles();
+  queueMicrotask(() => restoreCloudMessages());
   return api;
 }
 
@@ -1786,6 +1915,58 @@ export function navigateGraphReference(ctx, node, label = null) {
 
 export function isScrollNearBottom(element, threshold = 120) {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= threshold;
+}
+
+async function waitForCloudTask(taskId, signal, onStatus) {
+  while (true) {
+    if (signal?.aborted) {
+      try { await serverApi.cancelTask(taskId); } catch { /* task may already be terminal */ }
+      throw signal.reason || new DOMException('Aborted', 'AbortError');
+    }
+    const { task } = await serverApi.getTask(taskId);
+    onStatus?.(task);
+    if (['completed', 'failed', 'cancelled'].includes(task.status)) return task;
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(resolve, 850);
+      signal?.addEventListener('abort', () => { clearTimeout(timer); reject(signal.reason || new DOMException('Aborted', 'AbortError')); }, { once: true });
+    });
+  }
+}
+
+async function uploadCloudFiles(workspace, attachments, scope) {
+  for (const attachment of attachments || []) {
+    if (!attachment?.path) continue;
+    const file = await workspace.readFile(attachment.path);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = '';
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+    await serverApi.putFile({
+      scope,
+      path: attachment.path,
+      name: attachment.name || file.name || attachment.path.split('/').at(-1),
+      type: attachment.type || file.type || 'application/octet-stream',
+      data: btoa(binary),
+    });
+  }
+}
+
+async function syncWorkspaceFiles(workspace, scope) {
+  const [localFiles, remoteResult] = await Promise.all([workspace.listFiles(), serverApi.listFiles(scope)]);
+  const localByPath = new Map(localFiles.map((file) => [file.path, file]));
+  const remoteByPath = new Map((remoteResult.files || []).map((file) => [file.path, file]));
+  for (const file of localFiles) {
+    const remote = remoteByPath.get(file.path);
+    if (!remote || Number(file.updatedAt || 0) >= Date.parse(remote.updatedAt || 0)) await uploadCloudFiles(workspace, [file], scope);
+  }
+  for (const remote of remoteResult.files || []) {
+    const local = localByPath.get(remote.path);
+    if (local && Number(local.updatedAt || 0) >= Date.parse(remote.updatedAt || 0)) continue;
+    const full = (await serverApi.getFile(scope, remote.path)).file;
+    const binary = atob(full.data || '');
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    await workspace.writeFile(remote.path, new Blob([bytes], { type: full.type || 'application/octet-stream' }));
+  }
 }
 
 export function replaceUserMessageBranch(messages, index, content, editedAt = new Date().toISOString()) {

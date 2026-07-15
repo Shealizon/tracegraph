@@ -9,9 +9,10 @@
 
 ```bash
 npm install
-npm run dev         # 本地开发服务器（自动打开浏览器）
+npm run dev:server  # 终端 1：账号、同步、云端任务 API
+npm run dev         # 终端 2：Vite 客户端（自动打开浏览器）
 npm run build       # 构建到 dist/（base 为相对路径，可直接打开 dist/index.html）
-npm run preview     # 预览 dist/
+npm start           # 生产模式：API + dist，默认 http://localhost:8787
 npm test            # Vitest（监视模式）；npm run test:run 跑一次
 ```
 
@@ -29,7 +30,10 @@ URL 以查询参数区分两个界面：
 
 ## 项目与存储
 
-应用是**多项目**的，全部数据存在浏览器 **IndexedDB**（`paper-graph-projects`），无后端。
+应用是**离线优先的多项目服务**：未登录时全部功能继续使用浏览器 IndexedDB；登录后项目会
+保留本地副本并同步到按用户隔离、密码加密保护的服务端工作区。冲突按 `updatedAt` 的最新修改
+合并，退出登录不会清除本地项目。部署、安全和 AI 云端任务说明见
+[`docs/SERVER.md`](docs/SERVER.md)。
 
 - **项目** = 一组**文档** + 配置（启用哪些文档、禁用哪些节点/关系、标签、视图状态）。
 - 一个项目可包含多篇文档；跨文档引用按 id/文档名/slug 自动解析并连边，冲突 id 自动唯一化。

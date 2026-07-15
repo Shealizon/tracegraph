@@ -1,0 +1,15 @@
+services:
+  entail:
+    build: .
+    ports:
+      - "8787:8787"
+    environment:
+      NODE_ENV: production
+      PAPER_GRAPH_DATA: /app/server-data
+      CODEX_ENABLED: "0"
+    volumes:
+      - entail-data:/app/server-data
+    restart: unless-stopped
+
+volumes:
+  entail-data:

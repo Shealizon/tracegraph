@@ -4,10 +4,11 @@ export const PROVIDER_PROTOCOLS = [
   { id: 'openai-chat', label: 'OpenAI-compatible', defaultBaseUrl: DEFAULT_OPENAI_URL },
   { id: 'anthropic-messages', label: 'Anthropic Messages', defaultBaseUrl: 'https://api.anthropic.com/v1' },
   { id: 'gemini', label: 'Google Gemini', defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta' },
+  { id: 'server-codex', label: 'Codex（服务器唯一实例）', defaultBaseUrl: '' },
 ];
 
 export function createProviderState() {
-  return { version: 1, providers: [], enabledModels: [], activeModelId: '' };
+  return { version: 1, providers: [], enabledModels: [], activeModelId: '', updatedAt: '' };
 }
 
 export function loadProviderState(storage, key, legacy = {}) {
@@ -30,6 +31,7 @@ export function loadProviderState(storage, key, legacy = {}) {
 }
 
 export function saveProviderState(storage, key, state) {
+  state.updatedAt = new Date().toISOString();
   storage.setItem(key, JSON.stringify(normalizeProviderState(state)));
 }
 
@@ -37,11 +39,12 @@ export function createProvider(input = {}) {
   const protocol = PROVIDER_PROTOCOLS.some((item) => item.id === input.protocol) ? input.protocol : 'openai-chat';
   const defaultUrl = PROVIDER_PROTOCOLS.find((item) => item.id === protocol)?.defaultBaseUrl || DEFAULT_OPENAI_URL;
   return {
-    id: input.id || makeId('provider'),
+    id: input.id || (protocol === 'server-codex' ? 'server-codex' : makeId('provider')),
     name: String(input.name || PROVIDER_PROTOCOLS.find((item) => item.id === protocol)?.label || '模型服务').trim(),
     protocol,
     baseUrl: normalizeBaseUrl(input.baseUrl || defaultUrl),
-    modelsCache: uniqueStrings(input.modelsCache || []),
+    runtime: protocol === 'server-codex' ? 'server' : (input.runtime === 'server' ? 'server' : 'local'),
+    modelsCache: protocol === 'server-codex' ? ['codex'] : uniqueStrings(input.modelsCache || []),
     status: input.status || 'unknown',
     statusText: input.statusText || '',
     checkedAt: input.checkedAt || '',
@@ -50,6 +53,8 @@ export function createProvider(input = {}) {
 
 export function addProvider(state, input) {
   const provider = createProvider(input);
+  const existing = state.providers.find((item) => item.id === provider.id);
+  if (existing) { Object.assign(existing, provider); return existing; }
   state.providers.push(provider);
   return provider;
 }
@@ -107,6 +112,8 @@ export function resolveModelConfig(state, enabledModelId, keyStorage, keyPrefix)
     model: model.modelId,
     displayName: model.displayName || model.modelId,
     providerName: provider.name,
+    providerId: provider.id,
+    runtime: provider.runtime || 'local',
     enabledModelId: model.id,
   };
 }
@@ -141,7 +148,7 @@ function normalizeProviderState(value) {
   const enabledModels = Array.isArray(state.enabledModels) ? state.enabledModels.filter((item) => providerIds.has(item.providerId) && item.modelId).map((item) => ({
     id: item.id || makeId('model'), providerId: item.providerId, modelId: String(item.modelId), displayName: String(item.displayName || item.modelId),
   })) : [];
-  return { version: 1, providers, enabledModels, activeModelId: enabledModels.some((item) => item.id === state.activeModelId) ? state.activeModelId : enabledModels[0]?.id || '' };
+  return { version: 1, providers, enabledModels, activeModelId: enabledModels.some((item) => item.id === state.activeModelId) ? state.activeModelId : enabledModels[0]?.id || '', updatedAt: state.updatedAt || '' };
 }
 
 function normalizeBaseUrl(value) { return String(value || '').trim().replace(/\/+$/, ''); }

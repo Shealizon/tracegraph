@@ -28,6 +28,15 @@ describe('provider and protocol adapters', () => {
     expect(resolveModelConfig(state, model.id, keys, 'keys').displayName).toBe('我的 Claude');
   });
 
+  it('marks cloud providers and forces the unique Codex provider to server runtime', () => {
+    const state = loadProviderState(memoryStorage(), 'providers');
+    const cloud = addProvider(state, { name: 'Cloud OpenAI', protocol: 'openai-chat', runtime: 'server' });
+    const cloudModel = enableModel(state, cloud.id, 'gpt-test');
+    expect(resolveModelConfig(state, cloudModel.id, memoryStorage(), 'keys')).toMatchObject({ runtime: 'server', providerId: cloud.id });
+    const codex = addProvider(state, { name: 'Codex', protocol: 'server-codex', runtime: 'local' });
+    expect(codex).toMatchObject({ id: 'server-codex', runtime: 'server', modelsCache: ['codex'] });
+  });
+
   it('discovers Gemini generation models through the provider model endpoint', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ models: [
       { name: 'models/gemini-a', supportedGenerationMethods: ['generateContent'] },

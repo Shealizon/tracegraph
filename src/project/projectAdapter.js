@@ -44,6 +44,9 @@ export function normalizeProject(project) {
     name: typeof project?.name === 'string' ? project.name : '未命名项目',
     createdAt: project?.createdAt || now,
     updatedAt: project?.updatedAt || now,
+    sync: project?.sync && typeof project.sync === 'object'
+      ? { state: project.sync.state || 'local', location: project.sync.location || 'local', syncedAt: project.sync.syncedAt || '' }
+      : { state: 'local', location: 'local', syncedAt: '' },
     config: {
       enabledDocumentIds: enabled,
       disabledNodeIds: project?.config?.disabledNodeIds || [],

@@ -5,6 +5,8 @@ import { extractGenericTexGraph } from '../import/texGeneric.js';
 import { edgeCountOf } from '../data/adapter.js';
 import { ICON } from '../ui/icons.js';
 import { toast, confirmDialog } from '../ui/feedback.js';
+import { serverApi } from '../cloud/api.js';
+import { sessionSnapshot } from '../cloud/session.js';
 
 export function projectMainUrl(projectId) {
   return `${location.pathname}?screen=main&project=${encodeURIComponent(projectId)}`;
@@ -101,12 +103,19 @@ export async function importFixedTex(db, currentProject = null, texFile = null) 
   });
 }
 
-// 通用 TeX（自动识别）：无需固定格式，自动发现定理类环境，全部本地解析
+// 通用 TeX（自动识别）：登录时优先在服务端解析；离线或服务不可用时自动回退本地。
 export async function importGenericTex(db, currentProject = null, texFile = null) {
   texFile = texFile || await pickFile('.tex,.txt,text/x-tex,text/plain');
   if (!texFile) return null;
   // 通用 TeX 自动识别本就自动编号，不再询问 .aux
-  const graph = extractGenericTexGraph(await texFile.text(), '', { source: texFile.name, title: texFile.name.replace(/\.(tex|txt)$/i, '') });
+  const text = await texFile.text();
+  const options = { source: texFile.name, title: texFile.name.replace(/\.(tex|txt)$/i, '') };
+  let graph;
+  if (sessionSnapshot().user) {
+    try { graph = (await serverApi.extractTex({ text, ...options })).graph; }
+    catch (error) { console.warn('server TeX extraction failed; falling back to local parser', error); }
+  }
+  graph ||= extractGenericTexGraph(text, '', options);
   const doc = graphToDocument(graph, texFile.name, 'generic-tex');
   if (currentProject) {
     const project = normalizeProject({

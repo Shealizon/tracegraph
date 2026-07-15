@@ -15,7 +15,7 @@ import { ICON } from './ui/icons.js';
 import { getReaderRoute, openDetails, openReaderLibrary, openReaderRoute } from './view/detailsPage.js';
 import { createTagMember, isLeafNode, memberKey, memberNode, memberType, normalizeTags } from './data/schema.js';
 import { renderLeadingPage } from './view/leadingPage.js';
-import { initProjectStore, saveProject, setCurrentProjectId } from './project/store.js';
+import { initProjectStore, listProjects, saveProject, setCurrentProjectId } from './project/store.js';
 import { compileProject } from './project/projectAdapter.js';
 import { downloadProject, goLeading, importGenericTex, importStructuredJson, openProjectConfigDialog } from './project/projectConfig.js';
 import { choiceDialog, toast } from './ui/feedback.js';
@@ -28,6 +28,10 @@ import { initCardMenus } from './ui/cardMenus.js';
 import { annotationTextLengthToBoundary, markdownTextFromRange, normalizeSelectionForMath } from './view/annotation.js';
 import { buildAiPanel } from './ui/aiPanel.js';
 import { createNoteWindowController } from './ui/noteUi.js';
+import { initSession, sessionSnapshot } from './cloud/session.js';
+import { configureProjectSync, syncNow } from './cloud/sync.js';
+import { renderAdminPage } from './cloud/adminPage.js';
+import { hydrateCloudAiState } from './cloud/aiState.js';
 
 initTooltips();
 
@@ -37,14 +41,28 @@ init().catch((err) => {
 });
 
 async function init() {
-  const store = await initProjectStore();
+  await initSession();
+  let store = await initProjectStore();
+  configureProjectSync(store.db);
+  if (sessionSnapshot().user) {
+    try {
+      await syncNow();
+      store = { ...store, projects: await listProjects(store.db) };
+    } catch (error) { console.warn('initial cloud sync failed', error); }
+  }
   const query = new URLSearchParams(location.search);
   const screen = query.get('screen') || 'leading';
   const projectId = query.get('project') || store.currentProjectId;
 
+  if (screen === 'admin') {
+    await renderAdminPage();
+    return;
+  }
+
   if (screen === 'main' || screen === 'reader') {
     const project = store.projects.find((p) => p.id === projectId) || store.projects[0];
     if (project) {
+      await hydrateCloudAiState(project.id);
       setCurrentProjectId(project.id);
       if (!location.hash && project.config?.viewState?.hash) {
         history.replaceState(null, '', `${location.pathname}?screen=main&project=${encodeURIComponent(project.id)}${project.config.viewState.hash}`);
@@ -106,6 +124,7 @@ function startMain(db, project) {
   const ctx = {
     db,
     project,
+    cloud: sessionSnapshot(),
     model,
     render,
     numberOf,

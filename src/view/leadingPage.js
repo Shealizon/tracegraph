@@ -4,6 +4,10 @@ import { deleteProject, listProjects, saveProject, setCurrentProjectId } from '.
 import { downloadProject, importGenericTex, importStructuredJson, openProjectConfigDialog, projectMainUrl } from '../project/projectConfig.js';
 import { ICON } from '../ui/icons.js';
 import { toast } from '../ui/feedback.js';
+import { mountAccountControls } from '../cloud/accountUi.js';
+import { onSyncChange } from '../cloud/sync.js';
+
+let releaseSyncListener = null;
 
 const THEME_MODES = [
   { mode: 'dark', icon: 'moon', title: '深色' },
@@ -28,7 +32,7 @@ export function renderLeadingPage({ db, projects, currentProjectId }) {
           <h1>Entail</h1>
           <span>${projects.length} 个项目</span>
         </div>
-        <div data-leading-theme></div>
+        <div class="leading-account-actions"><div data-leading-theme></div><div data-account></div></div>
       </header>
       <section class="leading-panel">
         <div class="project-cards">
@@ -41,6 +45,7 @@ export function renderLeadingPage({ db, projects, currentProjectId }) {
       </section>
     </div>`;
   root.querySelector('[data-leading-theme]').appendChild(buildLeadingThemeSwitch());
+  mountAccountControls(root.querySelector('[data-account]'), { onChanged: () => location.reload() });
 
   // 整卡可点击打开（操作按钮内部已 stopPropagation）
   root.querySelectorAll('[data-card]').forEach((card) => card.addEventListener('click', () => {
@@ -54,6 +59,14 @@ export function renderLeadingPage({ db, projects, currentProjectId }) {
     if (nextId) setCurrentProjectId(nextId);
     renderLeadingPage({ db, projects: nextProjects, currentProjectId: nextId });
   };
+  releaseSyncListener?.();
+  let renderedSyncAt = '';
+  releaseSyncListener = onSyncChange((state) => {
+    if (!state.syncing && state.lastSyncedAt && state.lastSyncedAt !== renderedSyncAt) {
+      renderedSyncAt = state.lastSyncedAt;
+      refresh();
+    }
+  });
   root.querySelector('[data-create]').addEventListener('click', async () => {
     const now = new Date().toISOString();
     const project = normalizeProject({
@@ -147,10 +160,12 @@ function projectCard(project, active) {
   for (const d of docs) if (enabled.has(d.id)) { nodes += (d.graph?.nodes || []).length; rels += edgeCountOf(d.graph); }
   const updated = formatDate(project.updatedAt);
   const displayName = project.name || docs[0]?.name || '新项目'; // 尚未命名时回退到首个文件名/占位
+  const syncState = project.sync?.state === 'synced' ? 'cloud' : project.sync?.location === 'cloud' ? 'pending' : 'local';
+  const syncLabel = syncState === 'cloud' ? '云端' : syncState === 'pending' ? '待同步' : '仅本地';
   return `
     <article class="project-card${active ? ' active' : ''}" data-card="${escapeAttr(project.id)}" role="button" tabindex="0" title="打开项目">
       <div class="project-card-top">
-        <h3>${escapeHtml(displayName)}</h3>
+        <h3>${escapeHtml(displayName)}</h3><span class="project-location is-${syncState}"><i></i>${syncLabel}</span>
       </div>
       <p class="project-card-meta">${nodes} 节点 · ${rels} 关系 · ${docs.length} 文件</p>
       <div class="project-card-foot">

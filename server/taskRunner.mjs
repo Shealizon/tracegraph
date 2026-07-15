@@ -1,0 +1,282 @@
+import { spawn } from 'node:child_process';
+import path from 'node:path';
+import os from 'node:os';
+import fs from 'node:fs/promises';
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { randomId } from './security.mjs';
+import { httpError } from './userStore.mjs';
+
+export class TaskRunner {
+  constructor(userStore) {
+    this.userStore = userStore;
+    this.codexQueue = Promise.resolve();
+    this.controllers = new Map();
+  }
+
+  async create(session, input) {
+    const id = randomId('task_');
+    const now = new Date().toISOString();
+    const task = {
+      id, type: 'ai', status: 'queued', providerId: input.providerId, model: input.model || '',
+      projectId: input.projectId || '', conversationId: input.conversationId || '',
+      workspaceScope: input.workspaceScope || `${input.projectId || 'default'}--${input.conversationId || 'default'}`,
+      input: { history: input.history || [], userText: String(input.userText || ''), systemPrompt: String(input.systemPrompt || '') },
+      output: '', error: '', createdAt: now, updatedAt: now,
+    };
+    if (!task.input.userText.trim()) throw httpError(400, '消息不能为空');
+    await this.userStore.updateVault(session, (vault) => { vault.tasks[id] = task; });
+    const worker = task.providerId === 'server-codex'
+      ? () => this.runCodex(session, task)
+      : () => this.runProvider(session, task);
+    if (task.providerId === 'server-codex') {
+      this.codexQueue = this.codexQueue.catch(() => {}).then(worker);
+    } else {
+      queueMicrotask(() => worker().catch(() => {}));
+    }
+    return sanitizeTask(task);
+  }
+
+  async list(session, { projectId = '', conversationId = '' } = {}) {
+    const vault = await this.userStore.readVault(session);
+    return Object.values(vault.tasks || {})
+      .filter((task) => !projectId || task.projectId === projectId)
+      .filter((task) => !conversationId || task.conversationId === conversationId)
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+      .map(sanitizeTask);
+  }
+
+  async get(session, id) {
+    const vault = await this.userStore.readVault(session);
+    const task = vault.tasks?.[id];
+    if (!task) throw httpError(404, '任务不存在');
+    return sanitizeTask(task);
+  }
+
+  async cancel(session, id) {
+    this.controllers.get(`${session.userId}:${id}`)?.abort();
+    await this.patch(session, id, { status: 'cancelled', updatedAt: new Date().toISOString() });
+    return this.get(session, id);
+  }
+
+  async runProvider(session, task) {
+    const controller = new AbortController();
+    this.controllers.set(`${session.userId}:${task.id}`, controller);
+    try {
+      await this.patch(session, task.id, { status: 'running', updatedAt: new Date().toISOString() });
+      const vault = await this.userStore.readVault(session);
+      const provider = Object.hasOwn(vault.providers || {}, task.providerId) ? vault.providers[task.providerId] : null;
+      if (!provider) throw new Error('云端模型服务不存在，请重新保存服务商配置');
+      const output = await callProvider(provider, task, controller.signal, vault);
+      await this.patch(session, task.id, { status: 'completed', output, updatedAt: new Date().toISOString() });
+    } catch (error) {
+      const status = controller.signal.aborted ? 'cancelled' : 'failed';
+      await this.patch(session, task.id, { status, error: error?.message || String(error), updatedAt: new Date().toISOString() });
+    } finally {
+      this.controllers.delete(`${session.userId}:${task.id}`);
+    }
+  }
+
+  async runCodex(session, task) {
+    if (process.env.CODEX_ENABLED === '0') {
+      await this.patch(session, task.id, { status: 'failed', error: '服务器未启用 Codex', updatedAt: new Date().toISOString() });
+      return;
+    }
+    await this.patch(session, task.id, { status: 'running', updatedAt: new Date().toISOString() });
+    let tempDir = '';
+    try {
+      const vault = await this.userStore.readVault(session);
+      tempDir = await materializeCodexWorkspace(vault, task);
+      const prompt = ['当前目录是该用户此次任务的临时只读工作区快照；项目数据位于 project.paper-graph.json，附件保持原工作区相对路径。', task.input.systemPrompt, ...task.input.history.map((m) => `${m.role}: ${m.content}`), `user: ${task.input.userText}`].filter(Boolean).join('\n\n');
+      const output = await spawnCodex(prompt, tempDir);
+      await this.patch(session, task.id, { status: 'completed', output, updatedAt: new Date().toISOString() });
+    } catch (error) {
+      await this.patch(session, task.id, { status: 'failed', error: error?.message || String(error), updatedAt: new Date().toISOString() });
+    } finally {
+      if (tempDir) await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  patch(session, id, patch) {
+    return this.userStore.updateVault(session, (vault) => {
+      if (!vault.tasks?.[id]) throw httpError(404, '任务不存在');
+      Object.assign(vault.tasks[id], patch);
+    });
+  }
+}
+
+async function callProvider(provider, task, signal, vault) {
+  const protocol = provider.protocol || 'openai-chat';
+  const base = String(provider.baseUrl || '').replace(/\/+$/, '');
+  const messages = [
+    ...(task.input.systemPrompt ? [{ role: 'system', content: task.input.systemPrompt }] : []),
+    ...task.input.history.filter((m) => ['user', 'assistant'].includes(m.role)).map((m) => ({ role: m.role, content: String(m.content || '') })),
+    { role: 'user', content: task.input.userText },
+  ];
+  const serverTools = createServerTools(vault, task.projectId, task.workspaceScope);
+  let response;
+  if (protocol === 'anthropic-messages') {
+    const system = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
+    const anthropicMessages = messages.filter((m) => m.role !== 'system');
+    const anthropicTools = serverTools.definitions.map((tool) => ({ name: tool.function.name, description: tool.function.description, input_schema: tool.function.parameters }));
+    for (let round = 0; round < 8; round += 1) {
+      response = await fetch(`${base}/messages`, { method: 'POST', signal, headers: { 'content-type': 'application/json', 'x-api-key': provider.apiKey, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: task.model || provider.model, max_tokens: 8192, system, messages: anthropicMessages, tools: anthropicTools }) });
+      const data = await jsonResponse(response);
+      const blocks = data.content || [];
+      const calls = blocks.filter((part) => part.type === 'tool_use');
+      if (!calls.length) return blocks.filter((part) => part.type === 'text').map((part) => part.text).join('');
+      anthropicMessages.push({ role: 'assistant', content: blocks });
+      const results = [];
+      for (const call of calls) results.push({ type: 'tool_result', tool_use_id: call.id, content: JSON.stringify(await serverTools.execute(call.name, call.input || {})) });
+      anthropicMessages.push({ role: 'user', content: results });
+    }
+    throw new Error('模型工具调用轮次过多');
+  }
+  if (protocol === 'gemini') {
+    const model = encodeURIComponent(String(task.model || provider.model).replace(/^models\//, ''));
+    const system = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
+    const contents = messages.filter((m) => m.role !== 'system').map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
+    const functionDeclarations = serverTools.definitions.map((tool) => ({ name: tool.function.name, description: tool.function.description, parameters: tool.function.parameters }));
+    for (let round = 0; round < 8; round += 1) {
+      response = await fetch(`${base}/models/${model}:generateContent`, { method: 'POST', signal, headers: { 'content-type': 'application/json', 'x-goog-api-key': provider.apiKey }, body: JSON.stringify({ systemInstruction: system ? { parts: [{ text: system }] } : undefined, contents, tools: [{ functionDeclarations }] }) });
+      const data = await jsonResponse(response);
+      const parts = data.candidates?.[0]?.content?.parts || [];
+      const calls = parts.filter((part) => part.functionCall);
+      if (!calls.length) return parts.map((part) => part.text || '').join('');
+      contents.push({ role: 'model', parts });
+      const results = [];
+      for (const part of calls) results.push({ functionResponse: { name: part.functionCall.name, response: await serverTools.execute(part.functionCall.name, part.functionCall.args || {}) } });
+      contents.push({ role: 'user', parts: results });
+    }
+    throw new Error('模型工具调用轮次过多');
+  }
+  for (let round = 0; round < 8; round += 1) {
+    response = await fetch(`${base}/chat/completions`, { method: 'POST', signal, headers: { 'content-type': 'application/json', authorization: `Bearer ${provider.apiKey}` }, body: JSON.stringify({ model: task.model || provider.model, messages, tools: serverTools.definitions, tool_choice: 'auto' }) });
+    const data = await jsonResponse(response);
+    const message = data.choices?.[0]?.message || {};
+    const calls = message.tool_calls || [];
+    if (!calls.length) return message.content || '';
+    messages.push({ role: 'assistant', content: message.content || null, tool_calls: calls });
+    for (const call of calls) {
+      let args = {};
+      try { args = JSON.parse(call.function?.arguments || '{}'); } catch { /* malformed arguments become empty */ }
+      const content = await serverTools.execute(call.function?.name, args);
+      messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(content) });
+    }
+  }
+  throw new Error('模型工具调用轮次过多');
+}
+
+async function jsonResponse(response) {
+  const text = await response.text();
+  if (!response.ok) throw new Error(`模型请求失败（${response.status}）：${text.slice(0, 500)}`);
+  try { return JSON.parse(text); } catch { throw new Error('模型返回了无效 JSON'); }
+}
+
+function spawnCodex(prompt, cwd) {
+  return new Promise((resolve, reject) => {
+    const codexArgs = ['exec', '--skip-git-repo-check', '--ephemeral', '--color', 'never', prompt];
+    let command = process.env.CODEX_BIN || 'codex';
+    let args = codexArgs;
+    if (process.platform === 'win32' && !process.env.CODEX_BIN) {
+      command = process.execPath;
+      args = [path.join(process.env.APPDATA || '', 'npm', 'node_modules', '@openai', 'codex', 'bin', 'codex.js'), ...codexArgs];
+    }
+    const child = spawn(command, args, { cwd, windowsHide: true, env: { ...process.env, NO_COLOR: '1' } });
+    let stdout = '', stderr = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('close', (code) => code === 0 ? resolve(stdout.trim()) : reject(new Error(stderr.trim() || `Codex 退出码 ${code}`)));
+  });
+}
+
+function sanitizeTask(task) {
+  const { input, ...safe } = task;
+  return { ...safe, inputPreview: input?.userText?.slice(0, 160) || '' };
+}
+
+function createServerTools(vault, projectId, workspaceScope) {
+  const project = Object.hasOwn(vault.projects || {}, projectId) ? vault.projects[projectId] : null;
+  const nodes = (project?.documents || []).flatMap((document) => (document.graph?.nodes || []).map((node) => ({ ...node, documentId: document.id, documentName: document.name })));
+  const workspaceFiles = Object.values(vault.files || {}).filter((file) => file.scope === workspaceScope);
+  const definitions = [
+    toolDefinition('get_project_summary', '读取当前项目、文档和图谱规模摘要。', { type: 'object', properties: {}, additionalProperties: false }),
+    toolDefinition('search_graph', '在当前项目的节点标题、正文和 ID 中搜索。', { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 30 } }, required: ['query'], additionalProperties: false }),
+    toolDefinition('get_graph_node', '按节点 ID 读取完整节点内容和引用。', { type: 'object', properties: { node_id: { type: 'string' } }, required: ['node_id'], additionalProperties: false }),
+    toolDefinition('list_workspace', '列出当前对话已上传到云端工作区的文件。', { type: 'object', properties: {}, additionalProperties: false }),
+    toolDefinition('read_file', '读取云端工作区中的 UTF-8 文本文件。', { type: 'object', properties: { path: { type: 'string' } }, required: ['path'], additionalProperties: false }),
+    toolDefinition('read_pdf', '在服务端解析云端工作区 PDF 的文字层，可指定页码。', { type: 'object', properties: { path: { type: 'string' }, pages: { type: 'array', items: { type: 'integer', minimum: 1 }, maxItems: 20 } }, required: ['path'], additionalProperties: false }),
+  ];
+  const execute = async (name, args) => {
+    if (name === 'get_project_summary') return project ? {
+      id: project.id, name: project.name, updatedAt: project.updatedAt,
+      documents: (project.documents || []).map((document) => ({ id: document.id, name: document.name, nodes: document.graph?.nodes?.length || 0 })),
+      nodeCount: nodes.length,
+    } : { error: 'project_not_found' };
+    if (name === 'search_graph') {
+      const query = String(args.query || '').trim().toLowerCase();
+      const limit = Math.max(1, Math.min(30, Number(args.limit) || 12));
+      return nodes.filter((node) => nodeSearchText(node).includes(query)).slice(0, limit).map(nodePreview);
+    }
+    if (name === 'get_graph_node') {
+      const node = nodes.find((item) => item.id === args.node_id);
+      return node || { error: 'node_not_found', node_id: args.node_id };
+    }
+    if (name === 'list_workspace') return { files: workspaceFiles.map(({ data, ...file }) => file) };
+    if (name === 'read_file') {
+      const file = workspaceFiles.find((item) => item.path === args.path);
+      if (!file) return { error: 'file_not_found', path: args.path };
+      if (!isTextFile(file)) return { error: 'binary_file', path: file.path, type: file.type, size: file.size };
+      const content = Buffer.from(file.data || '', 'base64').toString('utf8');
+      return { path: file.path, type: file.type, content: content.slice(0, 250_000), truncated: content.length > 250_000 };
+    }
+    if (name === 'read_pdf') {
+      const file = workspaceFiles.find((item) => item.path === args.path);
+      if (!file) return { error: 'file_not_found', path: args.path };
+      if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.path)) return { error: 'not_pdf', path: file.path, type: file.type };
+      return readPdfText(file, args.pages);
+    }
+    return { error: 'unknown_tool', name };
+  };
+  return { definitions, execute };
+}
+
+function toolDefinition(name, description, parameters) { return { type: 'function', function: { name, description, parameters } }; }
+function nodeSearchText(node) { return JSON.stringify([node.id, node.title, node.type, node.sections, node.statementBody, node.proofBody]).toLowerCase(); }
+function nodePreview(node) { return { id: node.id, title: node.title || '', type: node.type || '', number: node.number ?? '', documentName: node.documentName }; }
+function isTextFile(file) { return /^text\//.test(file.type || '') || /\.(md|txt|tex|csv|json|js|ts|css|html)$/i.test(file.path || ''); }
+
+async function materializeCodexWorkspace(vault, task) {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'entail-codex-'));
+  try {
+    const project = Object.hasOwn(vault.projects || {}, task.projectId) ? vault.projects[task.projectId] : null;
+    if (project) await fs.writeFile(path.join(tempDir, 'project.paper-graph.json'), JSON.stringify(project, null, 2));
+    for (const file of Object.values(vault.files || {}).filter((item) => item.scope === task.workspaceScope)) {
+      const target = path.resolve(tempDir, file.path);
+      if (!target.startsWith(`${path.resolve(tempDir)}${path.sep}`)) continue;
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.writeFile(target, Buffer.from(file.data || '', 'base64'));
+    }
+    return tempDir;
+  } catch (error) {
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
+}
+
+async function readPdfText(file, requestedPages) {
+  const data = new Uint8Array(Buffer.from(file.data || '', 'base64'));
+  const document = await getDocument({ data, disableWorker: true, isEvalSupported: false }).promise;
+  const pageCount = document.numPages;
+  const pages = Array.isArray(requestedPages) && requestedPages.length
+    ? [...new Set(requestedPages.map(Number).filter((page) => Number.isInteger(page) && page >= 1 && page <= document.numPages))].slice(0, 20)
+    : Array.from({ length: Math.min(document.numPages, 20) }, (_, index) => index + 1);
+  const output = [];
+  for (const pageNumber of pages) {
+    const page = await document.getPage(pageNumber);
+    const content = await page.getTextContent();
+    output.push({ page: pageNumber, text: content.items.map((item) => item.str || '').join(' ').replace(/\s+/g, ' ').trim() });
+  }
+  await document.destroy();
+  return { path: file.path, pageCount, pages: output, truncated: !requestedPages?.length && pageCount > 20 };
+}
