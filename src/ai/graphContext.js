@@ -37,6 +37,13 @@ export function graphToolDefinitions() {
       type: 'object', required: ['node_id'], additionalProperties: false,
       properties: { node_id: { type: 'string' }, direction: { type: 'string', enum: ['references', 'cited_by', 'both'] } },
     }),
+    tool('get_graph_neighbors_batch', '批量读取多个已知节点的直接关系。已知多个 node_id 时优先使用本工具，一次最多读取 12 个节点；direction 可选 references、cited_by 或 both。', {
+      type: 'object', required: ['node_ids'], additionalProperties: false,
+      properties: {
+        node_ids: { type: 'array', minItems: 1, maxItems: BATCH_NODE_LIMIT, items: { type: 'string' }, description: '需要一起读取关系的节点 ID 列表' },
+        direction: { type: 'string', enum: ['references', 'cited_by', 'both'] },
+      },
+    }),
     tool('locate_graph_reference', '定位节点正文中的标签或引用文本，返回 section、字符位置和上下文片段。', {
       type: 'object', required: ['node_id'], additionalProperties: false,
       properties: { node_id: { type: 'string' }, label_id: { type: 'string' }, ref_target: { type: 'string' }, query: { type: 'string' } },
@@ -54,6 +61,7 @@ export async function executeGraphTool(model, name, args, hooks = {}) {
   if (name === 'get_graph_node') return getNode(model, args);
   if (name === 'get_graph_nodes') return getNodes(model, args);
   if (name === 'get_graph_neighbors') return getNeighbors(model, args);
+  if (name === 'get_graph_neighbors_batch') return getNeighborsBatch(model, args);
   if (name === 'locate_graph_reference') return locateReference(model, args);
   if (name === 'focus_graph_node') {
     const node = requireNode(model, args.node_id);
@@ -63,7 +71,7 @@ export async function executeGraphTool(model, name, args, hooks = {}) {
   return null;
 }
 
-export function isGraphTool(name) { return name.startsWith('graph_') || ['search_graph_nodes', 'get_graph_node', 'get_graph_nodes', 'get_graph_neighbors', 'locate_graph_reference', 'focus_graph_node'].includes(name); }
+export function isGraphTool(name) { return name.startsWith('graph_') || ['search_graph_nodes', 'get_graph_node', 'get_graph_nodes', 'get_graph_neighbors', 'get_graph_neighbors_batch', 'locate_graph_reference', 'focus_graph_node'].includes(name); }
 
 function searchNodes(model, args) {
   const query = String(args.query || '').trim().toLowerCase();
@@ -136,6 +144,25 @@ function limitSections(sections, limit) {
 function getNeighbors(model, args) {
   const node = requireNode(model, args.node_id);
   const direction = args.direction || 'both';
+  return neighborsForNode(model, node, direction);
+}
+
+function getNeighborsBatch(model, args) {
+  const ids = [...new Set(Array.isArray(args.node_ids) ? args.node_ids.map((id) => String(id || '').trim()).filter(Boolean) : [])];
+  if (!ids.length) throw new Error('请提供至少一个 node_id');
+  if (ids.length > BATCH_NODE_LIMIT) throw new Error(`一次最多读取 ${BATCH_NODE_LIMIT} 个节点关系`);
+  const direction = args.direction || 'both';
+  const nodes = [];
+  const missing = [];
+  for (const id of ids) {
+    const node = model?.nodeById?.get(id);
+    if (!node) { missing.push(id); continue; }
+    nodes.push(neighborsForNode(model, node, direction));
+  }
+  return { direction, requested: ids, nodes, missing };
+}
+
+function neighborsForNode(model, node, direction) {
   return {
     node: nodeSummary(node),
     ...(direction !== 'cited_by' ? { references: [...(model.deps.get(node.id) || [])].map((id) => nodeSummary(model.nodeById.get(id))) } : {}),

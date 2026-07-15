@@ -1591,7 +1591,7 @@ function toolLabel(name) {
   return ({
     list_workspace: '查看对话文件', read_file: '读取文件', search_files: '搜索文件', read_pdf: '解析 PDF', write_file: '写入文件',
     web_search: '联网搜索', open_url: '读取网页', resolve_doi: '解析 DOI', graph_overview: '理解图谱',
-    search_graph_nodes: '搜索图谱节点', get_graph_node: '读取图谱节点', get_graph_nodes: '批量读取图谱节点', get_graph_neighbors: '读取节点关系',
+    search_graph_nodes: '搜索图谱节点', get_graph_node: '读取图谱节点', get_graph_nodes: '批量读取图谱节点', get_graph_neighbors: '读取节点关系', get_graph_neighbors_batch: '批量读取节点关系',
     locate_graph_reference: '定位图谱引用', focus_graph_node: '打开图谱节点',
   })[name] || name;
 }
