@@ -20,6 +20,9 @@ npm start
 `PAPER_GRAPH_DATA` 指向持久卷并限制为服务进程可读写。也可运行
 `docker compose up --build`。
 
+直接运行和容器默认监听 `0.0.0.0`；仓库附带的 systemd 服务会设置
+`HOST=127.0.0.1`，仅允许 Nginx 从本机反向代理访问 API。
+
 首个注册账号会成为管理员。公开部署建议在首次启动前设置 `ADMIN_EMAIL` 与
 `ADMIN_PASSWORD` 自动创建管理员，并在需要封闭注册时设置 `ALLOW_REGISTRATION=0`。
 

@@ -10,6 +10,7 @@ Group=papergraph
 WorkingDirectory=/opt/paper-graph
 Environment=NODE_ENV=production
 Environment=PORT=8787
+Environment=HOST=127.0.0.1
 Environment=PAPER_GRAPH_DATA=/var/lib/paper-graph/data
 Environment=HOME=/var/lib/paper-graph
 EnvironmentFile=-/etc/paper-graph.env

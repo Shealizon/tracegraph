@@ -8,6 +8,7 @@ import { TaskRunner } from './taskRunner.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const port = Number(process.env.PORT || 8787);
+const host = process.env.HOST || '0.0.0.0';
 const store = new UserStore(process.env.PAPER_GRAPH_DATA || path.join(root, 'server-data'));
 await store.init();
 const tasks = new TaskRunner(store);
@@ -196,7 +197,7 @@ app.use((error, _req, res, _next) => {
   res.status(status).json({ error: error.message || '服务器错误' });
 });
 
-app.listen(port, () => console.log(`Entail server listening on http://localhost:${port}`));
+app.listen(port, host, () => console.log(`Entail server listening on http://${host}:${port}`));
 
 async function requireAuth(req, res, next) {
   try { req.auth = await store.authenticate(readCookie(req, 'pg_session')); next(); }
