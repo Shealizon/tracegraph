@@ -1,6 +1,7 @@
 import { createBrowserWorkspace } from '../ai/workspace.js';
 import { createClientTools } from '../ai/tools.js';
-import { runAgentTurn } from '../ai/modelClient.js';
+import { compactConversation as compactModelContext, DEFAULT_SYSTEM_PROMPT, runAgentTurn } from '../ai/modelClient.js';
+import { contextUsage, estimateContextTokens, formatTokenCount, resolveContextWindow } from '../ai/contextBudget.js';
 import { buildGraphContext } from '../ai/graphContext.js';
 import {
   aiQuoteAttachment, appendUniqueContext, contextPrompt, graphFileAttachment, graphMemberAttachment, graphNodeAttachment, graphNoteAttachment, graphReferenceAttachment, graphSelectionAttachment, graphTagAttachment,
@@ -70,6 +71,10 @@ export function buildAiPanel(ctx) {
     mentionRequest: 0,
     layoutResizeTimer: 0,
     quoteSelection: null,
+    compacting: false,
+    compactAborter: null,
+    contextSnapshot: null,
+    contextEstimateFrame: 0,
   };
   Object.defineProperty(state, 'messages', {
     get: () => activeConversation(conversationState).messages,
@@ -77,6 +82,7 @@ export function buildAiPanel(ctx) {
   });
   const renderQueued = new WeakSet();
   const expandedProviders = new Set();
+  const contextToolDefinitions = createClientTools(workspace, { graphModel: ctx.model }).definitions;
 
   const launcher = button('ai-launcher', 'AI', '打开 AI Assistant');
   launcher.setAttribute('aria-label', '打开 AI Assistant');
@@ -112,6 +118,7 @@ export function buildAiPanel(ctx) {
         <div class="ai-input-actions">
           <button class="icon-btn" data-attach title="添加文件或 PDF">${paperclipIcon()}</button>
           <button class="ai-model-label" data-model-label title="切换模型">未配置模型</button>
+          <button class="ai-context-toggle" data-context-toggle title="查看上下文使用量" aria-label="查看上下文使用量" aria-expanded="false"><span class="ai-context-ring" data-context-ring aria-hidden="true"></span><span class="ai-context-value" data-context-value>—</span></button>
           <button class="ai-send" data-send title="发送">${sendIcon()}</button>
         </div>
       </div>
@@ -129,6 +136,7 @@ export function buildAiPanel(ctx) {
   const turnRail = panel.querySelector('[data-turn-rail]');
   const mentionMenu = panel.querySelector('[data-mention-menu]');
   const quoteSelectionButton = panel.querySelector('[data-quote-selection]');
+  const contextToggle = panel.querySelector('[data-context-toggle]');
 
   applyWidth(panel, Number(localStorage.getItem(WIDTH_KEY)) || Math.round(innerWidth / 3));
   const initialLayout = localStorage.getItem(LAYOUT_KEY) || 'floating';
@@ -152,6 +160,7 @@ export function buildAiPanel(ctx) {
   });
   panel.querySelector('[data-settings]').addEventListener('click', () => showSettings(true));
   panel.querySelector('[data-model-label]').addEventListener('click', showModelPicker);
+  contextToggle.addEventListener('click', showContextPanel);
   panel.querySelector('[data-workspace]').addEventListener('click', () => showWorkspace(true));
   panel.querySelector('[data-conversations]').addEventListener('click', () => {
     if (panel.classList.contains('is-collapsed')) { setCollapsed(false, { persist: false }); return; }
@@ -196,6 +205,7 @@ export function buildAiPanel(ctx) {
     input.style.height = 'auto';
     input.style.height = `${Math.min(150, input.scrollHeight)}px`;
     updateMentionMenu();
+    scheduleContextUsageSync();
   });
   bindGraphReferencePaste(input, {
     insertMarkdown: false,
@@ -229,7 +239,7 @@ export function buildAiPanel(ctx) {
   });
   document.addEventListener('pointerdown', (event) => {
     if (subpanel.hidden || !subpanel.classList.contains('is-popover')) return;
-    if (subpanel.contains(event.target) || event.target.closest('[data-conversations], [data-model-label]')) return;
+    if (subpanel.contains(event.target) || event.target.closest('[data-conversations], [data-model-label], [data-context-toggle]')) return;
     closeSubpanel();
   });
   window.addEventListener('keydown', (event) => {
@@ -241,6 +251,7 @@ export function buildAiPanel(ctx) {
   }
 
   async function submitText(rawText) {
+    if (state.compacting) return;
     const running = tasks.get(activeConversation(conversationState).id);
     if (running) {
       running.aborter.abort();
@@ -248,10 +259,76 @@ export function buildAiPanel(ctx) {
     }
     const text = normalizeAiText(rawText);
     if (!text) return;
+    if (getContextSnapshot().ratio >= 0.8 && activeConversation(conversationState).messages.some((message) => message.role === 'user' || message.role === 'assistant')) {
+      const compacted = await runConversationCompaction({ automatic: true });
+      if (!compacted) return;
+    }
     closeSubpanel();
     input.value = '';
     input.style.height = 'auto';
     await startTurn(text);
+  }
+
+  async function runConversationCompaction({ automatic = false } = {}) {
+    const conversation = activeConversation(conversationState);
+    if (state.compacting || tasks.has(conversation.id)) return false;
+    const messages = conversation.messages.filter((message) => message.role === 'user' || message.role === 'assistant');
+    if (!messages.length) return false;
+    const modelConfig = currentModelConfig();
+    if (!modelConfig) {
+      toast('请先配置模型后再压缩上下文');
+      return false;
+    }
+    state.compacting = true;
+    state.compactAborter = new AbortController();
+    setContextPanelStatus(automatic ? '正在自动压缩上下文…' : '正在压缩上下文…');
+    syncContextUsage();
+    try {
+      const summary = await compactModelContext({
+        config: { ...modelConfig, contextPrompt: buildGraphContext(ctx.model, selectedNodeId) },
+        transcript: buildCompactionTranscript(messages),
+        signal: state.compactAborter.signal,
+      });
+      if (!summary.trim()) throw new Error('模型没有返回压缩摘要');
+      const recent = messages.slice(-4);
+      const compactedMessage = {
+        role: 'assistant',
+        content: summary.trim(),
+        blocks: [],
+        sources: [],
+        model: modelConfig.displayName || modelConfig.model || '',
+        compaction: true,
+        createdAt: new Date().toISOString(),
+      };
+      conversation.messages = [compactedMessage, ...recent];
+      conversation.updatedAt = new Date().toISOString();
+      persist();
+      renderMessages({ follow: true, immediate: true });
+      toast(automatic ? '已自动压缩上下文' : '上下文已压缩');
+      return true;
+    } catch (error) {
+      if (error?.name !== 'AbortError') toast(`上下文压缩失败：${error?.message || error}`);
+      return false;
+    } finally {
+      state.compacting = false;
+      state.compactAborter = null;
+      setContextPanelStatus('');
+      syncContextUsage();
+    }
+  }
+
+  function buildCompactionTranscript(messages) {
+    const transcript = modelHistory(messages).map((message, index) => {
+      const role = message.role === 'user' ? '用户' : '助手';
+      const sources = message.sources?.length ? `\n来源：${JSON.stringify(message.sources)}` : '';
+      const debug = serializeMessageDebug(message, { index });
+      return `[${index + 1}] ${role}\n${debug}${sources}`;
+    }).join('\n\n---\n\n');
+    const maxCharacters = Math.max(24_000, Math.floor(resolveContextWindow(currentModelConfig()) * 3.2 * 0.78));
+    if (transcript.length <= maxCharacters) return transcript;
+    const head = transcript.slice(0, Math.min(12_000, Math.floor(maxCharacters * 0.25)));
+    const tail = transcript.slice(-(maxCharacters - head.length - 80));
+    return `${head}\n\n[…中间历史已省略，摘要必须说明这一点…]\n\n${tail}`;
   }
 
   function updateQuoteSelection() {
@@ -403,6 +480,7 @@ export function buildAiPanel(ctx) {
 
   function updateAssistantDom(conversation, message) {
     if (activeConversation(conversationState).id !== conversation.id) return;
+    scheduleContextUsageSync();
     if (renderQueued.has(message)) return;
     renderQueued.add(message);
     requestAnimationFrame(() => {
@@ -884,6 +962,7 @@ export function buildAiPanel(ctx) {
       chip.append(remove);
       attachmentsEl.append(chip);
     }
+    scheduleContextUsageSync();
     for (const attachment of activeConversation(conversationState).attachments || []) {
       const chip = document.createElement('span');
       chip.className = 'ai-attachment-chip';
@@ -1223,6 +1302,78 @@ export function buildAiPanel(ctx) {
     }
   }
 
+  function showContextPanel() {
+    if (!openSubpanel('context', 'is-popover is-context-popover', true)) return;
+    const snapshot = getContextSnapshot();
+    subpanel.innerHTML = `<div class="ai-context-head"><div><strong>上下文使用量</strong><small>发送前估算 · 含系统提示词、历史消息和工具定义</small></div><button class="icon-btn" data-sub-close title="关闭">${closeIcon()}</button></div><div class="ai-context-meter" data-context-meter><span data-context-meter-fill></span><strong data-context-panel-value></strong><small data-context-panel-percent></small></div><div class="ai-context-stats"><span><small>当前上下文</small><strong data-context-stat-current></strong></span><span><small>模型上限</small><strong data-context-stat-total></strong></span></div><button class="btn btn--primary ai-context-compact" data-context-compact>立即压缩</button><p class="ai-context-status" data-context-status></p><p class="ai-context-note">精确 token 数可能因供应商的工具、图片或文件计数方式不同而变化。</p>`;
+    subpanel.querySelector('[data-sub-close]').addEventListener('click', closeSubpanel);
+    subpanel.querySelector('[data-context-compact]').addEventListener('click', async () => {
+      const button = subpanel.querySelector('[data-context-compact]');
+      button.disabled = true;
+      await runConversationCompaction();
+      if (!subpanel.hidden) {
+        updateContextPanel(getContextSnapshot());
+        button.disabled = state.compacting;
+      }
+    });
+    positionSubpanel(contextToggle, 'above');
+    updateContextPanel(snapshot);
+  }
+
+  function getContextSnapshot() {
+    const conversation = activeConversation(conversationState);
+    const modelConfig = currentModelConfig();
+    const pendingAttachments = [
+      ...(conversation.contextAttachments || []),
+      ...(conversation.attachments || []).map(graphFileAttachment).filter(Boolean),
+    ];
+    const history = modelHistory(conversation.messages);
+    const system = [DEFAULT_SYSTEM_PROMPT, buildGraphContext(ctx.model, selectedNodeId)].filter(Boolean).join('\n\n');
+    const userText = contextPrompt(input.value || '', pendingAttachments, ctx.model);
+    const tokens = estimateContextTokens({ system, history, userText, tools: contextToolDefinitions });
+    return contextUsage(tokens, resolveContextWindow(modelConfig));
+  }
+
+  function syncContextUsage() {
+    const snapshot = getContextSnapshot();
+    state.contextSnapshot = snapshot;
+    contextToggle.style.setProperty('--context-ratio', `${Math.min(1, snapshot.ratio) * 100}%`);
+    contextToggle.classList.toggle('is-warning', snapshot.ratio >= 0.8 && snapshot.ratio < 1);
+    contextToggle.classList.toggle('is-danger', snapshot.ratio >= 1);
+    contextToggle.querySelector('[data-context-value]').textContent = `${formatTokenCount(snapshot.tokens)}/${formatTokenCount(snapshot.total)} · ${snapshot.percent}%`;
+    contextToggle.title = `上下文 ${formatTokenCount(snapshot.tokens)} / ${formatTokenCount(snapshot.total)}（发送前估算）`;
+    updateContextPanel(snapshot);
+  }
+
+  function scheduleContextUsageSync() {
+    cancelAnimationFrame(state.contextEstimateFrame);
+    state.contextEstimateFrame = requestAnimationFrame(() => {
+      state.contextEstimateFrame = 0;
+      syncContextUsage();
+    });
+  }
+
+  function updateContextPanel(snapshot) {
+    if (subpanel.hidden || subpanel.dataset.mode !== 'context') return;
+    const meter = subpanel.querySelector('[data-context-meter]');
+    if (meter) meter.style.setProperty('--context-ratio', `${Math.min(1, snapshot.ratio) * 100}%`);
+    const value = subpanel.querySelector('[data-context-panel-value]');
+    const percent = subpanel.querySelector('[data-context-panel-percent]');
+    const current = subpanel.querySelector('[data-context-stat-current]');
+    const total = subpanel.querySelector('[data-context-stat-total]');
+    if (value) value.textContent = `${formatTokenCount(snapshot.tokens)} / ${formatTokenCount(snapshot.total)}`;
+    if (percent) percent.textContent = `${snapshot.percent}% · ${snapshot.ratio >= 0.8 ? '接近上限' : '可用空间充足'}`;
+    if (current) current.textContent = formatTokenCount(snapshot.tokens);
+    if (total) total.textContent = formatTokenCount(snapshot.total);
+    const compact = subpanel.querySelector('[data-context-compact]');
+    if (compact) compact.disabled = state.compacting || tasks.has(activeConversation(conversationState).id) || !activeConversation(conversationState).messages.some((message) => message.role === 'user' || message.role === 'assistant');
+  }
+
+  function setContextPanelStatus(message) {
+    const status = subpanel.querySelector('[data-context-status]');
+    if (status) status.textContent = message;
+  }
+
   function selectConversationModel(id) {
     const model = providerState.enabledModels.find((item) => item.id === id);
     if (!model) return;
@@ -1283,6 +1434,7 @@ export function buildAiPanel(ctx) {
     subpanel.hidden = false;
     panel.querySelector('[data-conversations]').setAttribute('aria-expanded', mode === 'conversations' ? 'true' : 'false');
     panel.querySelector('[data-model-label]').setAttribute('aria-expanded', mode === 'models' ? 'true' : 'false');
+    contextToggle.setAttribute('aria-expanded', mode === 'context' ? 'true' : 'false');
     return true;
   }
   function closeSubpanel() {
@@ -1293,6 +1445,7 @@ export function buildAiPanel(ctx) {
     delete subpanel.dataset.mode;
     panel.querySelector('[data-conversations]').setAttribute('aria-expanded', 'false');
     panel.querySelector('[data-model-label]').setAttribute('aria-expanded', 'false');
+    contextToggle.setAttribute('aria-expanded', 'false');
   }
   function positionSubpanel(anchor, placement) {
     const panelRect = panel.getBoundingClientRect();
@@ -1475,6 +1628,7 @@ export function buildAiPanel(ctx) {
   function syncModelLabel() {
     const config = currentModelConfig();
     panel.querySelector('[data-model-label]').textContent = config?.displayName || '选择模型';
+    syncContextUsage();
   }
   function syncBusy() {
     const busy = tasks.has(activeConversation(conversationState).id);

@@ -6,6 +6,18 @@ export const DEFAULT_SYSTEM_PROMPT = `你是 Paper Graph 内的研究助手。
 联网搜索结果包含 citation 字段，例如 [S1]。使用搜索结果支持结论时，必须在相应句子后原样写出该 citation；不要杜撰不存在的引用编号，也不要把 citation 改写为 Markdown 链接。
 联网搜索一次会同时检索百科与学术文献。只有当 DOI 原样出现在用户消息或工具结果中时才可使用 resolve_doi，绝对不要根据标题、作者或记忆猜测 DOI；DOI 未找到时不要重复解析，应改用标题/作者搜索或已有网页，并继续基于现有信息回答。已有明确 URL 时使用 open_url，不要通过改写关键词反复寻找同一页面。web_search 返回 no_new_results 时不得再次调用 web_search；应基于已有来源完成回答并说明不确定性，仅可用已有的明确 URL/DOI 做一次精确补充。`;
 
+export const COMPACTION_SYSTEM_PROMPT = `你是对话上下文压缩器。请把下面的研究对话整理成供后续助手继续工作的交接摘要。
+只保留对继续完成用户目标有用的信息，不要编造或推断未确认的事实。必须保留：用户目标、明确要求、限制条件和偏好；已确认的事实、定义、关键数值、文件/节点/网址/标识符；已作出的决定、已完成的工作、遇到的错误及修复；未解决的问题、风险和下一步行动；仍然有效的来源、引用或工具结果。
+保留必要的原文精确值；不确定内容明确标记为“未确认”。不要调用工具，不要写寒暄，不要回答原问题。
+只输出以下结构化摘要，不要添加其它内容：
+<summary>
+## 目标与约束
+## 关键事实与引用
+## 决策与已完成工作
+## 未解决问题与风险
+## 下一步
+</summary>`;
+
 const STREAM_RETRY_DELAYS = [800, 1600, 3200];
 
 export async function runAgentTurn({ config, history, userText, tools, onDelta, onReasoningDelta, onStatus, signal }) {
@@ -75,6 +87,15 @@ export async function runAgentTurn({ config, history, userText, tools, onDelta, 
   }
 }
 
+export async function compactConversation({ config, transcript, onDelta, signal }) {
+  validateConfig(config);
+  const response = await streamCompletion(config, [
+    { role: 'system', content: COMPACTION_SYSTEM_PROMPT },
+    { role: 'user', content: String(transcript || '') },
+  ], [], onDelta, undefined, signal);
+  return response.content || '';
+}
+
 export function isRetryableStreamError(error) {
   if (!error) return false;
   if (error.name === 'AbortError') return false;
@@ -110,13 +131,18 @@ export async function streamCompletion(config, messages, tools, onDelta, onReaso
 
 async function streamOpenAi(config, messages, tools, onDelta, onReasoningDelta, signal) {
   const base = config.baseUrl.replace(/\/+$/, '');
+  const body = { model: config.model, messages, stream: true };
+  if (tools.length) {
+    body.tools = tools;
+    body.tool_choice = 'auto';
+  }
   const response = await fetch(`${base}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${config.apiKey}`,
     },
-    body: JSON.stringify({ model: config.model, messages, tools, tool_choice: 'auto', stream: true }),
+    body: JSON.stringify(body),
     signal,
   });
   if (!response.ok) {
