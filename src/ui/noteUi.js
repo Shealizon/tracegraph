@@ -8,6 +8,8 @@ const SIZE_KEY = 'paper-graph:note-window-size';
 const DEFAULT_SIZE = { width: 380, height: 440 };
 const PREVIEW_MIN_SIZE = { width: 300, height: 220 };
 const EDITOR_MIN_SIZE = { width: 430, height: 300 };
+const usesCompactNoteLayout = () => window.matchMedia?.('(max-width: 760px)').matches;
+const supportsHover = () => !window.matchMedia || window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
 export function createNoteWindowController(ctx) {
   let closeTimer = null;
@@ -30,16 +32,28 @@ export function createNoteWindowController(ctx) {
     } catch { return { width: fallbackWidth, height: fallbackHeight }; }
   };
   const saveSize = (element) => {
+    if (usesCompactNoteLayout()) return;
     const rect = element?.getBoundingClientRect?.();
     if (!rect?.width || !rect?.height) return;
     localStorage.setItem(SIZE_KEY, JSON.stringify({ width: Math.round(rect.width), height: Math.round(rect.height) }));
   };
   const applySize = (element) => {
+    if (usesCompactNoteLayout()) {
+      element.style.removeProperty('width');
+      element.style.removeProperty('height');
+      return;
+    }
     const size = readSize(element);
     element.style.width = `${Math.min(size.width, window.innerWidth - 16)}px`;
     element.style.height = `${Math.min(size.height, window.innerHeight - 16)}px`;
   };
   const position = (element, anchor) => {
+    if (usesCompactNoteLayout()) {
+      element.style.left = '8px';
+      element.style.top = '8px';
+      lastPosition = { left: 8, top: 8 };
+      return lastPosition;
+    }
     const anchorElement = anchor?.closest?.('.note-ui-row, .m-menu-item, .tag-note-row') || anchor;
     const r = anchorElement?.getBoundingClientRect?.() || { left: 8, right: 8, top: 8, bottom: 8 };
     const box = element.getBoundingClientRect();
@@ -53,6 +67,12 @@ export function createNoteWindowController(ctx) {
     return lastPosition;
   };
   const clampPosition = (element, preferred = lastPosition) => {
+    if (usesCompactNoteLayout()) {
+      element.style.left = '8px';
+      element.style.top = '8px';
+      lastPosition = { left: 8, top: 8 };
+      return lastPosition;
+    }
     const box = element.getBoundingClientRect();
     const left = Math.max(8, Math.min(preferred?.left ?? box.left ?? 8, window.innerWidth - box.width - 8));
     const top = Math.max(8, Math.min(preferred?.top ?? box.top ?? 8, window.innerHeight - box.height - 8));
@@ -61,12 +81,14 @@ export function createNoteWindowController(ctx) {
     return lastPosition;
   };
   const observeSize = (element) => {
+    if (usesCompactNoteLayout()) return () => {};
     if (!window.ResizeObserver) return () => {};
     const observer = new ResizeObserver(() => { saveSize(element); clampPosition(element); });
     observer.observe(element);
     return () => observer.disconnect();
   };
   const attachEdgeResize = (element) => {
+    if (usesCompactNoteLayout()) return () => {};
     const cleanups = [];
     for (const direction of ['n', 'e', 's', 'w', 'ne', 'nw', 'se', 'sw']) {
       const handle = document.createElement('span');
@@ -168,8 +190,10 @@ export function createNoteRow(ctx, note, { className = '', showDelete = true } =
     if (ok) { ctx.closeTagInstanceMenu?.(); ctx.persistNotes?.(removeNote(ctx.getNotes?.() || [], note.id)); }
   }, 'note-ui-delete');
   row.append(label, actions);
-  row.addEventListener('pointerenter', () => ctx.noteWindows?.show(note, row));
-  row.addEventListener('pointerleave', () => ctx.noteWindows?.scheduleClose());
+  if (supportsHover()) {
+    row.addEventListener('pointerenter', () => ctx.noteWindows?.show(note, row));
+    row.addEventListener('pointerleave', () => ctx.noteWindows?.scheduleClose());
+  }
   return row;
 }
 

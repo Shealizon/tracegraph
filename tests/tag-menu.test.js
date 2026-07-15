@@ -9,7 +9,7 @@ import { createNoteWindowController } from '../src/ui/noteUi.js';
 describe('tag annotation note menu', () => {
   afterEach(() => {
     document.querySelectorAll('.m-menu, .tag-note-hover-preview').forEach((element) => element.remove());
-    vi.useRealTimers(); vi.restoreAllMocks();
+    vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals();
   });
 
   function managerWith(noteCount = 1) {
@@ -71,5 +71,25 @@ describe('tag annotation note menu', () => {
     expect(manager.ctx.openNoteEditor).toHaveBeenCalledWith('', expect.objectContaining({
       tagPointer: expect.objectContaining({ tagId: tag.id, instanceId: member.instanceId }),
     }));
+  });
+
+  it('disables hover previews and window resizing in the compact touch layout', () => {
+    vi.stubGlobal('matchMedia', vi.fn((query) => ({ matches: query.includes('max-width: 760px') })));
+    const { manager, tag, member } = managerWith(1);
+    const anchor = document.createElement('button'); document.body.appendChild(anchor);
+    manager._openMarkChipMenu(anchor, tag, member);
+
+    const row = document.querySelector('.menu-note-row');
+    row.dispatchEvent(new Event('pointerenter'));
+    expect(document.querySelector('.tag-note-hover-preview')).toBeNull();
+
+    const panel = document.createElement('section');
+    panel.style.width = '380px'; panel.style.height = '440px';
+    manager.ctx.noteWindows.applySize(panel);
+    const disconnect = manager.ctx.noteWindows.attachEdgeResize(panel);
+    expect(panel.style.width).toBe('');
+    expect(panel.style.height).toBe('');
+    expect(panel.querySelectorAll('.note-resize-handle')).toHaveLength(0);
+    disconnect();
   });
 });

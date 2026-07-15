@@ -474,6 +474,13 @@
 .reader-preview-body .proof-wrap { margin-top: 12px; border-top: 1px dashed var(--line-soft); padding-top: 10px; }
 
 @media (max-width: 760px) {
+  .m-menu { min-width: min(240px, calc(100vw - 16px)); max-height: min(70dvh, 520px); }
+  .mm-main { min-height: 44px; padding: 9px 10px; font-size: 13px; }
+  .mm-action { width: 40px; height: 40px; }
+  .card-simple-menu { max-width: calc(100vw - 16px); padding: 5px; gap: 2px; overflow-x: auto; overscroll-behavior-x: contain; }
+  .csm-btn,
+  .card-sm-tag { flex: 0 0 40px; width: 40px; min-width: 40px; height: 40px; }
+  .csm-insert { max-width: calc(100vw - 16px); overflow-x: auto; }
   .reader-tabs { padding: 6px 7px 5px; gap: 5px; }
   .reader-tab { min-width: 132px; max-width: 78vw; height: 40px; }
   .reader-tab:not(.active) { min-width: 106px; max-width: 132px; }
@@ -496,5 +503,14 @@
   .reader-line { min-height: 44px; }
   .reader-library-page { height: auto; min-height: 100%; padding: 14px 12px 28px; overflow: visible; }
   .reader-search-panel { width: 100vw; border-right: 0; }
-  .reader-preview { max-width: calc(100vw - 20px); max-height: 58vh; }
+  .reader-preview {
+    left: max(10px, env(safe-area-inset-left)) !important;
+    right: max(10px, env(safe-area-inset-right)) !important;
+    bottom: max(10px, env(safe-area-inset-bottom)) !important;
+    top: auto !important;
+    width: auto !important;
+    max-width: none;
+    max-height: 58dvh;
+  }
+  .reader-preview-head button { width: 40px; height: 40px; }
 }

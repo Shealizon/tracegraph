@@ -415,6 +415,7 @@ details[open] > summary > .ai-chevron { transform: rotate(180deg); }
   .ai-attachment-row { padding-bottom: 2px; }
   .ai-attachment-chip { height: 34px; }
   .ai-attachment-remove, .ai-file-remove, .ai-message-action { width: 34px; height: 34px; }
+  .ai-message-action.ai-message-action--note { width: 34px; min-width: 34px; }
   .ai-message-actions { min-height: 34px; opacity: .9; }
   .ai-message--user .ai-message-stack { width: min(88%, 100%); max-width: 100%; }
   .ai-message--user .ai-message-body { max-width: 100%; overflow: hidden; }

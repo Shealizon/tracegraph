@@ -938,7 +938,7 @@ export function openNoteEditor(ctx, noteId = '', { tagPointer = undefined, ancho
 
   let drag = null;
   head.addEventListener('pointerdown', (event) => {
-    if (event.button !== 0 || event.target.closest('button')) return;
+    if (window.matchMedia?.('(max-width: 760px)').matches || event.button !== 0 || event.target.closest('button')) return;
     const rect = editor.getBoundingClientRect();
     drag = { x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
     head.setPointerCapture?.(event.pointerId); event.preventDefault();

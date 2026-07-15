@@ -1035,3 +1035,191 @@ body {
   .cfg-adv-grid { grid-template-columns: 1fr; }
 }
 
+/* ---- Mobile / touch layout -------------------------------------------------
+   Keep viewport-bound UI inside the safe area while leaving graph-world cards
+   untouched: those continue to pan and zoom with the canvas. */
+@supports (height: 100dvh) {
+  #app,
+  #leading-root { height: 100dvh; }
+}
+
+@media (max-width: 760px) {
+  #sidebar {
+    width: min(88vw, 340px);
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-left: max(12px, env(safe-area-inset-left));
+    overscroll-behavior: contain;
+  }
+
+  .side-search { font-size: 16px; }
+  .side-actions .btn,
+  .side-menu-item,
+  .label-dot-menu .ldm-item,
+  .tag-note-tag-option { min-height: 44px; }
+  .side-menu,
+  .label-dot-menu,
+  .doc-tip {
+    max-width: calc(100vw - max(16px, env(safe-area-inset-left) + env(safe-area-inset-right)));
+    max-height: min(70dvh, 520px);
+    overscroll-behavior: contain;
+  }
+  .label-dot-menu { width: min(340px, calc(100vw - 16px)); }
+
+  .tag-row { min-height: 44px; padding-block: 6px; }
+  .tag-name { min-height: 32px; }
+  .tag-swatch { width: 20px; height: 20px; }
+  .tag-ic,
+  .tm-note-toggle,
+  .tm-del { width: 36px; height: 36px; }
+  .tag-member { min-height: 42px; padding-block: 6px; }
+  .note-ui-row { min-height: 44px; padding-block: 5px; }
+  .note-ui-action,
+  .tag-note-action,
+  .tag-note-delete { width: 36px; height: 36px; opacity: 1; }
+
+  .tag-note-editor {
+    left: max(8px, env(safe-area-inset-left)) !important;
+    right: max(8px, env(safe-area-inset-right)) !important;
+    top: max(8px, env(safe-area-inset-top)) !important;
+    bottom: max(8px, env(safe-area-inset-bottom)) !important;
+    width: auto !important;
+    height: auto !important;
+    min-width: 0;
+    min-height: 0;
+    max-width: none;
+    max-height: none;
+    border-radius: 15px;
+  }
+  .tag-note-editor-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: 40px 44px;
+    gap: 2px 8px;
+    min-height: 92px;
+    padding: 4px 7px;
+    cursor: default;
+  }
+  .tag-note-identity {
+    grid-column: 1;
+    grid-row: 1;
+    width: 100%;
+    max-width: none;
+    height: 40px;
+  }
+  .tag-note-save-status {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 56px;
+    text-align: right;
+  }
+  .tag-note-editor-actions {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(40px, 1fr));
+    gap: 3px;
+  }
+  .tag-note-editor-action {
+    width: 100%;
+    min-width: 40px;
+    height: 40px;
+  }
+  .tag-note-tag-picker {
+    left: 7px;
+    right: 7px;
+    top: 94px;
+    width: auto;
+    max-height: min(52dvh, 420px);
+  }
+  .tag-note-title-input {
+    min-height: 56px;
+    padding: 13px 15px 10px;
+    font-size: 16px;
+  }
+  .tag-note-textarea {
+    min-height: calc(100% - 56px);
+    padding: 14px 15px max(24px, env(safe-area-inset-bottom));
+    font-size: 16px;
+    line-height: 1.65;
+  }
+  .tag-note-preview-title { padding: 13px 15px 10px; font-size: 16px; }
+  .tag-note-preview-content { padding: 14px 15px max(24px, env(safe-area-inset-bottom)); }
+  .note-resize-handle { display: none; }
+
+  .tag-member-preview.modal {
+    left: max(8px, env(safe-area-inset-left)) !important;
+    right: max(8px, env(safe-area-inset-right)) !important;
+    bottom: max(8px, env(safe-area-inset-bottom)) !important;
+    top: auto !important;
+    width: auto !important;
+    max-height: min(58dvh, 520px);
+  }
+
+  #leading-root { min-height: 100dvh; }
+  .leading-page {
+    width: calc(100vw - 24px);
+    padding: max(16px, env(safe-area-inset-top)) 0 max(32px, env(safe-area-inset-bottom));
+  }
+  .leading-topbar { align-items: flex-start; gap: 10px; padding-bottom: 14px; }
+  .leading-brand { min-width: 0; flex-direction: column; align-items: flex-start; gap: 2px; }
+  .leading-topbar h1 { font-size: 19px; }
+  .leading-topbar .btn,
+  .project-card-actions .icon-btn { min-width: 44px; height: 44px; }
+  .project-cards { grid-template-columns: 1fr; gap: 10px; }
+  .project-card { min-height: 146px; padding: 13px; }
+  .project-dialog-backdrop {
+    align-items: flex-end;
+    padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  }
+  .project-dialog,
+  .project-dialog.small {
+    width: 100%;
+    max-height: calc(100dvh - max(16px, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+    border-radius: 16px;
+  }
+  .project-dialog-head { min-height: 56px; padding: 10px 12px; }
+  .project-dialog-head .icon-btn { width: 40px; height: 40px; }
+  .project-dialog-desc { padding-inline: 12px; }
+  .project-dialog-body { padding-inline: 12px; gap: 12px; }
+  .project-field input { min-height: 44px; font-size: 16px; }
+  .project-file { min-height: 48px; padding-left: 9px; }
+  .pf-delete { width: 40px; height: 40px; }
+  .project-dialog-actions {
+    padding: 10px 12px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+  .project-dialog-actions .btn { flex: 1 1 0; min-width: 0; height: 44px; }
+
+  .toast-wrap {
+    left: max(10px, env(safe-area-inset-left));
+    right: max(10px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+  }
+  .toast { width: 100%; max-width: none; }
+  .confirm-back {
+    align-items: flex-end;
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+  .confirm-pop { width: 100%; max-height: calc(100dvh - 24px); overflow-y: auto; padding: 16px; border-radius: 16px; }
+  .confirm-actions .btn { min-height: 44px; }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  button,
+  a,
+  input[type="range"],
+  [role="button"] {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .tag-note-delete { opacity: 1; }
+  .project-card[data-card]:hover { transform: none; box-shadow: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .note-ui-row.is-note-revealed,
+  #app.tag-editing-mode #stage::after { animation: none; }
+}
+
