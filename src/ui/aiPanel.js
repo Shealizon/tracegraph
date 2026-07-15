@@ -118,7 +118,7 @@ export function buildAiPanel(ctx) {
         <div class="ai-input-actions">
           <button class="icon-btn" data-attach title="添加文件或 PDF">${paperclipIcon()}</button>
           <button class="ai-model-label" data-model-label title="切换模型">未配置模型</button>
-          <button class="ai-context-toggle" data-context-toggle title="查看上下文使用量" aria-label="查看上下文使用量" aria-expanded="false"><span class="ai-context-ring" data-context-ring aria-hidden="true"></span><span class="ai-context-value" data-context-value>—</span></button>
+          <button class="ai-context-toggle" data-context-toggle title="查看上下文使用量" aria-label="查看上下文使用量" aria-expanded="false"><span class="ai-context-ring" data-context-ring aria-hidden="true"></span></button>
           <button class="ai-send" data-send title="发送">${sendIcon()}</button>
         </div>
       </div>
@@ -1380,7 +1380,7 @@ export function buildAiPanel(ctx) {
   function showContextPanel() {
     if (!openSubpanel('context', 'is-popover is-context-popover', true)) return;
     const snapshot = getContextSnapshot();
-    subpanel.innerHTML = `<div class="ai-context-inline" aria-label="上下文使用量"><span class="ai-context-panel-ring" data-context-meter aria-hidden="true"></span><strong data-context-panel-value></strong><small data-context-panel-percent></small><small class="ai-context-status" data-context-status></small><button class="ai-context-compact" data-context-compact title="压缩上下文">压缩</button><button class="icon-btn" data-sub-close title="关闭">${closeIcon()}</button></div>`;
+    subpanel.innerHTML = `<div class="ai-context-inline" aria-label="上下文使用量"><span class="ai-context-panel-ring" data-context-meter aria-hidden="true"></span><strong data-context-panel-value></strong><small data-context-panel-percent></small><button class="ai-context-compact" data-context-compact title="压缩上下文">压缩</button><button class="icon-btn" data-sub-close title="关闭">${closeIcon()}</button></div>`;
     subpanel.querySelector('[data-sub-close]').addEventListener('click', closeSubpanel);
     subpanel.querySelector('[data-context-compact]').addEventListener('click', async () => {
       const button = subpanel.querySelector('[data-context-compact]');
@@ -1415,7 +1415,6 @@ export function buildAiPanel(ctx) {
     contextToggle.style.setProperty('--context-ratio', `${Math.min(1, snapshot.ratio) * 100}%`);
     contextToggle.classList.toggle('is-warning', snapshot.ratio >= 0.8 && snapshot.ratio < 1);
     contextToggle.classList.toggle('is-danger', snapshot.ratio >= 1);
-    contextToggle.querySelector('[data-context-value]').textContent = `${formatTokenCount(snapshot.tokens)}/${formatTokenCount(snapshot.total)} · ${snapshot.percent}%`;
     contextToggle.title = `上下文 ${formatTokenCount(snapshot.tokens)} / ${formatTokenCount(snapshot.total)}（发送前估算）`;
     updateContextPanel(snapshot);
   }
@@ -1435,7 +1434,7 @@ export function buildAiPanel(ctx) {
     const value = subpanel.querySelector('[data-context-panel-value]');
     const percent = subpanel.querySelector('[data-context-panel-percent]');
     if (value) value.textContent = `${formatTokenCount(snapshot.tokens)} / ${formatTokenCount(snapshot.total)}`;
-    if (percent) percent.textContent = `${snapshot.percent}% · ${snapshot.ratio >= 0.8 ? '接近上限' : '可用空间充足'}`;
+    if (percent) percent.textContent = `${snapshot.percent}%`;
     const compact = subpanel.querySelector('[data-context-compact]');
     if (compact) compact.disabled = state.compacting || tasks.has(activeConversation(conversationState).id) || !activeConversation(conversationState).messages.some((message) => message.role === 'user' || message.role === 'assistant');
   }
