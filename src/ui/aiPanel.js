@@ -184,7 +184,7 @@ export function buildAiPanel(ctx) {
     renderMessages();
   });
 
-  send.addEventListener('click', submit);
+  send.addEventListener('click', () => submit());
   input.addEventListener('keydown', (event) => {
     if (!mentionMenu.hidden && handleMentionKey(event)) return;
     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
@@ -242,7 +242,7 @@ export function buildAiPanel(ctx) {
       running.aborter.abort();
       return;
     }
-    const text = String(prompt || input.value).trim();
+    const text = normalizeAiPrompt(prompt, input.value);
     if (!text) return;
     closeSubpanel();
     input.value = '';
@@ -1567,6 +1567,10 @@ export function noteFromAssistantMessage(message, { id = '', now = '' } = {}) {
     createdAt: timestamp,
     updatedAt: timestamp,
   };
+}
+
+export function normalizeAiPrompt(prompt, fallback = '') {
+  return (typeof prompt === 'string' ? prompt : String(fallback ?? '')).trim();
 }
 
 export function activityTimelineEntries(activity) {
