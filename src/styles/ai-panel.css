@@ -384,8 +384,7 @@ details[open] > summary > .ai-chevron { transform: rotate(180deg); }
 .ai-graph-ref-hover.is-visible { opacity: 1; visibility: visible; transform: translateY(0); }
 
 @media (max-width: 720px) {
-  .ai-panel { inset: var(--ai-viewport-top, 0px) 0 auto; width: 100%; min-width: 0; max-width: none; height: var(--ai-viewport-height, 100dvh); border: 0; border-radius: 0; }
-  .ai-panel[data-layout="docked"] { inset: var(--ai-viewport-top, 0px) 0 auto; height: var(--ai-viewport-height, 100dvh); }
+  .ai-panel { inset: 0; width: 100%; min-width: 0; max-width: none; height: 100dvh; border: 0; border-radius: 0; }
   .ai-panel.is-collapsed { inset: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) auto auto; width: min(320px, calc(100vw - 16px)); height: 54px; border: 1px solid var(--line-soft); border-radius: 14px; }
   .ai-panel.is-collapsed .ai-head { min-height: 54px; padding-top: 10px; }
   body:has(.ai-panel.is-open) { overflow: hidden; }

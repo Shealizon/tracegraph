@@ -130,19 +130,6 @@ export function buildAiPanel(ctx) {
   const mentionMenu = panel.querySelector('[data-mention-menu]');
   const quoteSelectionButton = panel.querySelector('[data-quote-selection]');
 
-  // iOS Safari may keep 100dvh stale while the software keyboard animates in.
-  // Track the visual viewport so the composer stays directly above the keyboard.
-  const syncMobileVisualViewport = () => {
-    const viewport = window.visualViewport;
-    if (!viewport || !window.matchMedia?.('(max-width: 720px)').matches) return;
-    panel.style.setProperty('--ai-viewport-height', `${Math.round(viewport.height)}px`);
-    panel.style.setProperty('--ai-viewport-top', `${Math.max(0, Math.round(viewport.offsetTop || 0))}px`);
-  };
-  syncMobileVisualViewport();
-  window.addEventListener('resize', syncMobileVisualViewport, { passive: true });
-  window.visualViewport?.addEventListener('resize', syncMobileVisualViewport, { passive: true });
-  window.visualViewport?.addEventListener('scroll', syncMobileVisualViewport, { passive: true });
-
   applyWidth(panel, Number(localStorage.getItem(WIDTH_KEY)) || Math.round(innerWidth / 3));
   const initialLayout = localStorage.getItem(LAYOUT_KEY) || 'floating';
   setLayout(initialLayout, { persist: false });
