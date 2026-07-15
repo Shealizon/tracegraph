@@ -166,6 +166,21 @@ body.ai-layout-docked #stage, body.ai-layout-docked .details-page { transition: 
 .ai-chevron { flex: 0 0 auto; width: 15px; height: 15px; transition: transform .2s ease; }
 details[open] > summary > .ai-chevron { transform: rotate(180deg); }
 .ai-tool pre { max-width: 100%; max-height: 220px; overflow: auto; margin: 2px 0 7px 20px; padding: 8px 10px; color: var(--text-dim); background: color-mix(in srgb, var(--bg-soft) 45%, transparent); border: 0; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; font: 10.5px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.ai-compaction { width: 100%; margin: 4px 0 18px; }
+.ai-compaction-divider { display: flex; align-items: center; gap: 8px; margin: 2px 0 9px; color: var(--text-faint); font-size: 9px; }
+.ai-compaction-divider span { flex: 1 1 auto; height: 1px; background: color-mix(in srgb, var(--accent) 30%, var(--line-soft)); }
+.ai-compaction-divider small { flex: 0 0 auto; letter-spacing: .04em; }
+.ai-compaction-box { width: 100%; color: var(--text-dim); background: color-mix(in srgb, var(--accent-bg) 26%, var(--bg-soft)); border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line-soft)); border-radius: 10px; }
+.ai-compaction-box > summary { min-height: 34px; display: flex; align-items: center; gap: 7px; padding: 7px 9px; cursor: pointer; list-style: none; font-size: 11px; }
+.ai-compaction-box > summary::-webkit-details-marker { display: none; }
+.ai-compaction-box > summary:hover { color: var(--accent); }
+.ai-compaction-state { flex: 0 0 auto; width: 16px; height: 16px; display: grid; place-items: center; color: var(--accent); }
+.ai-compaction-state svg { width: 15px; height: 15px; }
+.ai-compaction-box > summary small { margin-left: auto; color: var(--text-faint); font-size: 9px; }
+.ai-compaction-content { max-height: 300px; overflow: auto; margin: 0 9px 9px 31px; padding: 8px 10px; background: color-mix(in srgb, var(--bg) 55%, transparent); border-left: 2px solid color-mix(in srgb, var(--accent) 50%, transparent); border-radius: 0 7px 7px 0; font-size: 11.5px; }
+.ai-compaction-box.is-running .ai-compaction-content { min-height: 32px; }
+.ai-compaction-placeholder { color: var(--text-dim); }
+.ai-compaction-box.is-error { border-color: color-mix(in srgb, var(--danger) 45%, var(--line-soft)); }
 
 .ai-web-search-head > svg:first-child { color: var(--accent); }
 .ai-web-results { min-width: 0; display: grid; gap: 1px; margin: 1px 0 7px 20px; }

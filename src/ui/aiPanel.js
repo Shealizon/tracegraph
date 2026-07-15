@@ -272,7 +272,7 @@ export function buildAiPanel(ctx) {
   async function runConversationCompaction({ automatic = false } = {}) {
     const conversation = activeConversation(conversationState);
     if (state.compacting || tasks.has(conversation.id)) return false;
-    const messages = conversation.messages.filter((message) => message.role === 'user' || message.role === 'assistant');
+    const messages = modelHistory(conversation.messages);
     if (!messages.length) return false;
     const modelConfig = currentModelConfig();
     if (!modelConfig) {
@@ -281,44 +281,62 @@ export function buildAiPanel(ctx) {
     }
     state.compacting = true;
     state.compactAborter = new AbortController();
+    const compactedMessage = {
+      role: 'assistant',
+      content: '',
+      blocks: [],
+      sources: [],
+      model: modelConfig.displayName || modelConfig.model || '',
+      compaction: true,
+      compactionStatus: 'running',
+      createdAt: new Date().toISOString(),
+    };
+    conversation.messages.push(compactedMessage);
+    conversation.updatedAt = new Date().toISOString();
+    persist();
     setContextPanelStatus(automatic ? '正在自动压缩上下文…' : '正在压缩上下文…');
+    syncBusy();
     syncContextUsage();
+    renderMessages({ follow: true, immediate: true });
     try {
       const summary = await compactModelContext({
         config: { ...modelConfig, contextPrompt: buildGraphContext(ctx.model, selectedNodeId) },
         transcript: buildCompactionTranscript(messages),
         signal: state.compactAborter.signal,
+        onDelta: (delta) => {
+          compactedMessage.content += delta;
+          appendTextBlock(compactedMessage, delta);
+          updateAssistantDom(conversation, compactedMessage);
+        },
       });
       if (!summary.trim()) throw new Error('模型没有返回压缩摘要');
-      const recent = messages.slice(-4);
-      const compactedMessage = {
-        role: 'assistant',
-        content: summary.trim(),
-        blocks: [],
-        sources: [],
-        model: modelConfig.displayName || modelConfig.model || '',
-        compaction: true,
-        createdAt: new Date().toISOString(),
-      };
-      conversation.messages = [compactedMessage, ...recent];
+      if (compactedMessage.content.trim() !== summary.trim()) {
+        compactedMessage.content = summary.trim();
+        compactedMessage.blocks = [{ type: 'text', content: compactedMessage.content }];
+      }
+      compactedMessage.compactionStatus = 'done';
       conversation.updatedAt = new Date().toISOString();
       persist();
-      renderMessages({ follow: true, immediate: true });
+      renderMessages({ follow: true });
       toast(automatic ? '已自动压缩上下文' : '上下文已压缩');
       return true;
     } catch (error) {
+      conversation.messages = conversation.messages.filter((message) => message !== compactedMessage);
+      persist();
+      renderMessages({ follow: true, immediate: true });
       if (error?.name !== 'AbortError') toast(`上下文压缩失败：${error?.message || error}`);
       return false;
     } finally {
       state.compacting = false;
       state.compactAborter = null;
       setContextPanelStatus('');
+      syncBusy();
       syncContextUsage();
     }
   }
 
   function buildCompactionTranscript(messages) {
-    const transcript = modelHistory(messages).map((message, index) => {
+    const transcript = messages.map((message, index) => {
       const role = message.role === 'user' ? '用户' : '助手';
       const sources = message.sources?.length ? `\n来源：${JSON.stringify(message.sources)}` : '';
       const debug = serializeMessageDebug(message, { index });
@@ -492,7 +510,10 @@ export function buildAiPanel(ctx) {
       if (!row) { renderMessages(); return; }
       if (state.quoteSelection?.messageIndex === index) hideQuoteSelection();
       const body = row.querySelector('.ai-message-body');
-      if (body) renderAssistantBody(body, message);
+      if (body) {
+        if (message.compaction) renderCompactionBody(body, message);
+        else renderAssistantBody(body, message);
+      }
       renderTurnRail();
       if (shouldFollow) scrollBottom();
     });
@@ -520,7 +541,10 @@ export function buildAiPanel(ctx) {
         }
         const body = document.createElement('div');
         body.className = 'ai-message-body';
-        if (message.role === 'assistant') renderAssistantBody(body, message);
+        if (message.role === 'assistant') {
+          if (message.compaction) renderCompactionBody(body, message);
+          else renderAssistantBody(body, message);
+        }
         else {
           const content = document.createElement('div');
           content.className = 'ai-message-content ai-markdown';
@@ -530,7 +554,8 @@ export function buildAiPanel(ctx) {
             body.append(renderSentAttachments(message.contextAttachments || [], message.fileAttachments || []));
           }
         }
-        stack.append(body, createMessageActions(message, index));
+        stack.append(body);
+        if (!message.compaction) stack.append(createMessageActions(message, index));
         row.append(stack);
       }
       messagesEl.append(row);
@@ -611,6 +636,45 @@ export function buildAiPanel(ctx) {
     });
   }
 
+  function renderCompactionBody(body, message) {
+    let section = body.querySelector('[data-compaction]');
+    if (!section) {
+      section = document.createElement('section');
+      section.className = 'ai-compaction';
+      section.dataset.compaction = '';
+      const divider = document.createElement('div');
+      divider.className = 'ai-compaction-divider';
+      divider.innerHTML = '<span></span><small>上下文分隔线</small><span></span>';
+      const details = document.createElement('details');
+      details.className = 'ai-compaction-box';
+      const summary = document.createElement('summary');
+      summary.className = 'ai-compaction-summary';
+      const content = document.createElement('div');
+      content.className = 'ai-compaction-content ai-markdown';
+      content.dataset.compactionContent = '';
+      details.append(summary, content);
+      section.append(divider, details);
+      body.append(section);
+    }
+    const details = section.querySelector('.ai-compaction-box');
+    const summary = section.querySelector('.ai-compaction-summary');
+    const content = section.querySelector('[data-compaction-content]');
+    const status = message.compactionStatus || (message.content ? 'done' : 'running');
+    const active = status === 'running';
+    const failed = status === 'error';
+    details.classList.toggle('is-running', active);
+    details.classList.toggle('is-error', failed);
+    details.open = active || failed;
+    summary.innerHTML = `<span class="ai-compaction-state">${active ? spinnerIcon() : failed ? alertIcon() : activityIcon()}</span><span>${active ? '正在压缩上下文' : failed ? '上下文压缩失败' : '上下文压缩完成'}</span><small>${active ? '生成摘要中' : failed ? '未完成' : '已折叠'}</small>${chevronIcon()}`;
+    const displayContent = stripCompactionEnvelope(message.content || '');
+    if (displayContent) renderMarkdownInto(content, displayContent, markdownRenderOptions(message));
+    else content.innerHTML = active ? '<span class="ai-compaction-placeholder">正在生成压缩摘要…</span>' : '';
+  }
+
+  function stripCompactionEnvelope(value) {
+    return String(value || '').replace(/^\s*<summary>\s*/i, '').replace(/\s*<\/summary>\s*$/i, '').trim();
+  }
+
   function createMessageActions(message, index) {
     const actions = document.createElement('div');
     actions.className = 'ai-message-actions';
@@ -633,7 +697,7 @@ export function buildAiPanel(ctx) {
         renderMessages({ follow: false });
       });
       actions.append(edit);
-    } else if (message.role === 'assistant') {
+    } else if (message.role === 'assistant' && !message.compaction) {
       const addToNotes = button('ai-message-action ai-message-action--note', '', '添加到笔记');
       addToNotes.setAttribute('aria-label', '添加到笔记');
       addToNotes.innerHTML = noteAddIcon();
@@ -1610,7 +1674,10 @@ export function buildAiPanel(ctx) {
     return -1;
   }
   function modelHistory(messages) {
-    return messages.filter((message) => message.role === 'user' || message.role === 'assistant').map((message) => ({
+    const eligible = messages.filter((message) => message.role === 'user' || message.role === 'assistant');
+    const separatorIndex = eligible.findLastIndex((message) => message.compaction && message.compactionStatus === 'done');
+    const activeMessages = separatorIndex >= 0 ? eligible.slice(separatorIndex) : eligible;
+    return activeMessages.map((message) => ({
       ...message,
       content: message.role === 'user'
         ? contextPrompt(message.content, [
@@ -1632,9 +1699,11 @@ export function buildAiPanel(ctx) {
   }
   function syncBusy() {
     const busy = tasks.has(activeConversation(conversationState).id);
-    panel.classList.toggle('is-busy', busy);
+    const compacting = state.compacting;
+    panel.classList.toggle('is-busy', busy || compacting);
     send.innerHTML = busy ? stopIcon() : sendIcon();
-    send.title = busy ? '停止当前对话生成' : '发送';
+    send.disabled = compacting;
+    send.title = compacting ? '正在压缩上下文' : busy ? '停止当前对话生成' : '发送';
     syncPanelStatus();
   }
   function setLayout(layout, { persist = true } = {}) {
@@ -1662,6 +1731,12 @@ export function buildAiPanel(ctx) {
   function syncPanelStatus() {
     const task = tasks.get(activeConversation(conversationState).id);
     const busy = !!task;
+    if (state.compacting) {
+      const status = panel.querySelector('[data-panel-status]');
+      status.textContent = '压缩中';
+      status.classList.add('is-running');
+      return;
+    }
     const status = panel.querySelector('[data-panel-status]');
     status.textContent = !busy ? '待命' : task.status === 'reconnecting' ? `恢复中${task.retryAttempt ? ` · ${task.retryAttempt}/3` : ''}` : '生成中';
     status.classList.toggle('is-running', busy);
