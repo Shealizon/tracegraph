@@ -7,14 +7,14 @@ import {
   aiQuoteAttachment, contextPrompt, graphNodeAttachment, graphSelectionAttachment, mentionQueryAt, replaceMention, searchMentionCandidates,
 } from '../src/ai/contextAttachments.js';
 import { formatGraphReferenceDisplay, normalizeCjkStrong, protectMarkdownMath, stripBlockquoteMathMarkers } from '../src/render/markdown.js';
-import { activityTimelineEntries, isActivityGroupActive, isScrollNearBottom, navigateGraphReference, normalizeAiPrompt, noteFromAssistantMessage, replaceUserMessageBranch, shouldJoinActivityBlock } from '../src/ui/aiPanel.js';
+import { activityTimelineEntries, isActivityGroupActive, isScrollNearBottom, navigateGraphReference, normalizeAiText, noteFromAssistantMessage, replaceUserMessageBranch, shouldJoinActivityBlock } from '../src/ui/aiPanel.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe('AI runtime helpers', () => {
-  it('uses the input value when a click event is passed instead of a prompt', () => {
-    expect(normalizeAiPrompt({ type: 'click' }, '真实问题')).toBe('真实问题');
-    expect(normalizeAiPrompt('  直接问题  ', '备用问题')).toBe('直接问题');
+  it('normalizes only actual AI text before submission', () => {
+    expect(normalizeAiText('  真实问题  ')).toBe('真实问题');
+    expect(normalizeAiText(null)).toBe('');
   });
 
   it('builds structured graph selection context with node location and surrounding text', () => {

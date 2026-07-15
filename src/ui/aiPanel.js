@@ -184,7 +184,7 @@ export function buildAiPanel(ctx) {
     renderMessages();
   });
 
-  send.addEventListener('click', () => submit());
+  send.addEventListener('click', submit);
   input.addEventListener('keydown', (event) => {
     if (!mentionMenu.hidden && handleMentionKey(event)) return;
     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
@@ -236,13 +236,17 @@ export function buildAiPanel(ctx) {
     if (event.key === 'Escape' && !subpanel.hidden && subpanel.classList.contains('is-popover')) closeSubpanel();
   });
 
-  async function submit(prompt = '') {
+  async function submit() {
+    return submitText(input.value);
+  }
+
+  async function submitText(rawText) {
     const running = tasks.get(activeConversation(conversationState).id);
     if (running) {
       running.aborter.abort();
       return;
     }
-    const text = normalizeAiPrompt(prompt, input.value);
+    const text = normalizeAiText(rawText);
     if (!text) return;
     closeSubpanel();
     input.value = '';
@@ -419,7 +423,7 @@ export function buildAiPanel(ctx) {
   function renderMessages({ follow = isNearBottom(), immediate = false } = {}) {
     const previousTop = messagesEl.scrollTop;
     messagesEl.replaceChildren();
-    if (!state.messages.length) renderEmpty(messagesEl, submit);
+    if (!state.messages.length) renderEmpty(messagesEl, submitText);
     state.messages.forEach((message, index) => {
       const row = document.createElement('article');
       row.className = `ai-message ai-message--${message.role}${message.tone ? ` is-${message.tone}` : ''}`;
@@ -1569,8 +1573,8 @@ export function noteFromAssistantMessage(message, { id = '', now = '' } = {}) {
   };
 }
 
-export function normalizeAiPrompt(prompt, fallback = '') {
-  return (typeof prompt === 'string' ? prompt : String(fallback ?? '')).trim();
+export function normalizeAiText(value = '') {
+  return String(value ?? '').trim();
 }
 
 export function activityTimelineEntries(activity) {
