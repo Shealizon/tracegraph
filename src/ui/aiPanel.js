@@ -222,8 +222,9 @@ export function buildAiPanel(ctx) {
     syncActiveTurn();
   }, { passive: true });
   messagesEl.addEventListener('wheel', (event) => {
-    if (event.deltaY < 0) stopFollowing();
+    if (event.deltaY !== 0) stopFollowing();
   }, { passive: true });
+  messagesEl.addEventListener('pointerdown', stopFollowing, { passive: true });
   messagesEl.addEventListener('touchstart', stopFollowing, { passive: true });
   messagesEl.addEventListener('mouseup', () => setTimeout(updateQuoteSelection, 0));
   messagesEl.addEventListener('touchend', () => setTimeout(updateQuoteSelection, 80), { passive: true });
@@ -513,6 +514,7 @@ export function buildAiPanel(ctx) {
       if (body) {
         if (message.compaction) renderCompactionBody(body, message);
         else renderAssistantBody(body, message);
+        followStreamingDisclosures(body, message);
       }
       renderTurnRail();
       if (shouldFollow) scrollBottom();
@@ -828,6 +830,15 @@ export function buildAiPanel(ctx) {
       content.dataset.source = block.content;
       renderMarkdownInto(content, block.content, markdownRenderOptions(message));
     }
+  }
+
+  function followStreamingDisclosures(body, message) {
+    const task = tasks.get(activeConversation(conversationState).id);
+    const streaming = task?.message === message || (message.compaction && message.compactionStatus === 'running');
+    if (!streaming) return;
+    body.querySelectorAll('.ai-reasoning-content, .ai-process-analysis-content, .ai-tool--running > pre, .ai-compaction-box.is-running .ai-compaction-content').forEach((content) => {
+      content.scrollTop = content.scrollHeight;
+    });
   }
 
   function renderWebSearches(events) {
@@ -1641,7 +1652,7 @@ export function buildAiPanel(ctx) {
     if (conversationState.conversations.includes(conversation)) conversation.updatedAt = new Date().toISOString();
     saveConversationState(localStorage, conversationsKey, conversationState);
   }
-  function isNearBottom() { return isScrollNearBottom(messagesEl); }
+  function isNearBottom() { return isScrollNearBottom(messagesEl, 56); }
   function stopFollowing() {
     state.followOutput = false;
     if (state.scrollFrame) cancelAnimationFrame(state.scrollFrame);
@@ -1664,7 +1675,7 @@ export function buildAiPanel(ctx) {
         state.scrollFrame = 0;
         return;
       }
-      messagesEl.scrollTop += distance * 0.24;
+      messagesEl.scrollTop += distance * 0.16;
       state.scrollFrame = requestAnimationFrame(tick);
     };
     state.scrollFrame = requestAnimationFrame(tick);
