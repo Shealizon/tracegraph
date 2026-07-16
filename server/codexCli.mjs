@@ -180,14 +180,14 @@ export async function executeCodexStream({ prompt, cwd, model = '', signal, time
           method: 'thread/start', id: 1,
           params: {
             cwd, model: String(model || '').trim() || undefined, sandbox: 'read-only', approvalPolicy: 'never', ephemeral: true,
-            config: { model_reasoning_summary: 'auto', hide_agent_reasoning: false, show_raw_agent_reasoning: false },
+            config: { model_reasoning_summary: 'detailed', hide_agent_reasoning: false, show_raw_agent_reasoning: false },
           },
         });
         return;
       }
       if (message.id === 1 && message.result?.thread?.id) {
         threadId = message.result.thread.id;
-        send({ method: 'turn/start', id: 2, params: { threadId, input: [{ type: 'text', text: String(prompt || '') }], cwd, summary: 'auto' } });
+        send({ method: 'turn/start', id: 2, params: { threadId, input: [{ type: 'text', text: String(prompt || '') }], cwd, summary: 'detailed' } });
         return;
       }
       if (message.id != null && message.error) {
