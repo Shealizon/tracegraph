@@ -146,6 +146,7 @@ export async function executeCodexStream({ prompt, cwd, model = '', signal, time
     let stderr = '';
     let output = '';
     let lastAgentMessage = '';
+    const agentMessagePhases = new Map();
     let settled = false;
     let initialized = false;
     let threadId = '';
@@ -200,17 +201,22 @@ export async function executeCodexStream({ prompt, cwd, model = '', signal, time
       }
       const params = message.params || {};
       if (message.method === 'item/agentMessage/delta' && params.delta) {
-        output += params.delta;
-        emit({ type: 'text_delta', delta: params.delta, itemId: params.itemId || '' });
+        const phase = agentMessagePhases.get(params.itemId || '');
+        if (phase === 'commentary') emit({ type: 'reasoning_delta', delta: params.delta, itemId: params.itemId || '' });
+        else {
+          output += params.delta;
+          emit({ type: 'text_delta', delta: params.delta, itemId: params.itemId || '' });
+        }
       } else if (message.method === 'item/reasoning/summaryTextDelta' && params.delta) {
         emit({ type: 'reasoning_delta', delta: params.delta, itemId: params.itemId || '' });
       } else if (message.method === 'item/commandExecution/outputDelta' && params.delta) {
         emit({ type: 'tool_delta', id: params.itemId || '', delta: params.delta });
       } else if (message.method === 'item/started' || message.method === 'item/completed') {
         const phase = message.method === 'item/started' ? 'running' : 'done';
+        if (params.item?.type === 'agentMessage') agentMessagePhases.set(params.item.id, params.item.phase || '');
         const event = normalizeCodexItemEvent(params.item, phase);
         if (event) emit(event);
-        if (phase === 'done' && params.item?.type === 'agentMessage') lastAgentMessage = params.item.text || lastAgentMessage;
+        if (phase === 'done' && params.item?.type === 'agentMessage' && params.item.phase !== 'commentary') lastAgentMessage = params.item.text || lastAgentMessage;
       } else if (message.method === 'turn/completed') {
         const turnError = params.turn?.error?.message || params.turn?.error;
         if (turnError) finish(new Error(String(turnError)));

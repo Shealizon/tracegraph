@@ -57,9 +57,12 @@ describe('server Codex adapter', () => {
         if (request.id === 1) stdout.write(`${JSON.stringify({ id: 1, result: { thread: { id: 'thr-1' } } })}\n`);
         if (request.id === 2) {
           const messages = [
+            { method: 'item/started', params: { item: { id: 'note1', type: 'agentMessage', phase: 'commentary', text: '' }, startedAtMs: 0 } },
+            { method: 'item/agentMessage/delta', params: { itemId: 'note1', delta: '准备调用工具。' } },
             { method: 'item/reasoning/summaryTextDelta', params: { itemId: 'r1', delta: '先检查图谱。' } },
             { method: 'item/started', params: { item: { id: 'c1', type: 'commandExecution', command: 'ls', cwd: '/tmp', status: 'inProgress', commandActions: [] }, startedAtMs: 1 } },
             { method: 'item/completed', params: { item: { id: 'c1', type: 'commandExecution', command: 'ls', cwd: '/tmp', status: 'completed', commandActions: [], aggregatedOutput: 'project.json', exitCode: 0, durationMs: 5 }, completedAtMs: 2 } },
+            { method: 'item/started', params: { item: { id: 'a1', type: 'agentMessage', phase: 'final_answer', text: '' }, startedAtMs: 3 } },
             { method: 'item/agentMessage/delta', params: { itemId: 'a1', delta: '第一段' } },
             { method: 'item/agentMessage/delta', params: { itemId: 'a1', delta: '第二段' } },
             { method: 'turn/completed', params: { threadId: 'thr-1', turn: { id: 'turn-1', status: 'completed' } } },
@@ -71,7 +74,7 @@ describe('server Codex adapter', () => {
     const events = [];
     const result = await executeCodexStream({ prompt: 'test', cwd: '/tmp', spawnImpl: () => child, onEvent: (event) => events.push(event) });
     expect(result).toBe('第一段第二段');
-    expect(events.map((event) => event.type)).toEqual(['reasoning_delta', 'tool', 'tool', 'text_delta', 'text_delta']);
+    expect(events.map((event) => event.type)).toEqual(['reasoning_delta', 'reasoning_delta', 'tool', 'tool', 'text_delta', 'text_delta']);
     expect(events.find((event) => event.type === 'tool' && event.status === 'done')?.result).toMatchObject({ output: 'project.json', exitCode: 0 });
   });
 

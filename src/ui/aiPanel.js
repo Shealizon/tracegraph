@@ -847,7 +847,7 @@ export function buildAiPanel(ctx) {
         const analysis = document.createElement('section');
         analysis.className = 'ai-process-analysis';
         analysis.dataset.activityIndex = String(entry.index);
-        analysis.innerHTML = `<div class="ai-process-analysis-label">${activityIcon()}<span>分析过程</span></div><div class="ai-process-analysis-content ai-markdown"></div>`;
+        analysis.innerHTML = `<div class="ai-process-analysis-label">${activityIcon()}<span>分析摘要</span></div><div class="ai-process-analysis-content ai-markdown"></div>`;
         timeline.append(analysis);
       } else if (entry.block.name === 'web_search') {
         timeline.append(renderWebSearches([entry.block]));
