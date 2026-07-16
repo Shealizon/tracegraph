@@ -7,7 +7,7 @@ import {
   aiQuoteAttachment, contextPrompt, graphNodeAttachment, graphSelectionAttachment, mentionQueryAt, replaceMention, searchMentionCandidates,
 } from '../src/ai/contextAttachments.js';
 import { formatGraphReferenceDisplay, normalizeCjkStrong, protectMarkdownMath, stripBlockquoteMathMarkers } from '../src/render/markdown.js';
-import { activityTimelineEntries, isActivityGroupActive, isScrollNearBottom, navigateGraphReference, normalizeAiText, noteFromAssistantMessage, replaceUserMessageBranch, shouldJoinActivityBlock } from '../src/ui/aiPanel.js';
+import { activityTimelineEntries, applyCloudTaskSnapshot, isActivityGroupActive, isScrollNearBottom, navigateGraphReference, normalizeAiText, noteFromAssistantMessage, replaceUserMessageBranch, shouldJoinActivityBlock } from '../src/ui/aiPanel.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -15,6 +15,16 @@ describe('AI runtime helpers', () => {
   it('normalizes only actual AI text before submission', () => {
     expect(normalizeAiText('  真实问题  ')).toBe('真实问题');
     expect(normalizeAiText(null)).toBe('');
+  });
+
+  it('applies incremental cloud answer and activity snapshots without duplicating text', () => {
+    const message = { role: 'assistant', content: '', blocks: [] };
+    applyCloudTaskSnapshot(message, {
+      output: '逐步回答',
+      blocks: [{ type: 'reasoning', content: '推理摘要' }, { type: 'text', content: '逐步回答' }],
+    });
+    expect(message.content).toBe('逐步回答');
+    expect(message.blocks).toEqual([{ type: 'reasoning', content: '推理摘要' }, { type: 'text', content: '逐步回答' }]);
   });
 
   it('builds structured graph selection context with node location and surrounding text', () => {

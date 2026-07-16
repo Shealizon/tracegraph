@@ -135,6 +135,144 @@ export async function executeCodex({ prompt, cwd, model = '', signal, timeoutMs,
   }
 }
 
+export async function executeCodexStream({ prompt, cwd, model = '', signal, timeoutMs, spawnImpl, onEvent } = {}) {
+  if (process.env.CODEX_ENABLED === '0') throw new Error('服务器未启用 Codex');
+  if (signal?.aborted) throw abortError(signal.reason);
+  const child = spawnCodex(['app-server'], spawnImpl, cwd);
+  const limit = positiveNumber(timeoutMs ?? process.env.CODEX_TASK_TIMEOUT_MS, DEFAULT_TASK_TIMEOUT);
+
+  return new Promise((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+    let output = '';
+    let lastAgentMessage = '';
+    let settled = false;
+    let initialized = false;
+    let threadId = '';
+    const timer = setTimeout(() => finish(new Error(`Codex 任务超过 ${Math.round(limit / 60_000)} 分钟，已自动终止`)), limit);
+    timer.unref?.();
+
+    const send = (message) => {
+      try { child.stdin.write(`${JSON.stringify(message)}\n`); }
+      catch (error) { finish(error); }
+    };
+    const emit = (event) => {
+      try { onEvent?.(event); } catch { /* progress callbacks cannot stop the Codex process */ }
+    };
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      terminateChild(child);
+      if (error) reject(error);
+      else {
+        const finalOutput = output.trim() || lastAgentMessage.trim();
+        if (!finalOutput) reject(new Error('Codex 未返回最终回答'));
+        else resolve(finalOutput);
+      }
+    };
+    const handle = (message) => {
+      if (message.id === 0 && message.result && !initialized) {
+        initialized = true;
+        send({ method: 'initialized', params: {} });
+        send({
+          method: 'thread/start', id: 1,
+          params: {
+            cwd, model: String(model || '').trim() || undefined, sandbox: 'read-only', approvalPolicy: 'never', ephemeral: true,
+            config: { model_reasoning_summary: 'auto', hide_agent_reasoning: false, show_raw_agent_reasoning: false },
+          },
+        });
+        return;
+      }
+      if (message.id === 1 && message.result?.thread?.id) {
+        threadId = message.result.thread.id;
+        send({ method: 'turn/start', id: 2, params: { threadId, input: [{ type: 'text', text: String(prompt || '') }], cwd, summary: 'auto' } });
+        return;
+      }
+      if (message.id != null && message.error) {
+        finish(new Error(message.error.message || 'Codex app-server 请求失败'));
+        return;
+      }
+      if (message.id != null && message.method) {
+        send({ id: message.id, result: { decision: 'decline' } });
+        return;
+      }
+      const params = message.params || {};
+      if (message.method === 'item/agentMessage/delta' && params.delta) {
+        output += params.delta;
+        emit({ type: 'text_delta', delta: params.delta, itemId: params.itemId || '' });
+      } else if (message.method === 'item/reasoning/summaryTextDelta' && params.delta) {
+        emit({ type: 'reasoning_delta', delta: params.delta, itemId: params.itemId || '' });
+      } else if (message.method === 'item/commandExecution/outputDelta' && params.delta) {
+        emit({ type: 'tool_delta', id: params.itemId || '', delta: params.delta });
+      } else if (message.method === 'item/started' || message.method === 'item/completed') {
+        const phase = message.method === 'item/started' ? 'running' : 'done';
+        const event = normalizeCodexItemEvent(params.item, phase);
+        if (event) emit(event);
+        if (phase === 'done' && params.item?.type === 'agentMessage') lastAgentMessage = params.item.text || lastAgentMessage;
+      } else if (message.method === 'turn/completed') {
+        const turnError = params.turn?.error?.message || params.turn?.error;
+        if (turnError) finish(new Error(String(turnError)));
+        else finish();
+      } else if (message.method === 'error' && params.error?.message && !params.willRetry) {
+        finish(new Error(formatCodexFailure(params.error.message)));
+      }
+    };
+    const readLines = () => {
+      let newline;
+      while ((newline = stdout.indexOf('\n')) >= 0) {
+        const line = stdout.slice(0, newline).trim();
+        stdout = stdout.slice(newline + 1);
+        if (!line) continue;
+        try { handle(JSON.parse(line)); } catch { /* ignore non-protocol diagnostics */ }
+      }
+    };
+    const onAbort = () => finish(abortError(signal.reason));
+
+    child.stdout.on('data', (chunk) => { stdout += chunk; readLines(); });
+    child.stderr.on('data', (chunk) => { stderr = appendBounded(stderr, chunk); });
+    child.on('error', (error) => finish(commandError(error)));
+    child.on('close', (code) => {
+      if (!settled) finish(new Error(formatCodexFailure(stderr, `Codex app-server 退出码 ${code}`)));
+    });
+    child.stdin.on('error', (error) => finish(error));
+    signal?.addEventListener('abort', onAbort, { once: true });
+    send({
+      method: 'initialize', id: 0,
+      params: { clientInfo: { name: 'paper_graph', title: 'Paper Graph', version: '0.1.0' } },
+    });
+  });
+}
+
+export function normalizeCodexItemEvent(item, phase = 'running') {
+  if (!item?.id || !item.type) return null;
+  const status = phase === 'running' ? 'running' : item.status === 'failed' ? 'error' : 'done';
+  if (item.type === 'commandExecution') return {
+    type: 'tool', id: item.id, name: 'shell_command', status,
+    args: { command: item.command || '', cwd: item.cwd || '' },
+    result: phase === 'done' ? { output: item.aggregatedOutput || '', exitCode: item.exitCode, durationMs: item.durationMs } : undefined,
+  };
+  if (item.type === 'mcpToolCall') return {
+    type: 'tool', id: item.id, name: item.tool || item.server || 'mcp_tool', status: item.error ? 'error' : status,
+    args: item.arguments, result: item.result, error: item.error?.message || item.error,
+  };
+  if (item.type === 'dynamicToolCall') return {
+    type: 'tool', id: item.id, name: item.tool || 'tool', status: item.success === false ? 'error' : status,
+    args: item.arguments, result: item.contentItems,
+  };
+  if (item.type === 'webSearch') return {
+    type: 'tool', id: item.id, name: 'web_search', status, args: { query: item.query || '', action: item.action || null },
+  };
+  if (item.type === 'fileChange') return {
+    type: 'tool', id: item.id, name: 'apply_patch', status, args: { changes: item.changes || [] },
+  };
+  if (item.type === 'imageView') return { type: 'tool', id: item.id, name: 'view_image', status, args: { path: item.path || '' } };
+  if (item.type === 'imageGeneration') return { type: 'tool', id: item.id, name: 'image_generation', status, args: {}, result: item.result };
+  if (item.type === 'plan') return { type: 'tool', id: item.id, name: 'update_plan', status, args: { plan: item.text || '' } };
+  return null;
+}
+
 export function buildCodexExecArgs({ model = '', outputPath }) {
   const args = [
     'exec', '--skip-git-repo-check', '--ephemeral', '--color', 'never',

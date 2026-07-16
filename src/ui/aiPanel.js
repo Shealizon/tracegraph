@@ -478,13 +478,18 @@ export function buildAiPanel(ctx) {
         const cloudTask = await waitForCloudTask(created.task.id, aborter.signal, (task) => {
           const activeTask = tasks.get(conversation.id);
           if (activeTask) activeTask.status = task.status === 'queued' ? 'queued' : 'running';
+          applyCloudTaskSnapshot(assistantMessage, task);
+          updateAssistantDom(conversation, assistantMessage);
           syncBusy();
         });
         if (cloudTask.status === 'failed') throw new Error(cloudTask.error || '云端任务失败');
         if (cloudTask.status === 'cancelled') throw new DOMException('Aborted', 'AbortError');
         assistantMessage.cloudTaskStatus = cloudTask.status;
-        assistantMessage.content = cloudTask.output || '操作已完成。';
-        appendTextBlock(assistantMessage, assistantMessage.content);
+        applyCloudTaskSnapshot(assistantMessage, cloudTask);
+        if (!assistantMessage.content) {
+          assistantMessage.content = '操作已完成。';
+          appendTextBlock(assistantMessage, assistantMessage.content);
+        }
         updateAssistantDom(conversation, assistantMessage);
       } else await runAgentTurn({
         config: { ...(modelConfig || {}), contextPrompt: buildGraphContext(ctx.model, selectedNodeId) },
@@ -1880,16 +1885,16 @@ export function buildAiPanel(ctx) {
         const cloudTask = byId.get(message.cloudTaskId);
         if (!cloudTask || message.cloudTaskStatus === cloudTask.status) continue;
         if (cloudTask.status === 'completed') {
-          message.content = cloudTask.output || '操作已完成。';
-          message.blocks = [];
-          appendTextBlock(message, message.content);
+          applyCloudTaskSnapshot(message, cloudTask);
+          if (!message.content) { message.content = '操作已完成。'; appendTextBlock(message, message.content); }
           message.cloudTaskStatus = cloudTask.status;
           persistConversation(conversation);
           updateAssistantDom(conversation, message);
         } else if (['failed', 'cancelled'].includes(cloudTask.status)) {
-          message.content = cloudTask.status === 'cancelled' ? '（已停止）' : `请求失败：${cloudTask.error || '云端任务失败'}`;
-          message.blocks = [];
-          appendTextBlock(message, message.content);
+          applyCloudTaskSnapshot(message, cloudTask);
+          const suffix = cloudTask.status === 'cancelled' ? '\n\n（已停止）' : `\n\n请求失败：${cloudTask.error || '云端任务失败'}`;
+          message.content += suffix;
+          appendTextBlock(message, suffix);
           message.cloudTaskStatus = cloudTask.status;
           persistConversation(conversation);
           updateAssistantDom(conversation, message);
@@ -1897,11 +1902,23 @@ export function buildAiPanel(ctx) {
           const aborter = new AbortController();
           tasks.set(conversation.id, { aborter, message, status: cloudTask.status });
           syncBusy();
-          waitForCloudTask(message.cloudTaskId, aborter.signal).then((finished) => {
+          waitForCloudTask(message.cloudTaskId, aborter.signal, (progress) => {
+            const activeTask = tasks.get(conversation.id);
+            if (activeTask) activeTask.status = progress.status;
+            applyCloudTaskSnapshot(message, progress);
+            updateAssistantDom(conversation, message);
+            syncBusy();
+          }).then((finished) => {
             message.cloudTaskStatus = finished.status;
-            message.content = finished.status === 'completed' ? (finished.output || '操作已完成。') : `请求失败：${finished.error || '云端任务未完成'}`;
-            message.blocks = [];
-            appendTextBlock(message, message.content);
+            applyCloudTaskSnapshot(message, finished);
+            if (finished.status === 'completed' && !message.content) {
+              message.content = '操作已完成。';
+              appendTextBlock(message, message.content);
+            } else if (finished.status !== 'completed') {
+              const suffix = `\n\n请求失败：${finished.error || '云端任务未完成'}`;
+              message.content += suffix;
+              appendTextBlock(message, suffix);
+            }
           }).catch((error) => {
             message.content = `请求失败：${error?.message || error}`;
             message.blocks = [];
@@ -1976,10 +1993,21 @@ async function waitForCloudTask(taskId, signal, onStatus) {
     onStatus?.(task);
     if (['completed', 'failed', 'cancelled'].includes(task.status)) return task;
     await new Promise((resolve) => {
-      const timer = setTimeout(resolve, 850);
+      const timer = setTimeout(resolve, 400);
       signal?.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
     });
   }
+}
+
+export function applyCloudTaskSnapshot(message, task) {
+  message.content = String(task?.output || '');
+  if (Array.isArray(task?.blocks) && task.blocks.length) {
+    message.blocks = task.blocks.map((block) => ({ ...block }));
+  } else {
+    message.blocks = [];
+    if (message.content) appendTextBlock(message, message.content);
+  }
+  return message;
 }
 
 async function uploadCloudFiles(workspace, attachments, scope) {
@@ -2126,6 +2154,7 @@ function summarizeTool(event) {
 function toolLabel(name) {
   return ({
     list_workspace: '查看对话文件', read_file: '读取文件', search_files: '搜索文件', read_pdf: '解析 PDF', write_file: '写入文件',
+    shell_command: '运行只读命令', apply_patch: '检查文件变更', update_plan: '更新执行计划', view_image: '查看图片', image_generation: '生成图片',
     web_search: '联网搜索', open_url: '读取网页', resolve_doi: '解析 DOI', graph_overview: '理解图谱',
     search_graph_nodes: '搜索图谱节点', get_graph_node: '读取图谱节点', get_graph_nodes: '批量读取图谱节点', get_graph_neighbors: '读取节点关系', get_graph_neighbors_batch: '批量读取节点关系',
     list_tag_notes: '查看标签笔记', get_tag_note: '读取标签笔记', create_tag_note: '创建标签笔记', update_tag_note: '更新标签笔记', delete_tag_note: '删除标签笔记',

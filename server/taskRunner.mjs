@@ -4,13 +4,14 @@ import fs from 'node:fs/promises';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { randomId } from './security.mjs';
 import { httpError } from './userStore.mjs';
-import { discoverCodexModels, executeCodex } from './codexCli.mjs';
+import { discoverCodexModels, executeCodexStream } from './codexCli.mjs';
 
 export class TaskRunner {
   constructor(userStore) {
     this.userStore = userStore;
     this.codexQueue = Promise.resolve();
     this.controllers = new Map();
+    this.liveTasks = new Map();
     this.recoveredUsers = new Set();
     this.startedAt = Date.now();
     this.codexModelCache = null;
@@ -26,7 +27,7 @@ export class TaskRunner {
       projectId: input.projectId || '', conversationId: input.conversationId || '',
       workspaceScope: input.workspaceScope || `${input.projectId || 'default'}--${input.conversationId || 'default'}`,
       input: { history: input.history || [], userText: String(input.userText || ''), systemPrompt: String(input.systemPrompt || '') },
-      output: '', error: '', createdAt: now, updatedAt: now,
+      output: '', blocks: [], error: '', createdAt: now, updatedAt: now,
     };
     if (!task.input.userText.trim()) throw httpError(400, '消息不能为空');
     await this.userStore.updateVault(session, (vault) => { vault.tasks[id] = task; });
@@ -44,7 +45,7 @@ export class TaskRunner {
   async list(session, { projectId = '', conversationId = '' } = {}) {
     await this.recoverInterrupted(session);
     const vault = await this.userStore.readVault(session);
-    return Object.values(vault.tasks || {})
+    return Object.values(vault.tasks || {}).map((task) => this.liveTasks.get(`${session.userId}:${task.id}`) || task)
       .filter((task) => !projectId || task.projectId === projectId)
       .filter((task) => !conversationId || task.conversationId === conversationId)
       .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
@@ -54,13 +55,16 @@ export class TaskRunner {
   async get(session, id) {
     await this.recoverInterrupted(session);
     const vault = await this.userStore.readVault(session);
-    const task = vault.tasks?.[id];
+    const task = this.liveTasks.get(`${session.userId}:${id}`) || vault.tasks?.[id];
     if (!task) throw httpError(404, '任务不存在');
     return sanitizeTask(task);
   }
 
   async cancel(session, id) {
-    this.controllers.get(`${session.userId}:${id}`)?.abort();
+    const key = `${session.userId}:${id}`;
+    const live = this.liveTasks.get(key);
+    if (live) { live.status = 'cancelled'; live.updatedAt = new Date().toISOString(); }
+    this.controllers.get(key)?.abort();
     await this.patch(session, id, { status: 'cancelled', updatedAt: new Date().toISOString() });
     return this.get(session, id);
   }
@@ -91,20 +95,50 @@ export class TaskRunner {
     const latest = await this.get(session, task.id);
     if (latest.status === 'cancelled') return;
     const controller = new AbortController();
-    this.controllers.set(`${session.userId}:${task.id}`, controller);
+    const liveKey = `${session.userId}:${task.id}`;
+    this.controllers.set(liveKey, controller);
     await this.patch(session, task.id, { status: 'running', updatedAt: new Date().toISOString() });
+    task.status = 'running';
+    this.liveTasks.set(liveKey, task);
     let tempDir = '';
+    let progressTimer = null;
+    let progressWrites = Promise.resolve();
+    const flushProgress = () => {
+      clearTimeout(progressTimer);
+      progressTimer = null;
+      const snapshot = { output: task.output, blocks: structuredClone(task.blocks || []), updatedAt: new Date().toISOString() };
+      progressWrites = progressWrites.catch(() => {}).then(() => this.patch(session, task.id, snapshot));
+      return progressWrites;
+    };
+    const scheduleProgress = () => {
+      if (progressTimer) return;
+      progressTimer = setTimeout(() => { flushProgress().catch(() => {}); }, 1_500);
+      progressTimer.unref?.();
+    };
     try {
       const vault = await this.userStore.readVault(session);
       tempDir = await materializeCodexWorkspace(vault, task);
       const prompt = ['当前目录是该用户此次任务的临时只读工作区快照；项目数据位于 project.paper-graph.json，附件保持原工作区相对路径。', task.input.systemPrompt, ...task.input.history.map((m) => `${m.role}: ${m.content}`), `user: ${task.input.userText}`].filter(Boolean).join('\n\n');
-      const output = await executeCodex({ prompt, cwd: tempDir, model: task.model, signal: controller.signal });
-      await this.patch(session, task.id, { status: 'completed', output, updatedAt: new Date().toISOString() });
+      const output = await executeCodexStream({
+        prompt, cwd: tempDir, model: task.model, signal: controller.signal,
+        onEvent: (event) => { applyCodexProgress(task, event); scheduleProgress(); },
+      });
+      if (progressTimer) await flushProgress();
+      else await progressWrites;
+      task.output = output;
+      syncFinalTextBlock(task);
+      task.status = 'completed';
+      await this.patch(session, task.id, { status: 'completed', output: task.output, blocks: task.blocks, updatedAt: new Date().toISOString() });
     } catch (error) {
+      clearTimeout(progressTimer);
+      await progressWrites.catch(() => {});
       const status = controller.signal.aborted || error?.name === 'AbortError' ? 'cancelled' : 'failed';
-      await this.patch(session, task.id, { status, error: error?.message || String(error), updatedAt: new Date().toISOString() });
+      task.status = status;
+      task.error = error?.message || String(error);
+      await this.patch(session, task.id, { status, output: task.output, blocks: task.blocks, error: error?.message || String(error), updatedAt: new Date().toISOString() });
     } finally {
-      this.controllers.delete(`${session.userId}:${task.id}`);
+      this.controllers.delete(liveKey);
+      this.liveTasks.delete(liveKey);
       if (tempDir) await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
   }
@@ -138,6 +172,47 @@ export class TaskRunner {
       Object.assign(vault.tasks[id], patch);
     });
   }
+}
+
+export function applyCodexProgress(task, event) {
+  if (!event) return task;
+  task.blocks ||= [];
+  if (event.type === 'text_delta' && event.delta) {
+    task.output = `${task.output || ''}${event.delta}`;
+    let block = task.blocks.at(-1);
+    if (!block || block.type !== 'text') { block = { type: 'text', content: '' }; task.blocks.push(block); }
+    block.content += event.delta;
+  } else if (event.type === 'reasoning_delta' && event.delta) {
+    let block = task.blocks.at(-1);
+    if (!block || block.type !== 'reasoning') { block = { type: 'reasoning', content: '' }; task.blocks.push(block); }
+    block.content += event.delta;
+  } else if (event.type === 'tool') {
+    let block = task.blocks.find((item) => item.type === 'tool' && item.key === event.id);
+    if (!block) {
+      block = { type: 'tool', key: event.id, name: event.name, args: event.args, status: 'running' };
+      task.blocks.push(block);
+    }
+    block.status = event.status || block.status;
+    if (event.args !== undefined) block.args = event.args;
+    if (event.result !== undefined) block.result = event.result;
+    if (event.error) block.error = typeof event.error === 'string' ? event.error : JSON.stringify(event.error);
+  } else if (event.type === 'tool_delta' && event.id) {
+    const block = task.blocks.find((item) => item.type === 'tool' && item.key === event.id);
+    if (block) {
+      const current = block.result && typeof block.result === 'object' ? block.result : {};
+      block.result = { ...current, output: `${current.output || ''}${event.delta || ''}` };
+    }
+  }
+  if (task.blocks.length > 120) task.blocks = task.blocks.slice(-120);
+  return task;
+}
+
+function syncFinalTextBlock(task) {
+  const textBlocks = (task.blocks || []).filter((block) => block.type === 'text');
+  const blockText = textBlocks.map((block) => block.content || '').join('');
+  if (blockText === task.output) return;
+  if (!textBlocks.length) task.blocks.push({ type: 'text', content: task.output || '' });
+  else textBlocks.at(-1).content += String(task.output || '').slice(blockText.length);
 }
 
 async function callProvider(provider, task, signal, vault) {
