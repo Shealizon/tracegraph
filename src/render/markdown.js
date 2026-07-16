@@ -7,7 +7,7 @@ marked.setOptions({ gfm: true, breaks: true });
 
 export function renderMarkdownInto(element, markdown, {
   macros = {}, sources = [], graphLabels = null, onGraphNavigate = null,
-  onGraphHover = null, onGraphLeave = null, onGraphReference = null,
+  onGraphHover = null, onGraphLeave = null, onGraphReference = null, onWorkspaceFile = null,
 } = {}) {
   // CommonMark treats backslashes before punctuation as escapes.  Passing the
   // model output straight through marked would therefore turn `\[...\]` into
@@ -28,6 +28,15 @@ export function renderMarkdownInto(element, markdown, {
       anchor.addEventListener('click', (event) => {
         event.preventDefault();
         onGraphReference?.(reference, anchor);
+      });
+    } else if (onWorkspaceFile && workspacePathFromHref(anchor.getAttribute('href'))) {
+      const filePath = workspacePathFromHref(anchor.getAttribute('href'));
+      anchor.removeAttribute('target');
+      anchor.removeAttribute('rel');
+      anchor.classList.add('workspace-file-reference');
+      anchor.addEventListener('click', (event) => {
+        event.preventDefault();
+        onWorkspaceFile(filePath, anchor);
       });
     } else {
       anchor.target = '_blank';
@@ -50,6 +59,17 @@ export function renderMarkdownInto(element, markdown, {
 
   injectCitations(element, sources);
   injectGraphReferences(element, graphLabels, { onNavigate: onGraphNavigate, onHover: onGraphHover, onLeave: onGraphLeave });
+}
+
+export function workspacePathFromHref(value) {
+  const href = String(value || '').trim();
+  if (!href || href.startsWith('#') || href.startsWith('/') || href.startsWith('//')
+    || /^[a-z][a-z0-9+.-]*:/i.test(href)) return '';
+  let decoded;
+  try { decoded = decodeURIComponent(href.split(/[?#]/, 1)[0]); } catch { return ''; }
+  const parts = decoded.replaceAll('\\', '/').split('/').filter((part) => part && part !== '.');
+  if (!parts.length || parts.some((part) => part === '..' || part.includes('\0'))) return '';
+  return parts.join('/');
 }
 
 const MATH_TOKEN_PREFIX = 'AIPANELMATHTOKEN';

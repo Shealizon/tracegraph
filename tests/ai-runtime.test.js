@@ -7,7 +7,7 @@ import {
   aiQuoteAttachment, contextPrompt, graphNodeAttachment, graphSelectionAttachment, mentionQueryAt, pdfFieldAttachment, replaceMention, searchMentionCandidates,
 } from '../src/ai/contextAttachments.js';
 import { formatGraphReferenceDisplay, normalizeCjkStrong, protectMarkdownMath, stripBlockquoteMathMarkers } from '../src/render/markdown.js';
-import { activityTimelineEntries, applyCloudTaskSnapshot, deletedWorkspacePaths, isActivityGroupActive, isScrollNearBottom, navigateGraphReference, normalizeAiText, noteFromAssistantMessage, replaceUserMessageBranch, shouldJoinActivityBlock, shouldSyncWorkspaceAfterTask } from '../src/ui/aiPanel.js';
+import { activityTimelineEntries, applyCloudTaskSnapshot, deletedWorkspacePaths, isActivityGroupActive, isScrollNearBottom, navigateGraphReference, normalizeAiText, noteFromAssistantMessage, reconcileCloudWorkspaceChanges, replaceUserMessageBranch, shouldJoinActivityBlock, shouldSyncWorkspaceAfterTask } from '../src/ui/aiPanel.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -22,9 +22,11 @@ describe('AI runtime helpers', () => {
     applyCloudTaskSnapshot(message, {
       output: '逐步回答',
       blocks: [{ type: 'reasoning', content: '推理摘要' }, { type: 'text', content: '逐步回答' }],
+      workspaceChanges: { committed: true, modified: ['notes/result.md'] },
     });
     expect(message.content).toBe('逐步回答');
     expect(message.blocks).toEqual([{ type: 'reasoning', content: '推理摘要' }, { type: 'text', content: '逐步回答' }]);
+    expect(message.workspaceChanges).toEqual({ committed: true, modified: ['notes/result.md'] });
   });
 
   it('refreshes the local workspace after completed cloud tasks and applies committed deletions', () => {
@@ -35,6 +37,32 @@ describe('AI runtime helpers', () => {
     expect(shouldSyncWorkspaceAfterTask(task)).toBe(true);
     expect(shouldSyncWorkspaceAfterTask({ status: 'running' })).toBe(false);
     expect(deletedWorkspacePaths(task)).toEqual(['notes/old.md', 'uploads/removed.pdf']);
+  });
+
+  it('force-pulls task-created and modified files before timestamp-based workspace sync', async () => {
+    const workspace = {
+      deleteFile: vi.fn(async () => {}),
+      writeFile: vi.fn(async () => {}),
+    };
+    const api = {
+      getFile: vi.fn(async (_scope, filePath) => ({
+        file: {
+          path: filePath,
+          type: 'text/markdown',
+          data: btoa(filePath === 'created.md' ? 'created content' : 'remote Codex version'),
+        },
+      })),
+    };
+    const result = await reconcileCloudWorkspaceChanges(workspace, 'scope', {
+      created: ['created.md'],
+      modified: ['md-test.md'],
+      deleted: ['old.md'],
+    }, api);
+    expect(result).toEqual({ pulled: ['created.md', 'md-test.md'], deleted: ['old.md'] });
+    expect(workspace.deleteFile).toHaveBeenCalledWith('old.md');
+    expect(api.getFile).toHaveBeenCalledTimes(2);
+    expect(workspace.writeFile).toHaveBeenCalledTimes(2);
+    expect(await workspace.writeFile.mock.calls[1][1].text()).toBe('remote Codex version');
   });
 
   it('builds structured graph selection context with node location and surrounding text', () => {

@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
-import { describe, expect, it } from 'vitest';
-import { formatUnresolvedFileReference, renderMarkdownInto } from '../src/render/markdown.js';
+import { describe, expect, it, vi } from 'vitest';
+import { formatUnresolvedFileReference, renderMarkdownInto, workspacePathFromHref } from '../src/render/markdown.js';
 
 describe('AI Markdown references', () => {
   it('keeps confirmed graph labels clickable', () => {
@@ -41,5 +41,18 @@ describe('AI Markdown references', () => {
   it('formats common uploaded-file label prefixes', () => {
     expect(formatUnresolvedFileReference('ref', 'prop:main-result')).toBe('命题「main result」');
     expect(formatUnresolvedFileReference('eqref', 'energy')).toBe('公式「energy」');
+  });
+
+  it('opens relative Markdown links as workspace files', () => {
+    const root = document.createElement('div');
+    const onWorkspaceFile = vi.fn();
+    renderMarkdownInto(root, '[测试文件](notes/md-test.md)', { onWorkspaceFile });
+    const anchor = root.querySelector('a');
+    anchor.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(anchor.classList.contains('workspace-file-reference')).toBe(true);
+    expect(anchor.target).toBe('');
+    expect(onWorkspaceFile).toHaveBeenCalledWith('notes/md-test.md', anchor);
+    expect(workspacePathFromHref('https://example.com/file.md')).toBe('');
+    expect(workspacePathFromHref('../outside.md')).toBe('');
   });
 });

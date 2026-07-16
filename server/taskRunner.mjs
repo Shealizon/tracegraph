@@ -308,6 +308,17 @@ export class TaskRunner {
       const workspaceChanges = task.input.fileAccessMode === 'allow'
         ? await persistCodexWorkspaceChanges(this.userStore, session, task.workspaceScope, tempDir, initialWorkspaceFiles)
         : { committed: false, created: [], modified: [], deleted: [], skipped: [], conflicts: [] };
+      console.info('[codex-workspace]', JSON.stringify({
+        taskId: task.id,
+        scope: task.workspaceScope,
+        fileAccessMode: task.input.fileAccessMode,
+        committed: workspaceChanges.committed,
+        created: workspaceChanges.created,
+        modified: workspaceChanges.modified,
+        deleted: workspaceChanges.deleted,
+        skipped: workspaceChanges.skipped,
+        conflicts: workspaceChanges.conflicts,
+      }));
       task.output = output;
       task.workspaceChanges = workspaceChanges;
       syncFinalTextBlock(task);

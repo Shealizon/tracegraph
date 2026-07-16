@@ -572,7 +572,7 @@ export function buildAiPanel(ctx) {
         updateAssistantDom(conversation, assistantMessage);
         if (shouldSyncWorkspaceAfterTask(cloudTask)) {
           try {
-            for (const deletedPath of deletedWorkspacePaths(cloudTask)) await turnWorkspace.deleteFile(deletedPath);
+            await reconcileCloudWorkspaceChanges(turnWorkspace, workspaceScope, cloudTask.workspaceChanges);
             await syncWorkspaceFiles(turnWorkspace, workspaceScope);
             if (activeConversation(conversationState).id === conversation.id
               && !subpanel.hidden && subpanel.dataset.mode === 'files') {
@@ -1943,6 +1943,10 @@ export function buildAiPanel(ctx) {
         const member = graphReferenceToMember(reference, tags, notes);
         if (member) ctx.jumpToMember?.(member);
       },
+      onWorkspaceFile: (filePath) => openConversationFile({
+        path: filePath,
+        name: filePath.split('/').at(-1),
+      }),
     };
   }
   function persist() {
@@ -2086,6 +2090,7 @@ export function buildAiPanel(ctx) {
         if (!cloudTask || message.cloudTaskStatus === cloudTask.status) continue;
         if (cloudTask.status === 'completed') {
           applyCloudTaskSnapshot(message, cloudTask);
+          await refreshCompletedCloudWorkspace(conversation, cloudTask);
           if (!message.content) { message.content = '操作已完成。'; appendTextBlock(message, message.content); }
           message.cloudTaskStatus = cloudTask.status;
           if (message.compaction) message.compactionStatus = 'done';
@@ -2113,9 +2118,10 @@ export function buildAiPanel(ctx) {
             applyCloudTaskSnapshot(message, progress);
             updateAssistantDom(conversation, message);
             syncBusy();
-          }).then((finished) => {
+          }).then(async (finished) => {
             message.cloudTaskStatus = finished.status;
             applyCloudTaskSnapshot(message, finished);
+            if (finished.status === 'completed') await refreshCompletedCloudWorkspace(conversation, finished);
             if (finished.status === 'completed' && !message.content) {
               message.content = '操作已完成。';
               appendTextBlock(message, message.content);
@@ -2137,6 +2143,18 @@ export function buildAiPanel(ctx) {
           });
         }
       }
+    }
+  }
+  async function refreshCompletedCloudWorkspace(conversation, task) {
+    try {
+      const scope = `${projectId}--${conversation.id}`;
+      const targetWorkspace = activeConversation(conversationState).id === conversation.id
+        ? workspace
+        : createBrowserWorkspace(scope);
+      await reconcileCloudWorkspaceChanges(targetWorkspace, scope, task.workspaceChanges);
+      await syncWorkspaceFiles(targetWorkspace, scope);
+    } catch (error) {
+      console.warn('failed to restore completed cloud workspace', error);
     }
   }
   function setOpen(open) {
@@ -2221,6 +2239,7 @@ async function waitForCloudTask(taskId, signal, onStatus) {
 
 export function applyCloudTaskSnapshot(message, task) {
   message.content = String(task?.output || '');
+  message.workspaceChanges = task?.workspaceChanges ? structuredClone(task.workspaceChanges) : null;
   if (Array.isArray(task?.blocks) && task.blocks.length) {
     message.blocks = task.blocks.map((block) => ({ ...block }));
   } else {
@@ -2238,6 +2257,26 @@ export function deletedWorkspacePaths(task) {
   return [...new Set((task?.workspaceChanges?.deleted || [])
     .map((filePath) => String(filePath || '').replaceAll('\\', '/').replace(/^\/+/, ''))
     .filter(Boolean))];
+}
+
+export async function reconcileCloudWorkspaceChanges(workspace, scope, changes, api = serverApi) {
+  for (const filePath of [...new Set((changes?.deleted || []).map(normalizeCloudWorkspacePath).filter(Boolean))]) {
+    await workspace.deleteFile(filePath);
+  }
+  const pullPaths = [...new Set([...(changes?.created || []), ...(changes?.modified || [])]
+    .map(normalizeCloudWorkspacePath).filter(Boolean))];
+  for (const filePath of pullPaths) {
+    const full = (await api.getFile(scope, filePath)).file;
+    const binary = atob(full.data || '');
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    await workspace.writeFile(filePath, new Blob([bytes], { type: full.type || 'application/octet-stream' }));
+  }
+  return { pulled: pullPaths, deleted: [...new Set((changes?.deleted || []).map(normalizeCloudWorkspacePath).filter(Boolean))] };
+}
+
+function normalizeCloudWorkspacePath(filePath) {
+  return String(filePath || '').replaceAll('\\', '/').replace(/^\/+/, '');
 }
 
 async function uploadCloudFiles(workspace, attachments, scope) {
