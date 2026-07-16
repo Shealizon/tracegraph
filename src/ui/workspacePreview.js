@@ -23,16 +23,16 @@ export function workspaceFileKind(file) {
 export function workspaceFileIcon(file) {
   const kind = typeof file === 'string' ? file : workspaceFileKind(file);
   const icons = {
-    pdf: fileGlyph('<path d="M8 11.5h2.2a1.7 1.7 0 010 3.4H8v-5.8M13 14.9V9.1h1.6a2.9 2.9 0 010 5.8H13M18 14.9V9.1h3"/>'),
-    markdown: fileGlyph('<path d="M7.5 15v-5l2.1 2.6 2.1-2.6v5M14 11.5l2 2 2-2M16 9v5"/>'),
-    image: fileGlyph('<circle cx="10" cy="10" r="1.2"/><path d="m7.5 16 3.1-3.1 2.1 2.1 1.5-1.5 2.3 2.5"/>'),
-    text: fileGlyph('<path d="M8 10h8M8 13h8M8 16h5"/>'),
-    spreadsheet: fileGlyph('<path d="M8 10h8v6H8zM8 13h8M12 10v6"/>'),
-    document: fileGlyph('<path d="M8 10h8M8 13h8M8 16h6"/>'),
-    presentation: fileGlyph('<path d="M8 10h8v5H8zM12 15v2M10 17h4"/>'),
-    archive: fileGlyph('<path d="M11 8h2M11 10.5h2M11 13h2M10.5 15.5h3v2h-3z"/>'),
-    code: fileGlyph('<path d="m11 10-2.5 2.5L11 15M14 10l2.5 2.5L14 15"/>'),
-    file: fileGlyph(''),
+    pdf: fileTypeSvg('<path d="M6.5 2.75h7l4 4v14.5h-11z"/><path d="M13.5 2.75v4h4"/><rect x="8.5" y="12.25" width="7" height="4.5" rx="1" fill="currentColor" stroke="none"/>'),
+    markdown: fileTypeSvg('<rect x="2.75" y="5.25" width="18.5" height="13.5" rx="2.25"/><path d="M6 15v-6l3 3 3-3v6M15 12l2.5 2.5L20 12M17.5 9v5.5"/>'),
+    image: fileTypeSvg('<rect x="3" y="4" width="18" height="16" rx="2.25"/><circle cx="8.25" cy="9" r="1.5"/><path d="m5.5 17 4.75-4.75 3.25 3.25 2.5-2.5 2.5 2.5"/>'),
+    text: fileTypeSvg('<path d="M6.5 2.75h7l4 4v14.5h-11z"/><path d="M13.5 2.75v4h4M9 11h6M9 14h6M9 17h4.5"/>'),
+    spreadsheet: fileTypeSvg('<rect x="3.25" y="3.25" width="17.5" height="17.5" rx="2.25"/><path d="M3.25 9h17.5M9 9v11.75M15 9v11.75M3.25 15h17.5"/>'),
+    document: fileTypeSvg('<path d="M6.5 2.75h7l4 4v14.5h-11z"/><path d="M13.5 2.75v4h4M9 10.5h6M9 13.5h6M9 16.5h6"/>'),
+    presentation: fileTypeSvg('<rect x="3" y="4" width="18" height="13" rx="2.25"/><path d="M12 17v4M8.5 21h7M8 13V8.5h8V13"/>'),
+    archive: fileTypeSvg('<path d="M4 8h16v12H4zM3 4h18v4H3zM9 13h6"/>'),
+    code: fileTypeSvg('<rect x="3" y="4" width="18" height="16" rx="2.25"/><path d="m10 9-3 3 3 3M14 9l3 3-3 3"/>'),
+    file: fileTypeSvg('<path d="M6.5 2.75h7l4 4v14.5h-11z"/><path d="M13.5 2.75v4h4"/>'),
   };
   return icons[kind] || icons.file;
 }
@@ -133,28 +133,73 @@ async function openImagePreview(source) {
   shell.className = 'tag-note-hover-preview note-window ai-workspace-preview ai-image-file-preview';
   shell.setAttribute('role', 'dialog');
   shell.setAttribute('aria-label', `图片预览：${source.name}`);
-  shell.innerHTML = `<header class="ai-file-preview-head" data-drag-handle><span data-kind="image">${workspaceFileIcon('image')}</span><div><strong></strong><small>图片 · 只读</small></div><button type="button" title="下载">${ICON.download}</button><button type="button" title="关闭">${ICON.close}</button></header><div class="ai-file-preview-body ai-image-preview-body"><img alt=""></div>`;
+  shell.innerHTML = `<header class="ai-file-preview-head" data-drag-handle><span data-kind="image">${workspaceFileIcon('image')}</span><div><strong></strong><small>图片 · Ctrl + 滚轮缩放 · 只读</small></div><button type="button" title="下载">${ICON.download}</button><button type="button" title="关闭">${ICON.close}</button></header><div class="ai-file-preview-body ai-image-preview-body" title="按住 Ctrl 并滚动滚轮缩放图片"><div class="ai-image-preview-canvas"><img alt=""></div></div>`;
   shell.querySelector('strong').textContent = source.name;
   const [download, dismiss] = shell.querySelectorAll('header > button');
   const image = shell.querySelector('img');
   const detail = shell.querySelector('small');
+  const body = shell.querySelector('.ai-image-preview-body');
+  const imageCanvas = shell.querySelector('.ai-image-preview-canvas');
   const objectUrl = URL.createObjectURL(source.file);
+  let imageZoom = 1;
+  let naturalWidth = 0;
+  let naturalHeight = 0;
+  let closed = false;
+
+  const renderImageScale = (focus = null) => {
+    if (!naturalWidth || !naturalHeight || closed) return;
+    const inset = 28;
+    const availableWidth = Math.max(1, body.clientWidth - inset);
+    const availableHeight = Math.max(1, body.clientHeight - inset);
+    const fit = Math.min(availableWidth / naturalWidth, availableHeight / naturalHeight, 1);
+    const width = Math.max(1, Math.round(naturalWidth * fit * imageZoom));
+    const height = Math.max(1, Math.round(naturalHeight * fit * imageZoom));
+    image.style.width = `${width}px`;
+    image.style.height = `${height}px`;
+    imageCanvas.style.width = `${Math.max(body.clientWidth, width + inset)}px`;
+    imageCanvas.style.height = `${Math.max(body.clientHeight, height + inset)}px`;
+    detail.textContent = `图片 · ${naturalWidth} × ${naturalHeight} · ${Math.round(imageZoom * 100)}% · 只读`;
+    if (focus) {
+      body.scrollLeft = Math.max(0, focus.ratioX * body.scrollWidth - focus.x);
+      body.scrollTop = Math.max(0, focus.ratioY * body.scrollHeight - focus.y);
+    }
+  };
+
+  const onWheelZoom = (event) => {
+    if (!event.ctrlKey) return;
+    event.preventDefault();
+    const rect = body.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const focus = {
+      x,
+      y,
+      ratioX: (body.scrollLeft + x) / Math.max(1, body.scrollWidth),
+      ratioY: (body.scrollTop + y) / Math.max(1, body.scrollHeight),
+    };
+    imageZoom = clamp(imageZoom * Math.exp(-event.deltaY * 0.002), 0.25, 8);
+    renderImageScale(focus);
+  };
+
   image.alt = source.name;
-  image.src = objectUrl;
   image.addEventListener('load', () => {
-    if (image.naturalWidth && image.naturalHeight) detail.textContent = `图片 · ${image.naturalWidth} × ${image.naturalHeight} · 只读`;
+    naturalWidth = image.naturalWidth;
+    naturalHeight = image.naturalHeight;
+    renderImageScale();
   });
+  image.src = objectUrl;
+  body.addEventListener('wheel', onWheelZoom, { passive: false });
   download.addEventListener('click', () => downloadWorkspaceFile(source.file, source.name));
   document.body.append(shell);
   applySavedRect(shell, TEXT_RECT_KEY, defaultTextRect());
   const disconnectDrag = bindDrag(shell, shell.querySelector('[data-drag-handle]'), () => saveRect(shell, TEXT_RECT_KEY));
-  const observer = observeRect(shell, TEXT_RECT_KEY);
-  let closed = false;
+  const observer = observeRect(shell, TEXT_RECT_KEY, () => renderImageScale());
   const close = () => {
     if (closed) return;
     closed = true;
     disconnectDrag();
     observer?.disconnect();
+    body.removeEventListener('wheel', onWheelZoom);
     URL.revokeObjectURL(objectUrl);
     shell.remove();
   };
@@ -168,7 +213,7 @@ async function openPdfPreview(source, onPdfField) {
   shell.className = 'ai-pdf-preview';
   shell.setAttribute('role', 'dialog');
   shell.setAttribute('aria-label', `PDF 阅读器：${source.name}`);
-  shell.innerHTML = `<header class="ai-pdf-preview-head" data-drag-handle><span class="ai-pdf-preview-mark" data-kind="pdf">${workspaceFileIcon('pdf')}</span><div><strong></strong><small>PDF 阅读器</small></div><div class="ai-pdf-window-controls"><button type="button" data-window-smaller title="等比缩小窗口">${minusIcon()}</button><button type="button" data-window-larger title="等比放大窗口">${ICON.plus}</button><button type="button" data-download title="下载">${ICON.download}</button><button type="button" data-close title="关闭">${ICON.close}</button></div></header><div class="ai-pdf-toolbar"><button type="button" data-prev title="上一页">${leftIcon()}</button><form data-page-form><label>第 <input type="number" min="1" value="1" inputmode="numeric"> 页</label><span>/ <b data-page-count>—</b></span></form><button type="button" data-next title="下一页">${rightIcon()}</button><small data-page-status>正在加载…</small></div><div class="ai-pdf-stage"><div class="ai-pdf-loading">正在打开 PDF…</div><div class="ai-pdf-page" hidden><canvas></canvas><div class="textLayer"></div></div></div><span class="ai-pdf-resize-handle" aria-hidden="true"></span>`;
+  shell.innerHTML = `<header class="ai-pdf-preview-head" data-drag-handle><span class="ai-pdf-preview-mark" data-kind="pdf">${workspaceFileIcon('pdf')}</span><div><strong></strong><small>PDF 阅读器 · Ctrl + 滚轮缩放</small></div><div class="ai-pdf-window-controls"><button type="button" data-download title="下载">${ICON.download}</button><button type="button" data-close title="关闭">${ICON.close}</button></div></header><div class="ai-pdf-toolbar"><button type="button" data-prev title="上一页">${leftIcon()}</button><form data-page-form><label>第 <input type="number" min="1" value="1" inputmode="numeric"> 页</label><span>/ <b data-page-count>—</b></span></form><button type="button" data-next title="下一页">${rightIcon()}</button><small data-page-status>正在加载…</small></div><div class="ai-pdf-stage" title="按住 Ctrl 并滚动滚轮缩放 PDF 内容"><div class="ai-pdf-loading">正在打开 PDF…</div><div class="ai-pdf-page" hidden><canvas></canvas><div class="textLayer"></div></div></div>${edgeResizeHandles()}`;
   shell.querySelector('strong').textContent = source.name;
   document.body.append(shell);
   applySavedRect(shell, PDF_RECT_KEY, defaultPdfRect());
@@ -186,7 +231,9 @@ async function openPdfPreview(source, onPdfField) {
   let renderVersion = 0;
   let selectionSnapshot = null;
   let closed = false;
-  let resizeTimer = 0;
+  let zoomTimer = 0;
+  let contentZoom = 1;
+  let zoomFocus = null;
   const stage = shell.querySelector('.ai-pdf-stage');
   const pageElement = shell.querySelector('.ai-pdf-page');
   const canvas = pageElement.querySelector('canvas');
@@ -233,14 +280,14 @@ async function openPdfPreview(source, onPdfField) {
     hideSelection({ clear: true });
     renderTask?.cancel?.();
     textLayer?.cancel?.();
-    status.textContent = `第 ${pageNumber} 页`;
+    status.textContent = `第 ${pageNumber} 页 · ${Math.round(contentZoom * 100)}%`;
     pageInput.value = String(pageNumber);
     previous.disabled = pageNumber <= 1;
     next.disabled = pageNumber >= documentHandle.numPages;
     const page = await documentHandle.getPage(pageNumber);
     const base = page.getViewport({ scale: 1 });
     const availableWidth = Math.max(220, stage.clientWidth - 30);
-    const viewport = page.getViewport({ scale: availableWidth / base.width });
+    const viewport = page.getViewport({ scale: (availableWidth / base.width) * contentZoom });
     const ratio = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = Math.floor(viewport.width * ratio);
     canvas.height = Math.floor(viewport.height * ratio);
@@ -268,7 +315,12 @@ async function openPdfPreview(source, onPdfField) {
     try {
       await Promise.all([renderTask.promise, textLayer.render()]);
       if (version !== renderVersion || closed) return;
-      status.textContent = `第 ${pageNumber} 页 · ${Math.round(viewport.width)} × ${Math.round(viewport.height)}`;
+      status.textContent = `第 ${pageNumber} 页 · ${Math.round(contentZoom * 100)}%`;
+      if (zoomFocus) {
+        stage.scrollLeft = Math.max(0, zoomFocus.ratioX * stage.scrollWidth - zoomFocus.x);
+        stage.scrollTop = Math.max(0, zoomFocus.ratioY * stage.scrollHeight - zoomFocus.y);
+        zoomFocus = null;
+      }
     } catch (error) {
       if (error?.name !== 'RenderingCancelledException' && !closed) throw error;
     }
@@ -283,26 +335,32 @@ async function openPdfPreview(source, onPdfField) {
     renderPage().catch((error) => { status.textContent = error?.message || '页面渲染失败'; });
   };
 
-  const resizeWindow = (factor) => {
-    const rect = shell.getBoundingClientRect();
-    const width = clamp(Math.round(rect.width * factor), 360, innerWidth - 16);
-    const height = clamp(Math.round(rect.height * factor), 420, innerHeight - 16);
-    const proportional = Math.min(width / rect.width, height / rect.height);
-    shell.style.width = `${Math.round(rect.width * proportional)}px`;
-    shell.style.height = `${Math.round(rect.height * proportional)}px`;
-    clampWindow(shell);
-    saveRect(shell, PDF_RECT_KEY);
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => renderPage().catch(() => {}), 80);
+  const onWheelZoom = (event) => {
+    if (!event.ctrlKey) return;
+    event.preventDefault();
+    const rect = stage.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    zoomFocus = {
+      x,
+      y,
+      ratioX: (stage.scrollLeft + x) / Math.max(1, stage.scrollWidth),
+      ratioY: (stage.scrollTop + y) / Math.max(1, stage.scrollHeight),
+    };
+    contentZoom = clamp(contentZoom * Math.exp(-event.deltaY * 0.002), 0.5, 4);
+    status.textContent = `第 ${pageNumber} 页 · ${Math.round(contentZoom * 100)}%`;
+    clearTimeout(zoomTimer);
+    zoomTimer = setTimeout(() => renderPage().catch((error) => {
+      status.textContent = error?.message || '页面渲染失败';
+    }), 60);
   };
 
   previous.addEventListener('click', () => goToPage(pageNumber - 1));
   next.addEventListener('click', () => goToPage(pageNumber + 1));
   shell.querySelector('[data-page-form]').addEventListener('submit', (event) => { event.preventDefault(); goToPage(pageInput.value); });
-  shell.querySelector('[data-window-smaller]').addEventListener('click', () => resizeWindow(0.9));
-  shell.querySelector('[data-window-larger]').addEventListener('click', () => resizeWindow(1.1));
   shell.querySelector('[data-download]').addEventListener('click', () => downloadWorkspaceFile(source.file, source.name));
   shell.querySelector('[data-close]').addEventListener('click', () => close());
+  stage.addEventListener('wheel', onWheelZoom, { passive: false });
   stage.addEventListener('pointerup', () => setTimeout(updateSelection, 0));
   stage.addEventListener('keyup', () => setTimeout(updateSelection, 0));
   stage.addEventListener('scroll', () => { if (!selectionBar.hidden) updateSelection(); }, { passive: true });
@@ -336,7 +394,7 @@ async function openPdfPreview(source, onPdfField) {
     hideSelection();
     saveRect(shell, PDF_RECT_KEY);
   });
-  const disconnectResize = bindProportionalResize(shell, shell.querySelector('.ai-pdf-resize-handle'), () => {
+  const disconnectEdgeResize = bindEdgeResize(shell, () => {
     saveRect(shell, PDF_RECT_KEY);
     renderPage().catch(() => {});
   });
@@ -346,12 +404,13 @@ async function openPdfPreview(source, onPdfField) {
   const close = () => {
     if (closed) return;
     closed = true;
-    clearTimeout(resizeTimer);
+    clearTimeout(zoomTimer);
     renderTask?.cancel?.();
     textLayer?.cancel?.();
     documentHandle?.destroy?.();
     disconnectDrag();
-    disconnectResize();
+    disconnectEdgeResize();
+    stage.removeEventListener('wheel', onWheelZoom);
     window.removeEventListener('resize', onWindowResize);
     selectionBar.remove();
     shell.remove();
@@ -397,42 +456,74 @@ function bindDrag(element, handle, onEnd = () => {}) {
   };
 }
 
-function bindProportionalResize(element, handle, onEnd = () => {}) {
+function bindEdgeResize(element, onEnd = () => {}) {
   let start = null;
+  const handles = [...element.querySelectorAll('[data-resize-edge]')];
+  const move = (event) => {
+    if (!start) return;
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    let { left, top, right, bottom } = start;
+    if (start.edge.includes('e')) right = clamp(start.right + dx, left + 360, innerWidth - 8);
+    if (start.edge.includes('s')) bottom = clamp(start.bottom + dy, top + 420, innerHeight - 8);
+    if (start.edge.includes('w')) left = clamp(start.left + dx, 8, right - 360);
+    if (start.edge.includes('n')) top = clamp(start.top + dy, 8, bottom - 420);
+    element.style.left = `${Math.round(left)}px`;
+    element.style.top = `${Math.round(top)}px`;
+    element.style.width = `${Math.round(right - left)}px`;
+    element.style.height = `${Math.round(bottom - top)}px`;
+  };
+  const up = () => {
+    if (!start) return;
+    start = null;
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+    onEnd();
+  };
   const down = (event) => {
     if (event.button !== 0) return;
     const rect = element.getBoundingClientRect();
-    start = { x: event.clientX, y: event.clientY, width: rect.width, height: rect.height };
-    handle.setPointerCapture?.(event.pointerId);
+    start = {
+      edge: event.currentTarget.dataset.resizeEdge,
+      x: event.clientX,
+      y: event.clientY,
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
     event.preventDefault();
   };
-  const move = (event) => {
-    if (!start) return;
-    const factor = Math.max((start.width + event.clientX - start.x) / start.width, (start.height + event.clientY - start.y) / start.height);
-    const limited = clamp(factor, 360 / start.width, Math.min((innerWidth - element.offsetLeft - 8) / start.width, (innerHeight - element.offsetTop - 8) / start.height));
-    element.style.width = `${Math.round(start.width * limited)}px`;
-    element.style.height = `${Math.round(start.height * limited)}px`;
-  };
-  const up = () => { if (!start) return; start = null; onEnd(); };
-  handle.addEventListener('pointerdown', down);
-  handle.addEventListener('pointermove', move);
-  handle.addEventListener('pointerup', up);
-  handle.addEventListener('pointercancel', up);
+  handles.forEach((handle) => handle.addEventListener('pointerdown', down));
   return () => {
-    handle.removeEventListener('pointerdown', down);
-    handle.removeEventListener('pointermove', move);
-    handle.removeEventListener('pointerup', up);
-    handle.removeEventListener('pointercancel', up);
+    handles.forEach((handle) => handle.removeEventListener('pointerdown', down));
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+    start = null;
   };
 }
 
-function observeRect(element, key) {
+function observeRect(element, key, onResize = () => {}) {
   if (!window.ResizeObserver) return null;
   let timer = 0;
   const observer = new ResizeObserver(() => {
     clearTimeout(timer);
-    timer = setTimeout(() => { clampWindow(element); saveRect(element, key); }, 120);
+    timer = setTimeout(() => {
+      clampWindow(element);
+      saveRect(element, key);
+      onResize();
+    }, 120);
   });
+  const disconnect = observer.disconnect.bind(observer);
+  observer.disconnect = () => {
+    clearTimeout(timer);
+    disconnect();
+  };
   observer.observe(element);
   return observer;
 }
@@ -493,11 +584,16 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(Math.max(min, max), Number.isFinite(number) ? number : min));
 }
 
-function fileGlyph(content) {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 2.8h7l4 4v14.4h-11zM13.5 2.8v4h4"/>${content}</svg>`;
+function fileTypeSvg(content) {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${content}</svg>`;
 }
 
-function minusIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>'; }
+function edgeResizeHandles() {
+  return ['n', 'e', 's', 'w', 'ne', 'se', 'sw', 'nw']
+    .map((edge) => `<span class="ai-window-resize-edge is-${edge}" data-resize-edge="${edge}" aria-hidden="true"></span>`)
+    .join('');
+}
+
 function leftIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 5.5L8 10l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
 function rightIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 5.5L12 10l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
 function quoteIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 5.5h4v4a4 4 0 01-3.7 4M11.5 5.5h4v4a4 4 0 01-3.7 4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>'; }
