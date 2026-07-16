@@ -50,8 +50,14 @@ describe('AI Markdown references', () => {
     const anchor = root.querySelector('a');
     anchor.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     expect(anchor.classList.contains('workspace-file-reference')).toBe(true);
+    expect(anchor.hasAttribute('href')).toBe(false);
+    expect(anchor.dataset.workspacePath).toBe('notes/md-test.md');
+    expect(anchor.getAttribute('role')).toBe('link');
+    expect(anchor.tabIndex).toBe(0);
     expect(anchor.target).toBe('');
     expect(onWorkspaceFile).toHaveBeenCalledWith('notes/md-test.md', anchor);
+    anchor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    expect(onWorkspaceFile).toHaveBeenCalledTimes(2);
     expect(workspacePathFromHref('https://example.com/file.md')).toBe('');
     expect(workspacePathFromHref('../outside.md')).toBe('');
   });

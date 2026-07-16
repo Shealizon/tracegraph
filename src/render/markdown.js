@@ -31,12 +31,20 @@ export function renderMarkdownInto(element, markdown, {
       });
     } else if (onWorkspaceFile && workspacePathFromHref(anchor.getAttribute('href'))) {
       const filePath = workspacePathFromHref(anchor.getAttribute('href'));
+      anchor.removeAttribute('href');
       anchor.removeAttribute('target');
       anchor.removeAttribute('rel');
+      anchor.dataset.workspacePath = filePath;
+      anchor.setAttribute('role', 'link');
+      anchor.tabIndex = 0;
       anchor.classList.add('workspace-file-reference');
-      anchor.addEventListener('click', (event) => {
+      const openWorkspaceFile = (event) => {
         event.preventDefault();
         onWorkspaceFile(filePath, anchor);
+      };
+      anchor.addEventListener('click', openWorkspaceFile);
+      anchor.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') openWorkspaceFile(event);
       });
     } else {
       anchor.target = '_blank';
