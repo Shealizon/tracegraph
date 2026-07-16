@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildCodexExecArgs, formatCodexFailure, normalizeCodexModels } from '../server/codexCli.mjs';
+import { parseDeviceLoginOutput } from '../server/codexAuth.mjs';
 
 describe('server Codex adapter', () => {
   it('normalizes the app-server model catalog and hides hidden entries', () => {
@@ -32,5 +33,12 @@ describe('server Codex adapter', () => {
 
   it('turns a region failure into an actionable server error', () => {
     expect(formatCodexFailure('unsupported_country_region_territory')).toContain('HTTPS_PROXY');
+  });
+
+  it('extracts the verification URL and one-time code from device login output', () => {
+    expect(parseDeviceLoginOutput('Open https://auth.openai.com/codex/device and enter ABCD-EFGH')).toEqual({
+      verificationUrl: 'https://auth.openai.com/codex/device',
+      userCode: 'ABCD-EFGH',
+    });
   });
 });

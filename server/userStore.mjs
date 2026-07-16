@@ -13,6 +13,9 @@ export class UserStore {
     this.dataRoot = path.resolve(dataRoot);
     this.usersRoot = path.join(this.dataRoot, 'users');
     this.registryPath = path.join(this.dataRoot, 'users.json');
+    this.sessionKeyPath = path.join(this.dataRoot, 'session.key');
+    this.sessionsPath = path.join(this.dataRoot, 'sessions.enc');
+    this.sessionKey = null;
     this.sessions = new Map();
     this.locks = new Map();
   }
@@ -21,6 +24,7 @@ export class UserStore {
     await fs.mkdir(this.usersRoot, { recursive: true });
     try { await fs.access(this.registryPath); }
     catch { await this.writeRegistry({ version: 1, users: [] }); }
+    await this.loadSessions();
     const registry = await this.readRegistry();
     if (!registry.users.length && process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
       await this.register({ email: process.env.ADMIN_EMAIL, password: process.env.ADMIN_PASSWORD, name: process.env.ADMIN_NAME || 'Administrator' });
@@ -72,24 +76,75 @@ export class UserStore {
       user.lastLoginAt = new Date().toISOString();
       await this.writeRegistry(registry);
       const token = randomId('ses_');
-      this.sessions.set(token, { token, userId: user.id, workspaceKey, expiresAt: Date.now() + SESSION_TTL });
+      this.sessions.set(sessionId(token), { userId: user.id, workspaceKey, expiresAt: Date.now() + SESSION_TTL });
+      await this.persistSessions();
       return { token, user: this.publicUser(user) };
     });
   }
 
-  logout(token) { if (token) this.sessions.delete(token); }
+  async logout(token) {
+    if (!token || !this.sessions.delete(sessionId(token))) return;
+    await this.persistSessions();
+  }
 
   async authenticate(token) {
-    const session = this.sessions.get(token);
+    const id = sessionId(token);
+    const session = this.sessions.get(id);
     if (!session || session.expiresAt <= Date.now()) {
-      if (token) this.sessions.delete(token);
+      if (session) {
+        this.sessions.delete(id);
+        await this.persistSessions();
+      }
       throw httpError(401, '请先登录');
     }
     const registry = await this.readRegistry();
     const user = registry.users.find((item) => item.id === session.userId);
     if (!user || user.status !== 'active') throw httpError(401, '登录已失效');
-    session.expiresAt = Date.now() + SESSION_TTL;
     return { session, user: this.publicUser(user) };
+  }
+
+  async loadSessions() {
+    this.sessionKey = await this.loadSessionKey();
+    let value = { version: 1, sessions: [] };
+    try { value = decryptJson(await fs.readFile(this.sessionsPath, 'utf8'), this.sessionKey); }
+    catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+    const now = Date.now();
+    this.sessions = new Map((Array.isArray(value.sessions) ? value.sessions : [])
+      .filter((session) => session?.id && session.userId && session.workspaceKey && session.expiresAt > now)
+      .map((session) => [session.id, {
+        userId: session.userId,
+        workspaceKey: Buffer.from(session.workspaceKey, 'base64url'),
+        expiresAt: session.expiresAt,
+      }]));
+    await this.persistSessions();
+  }
+
+  async loadSessionKey() {
+    if (process.env.SESSION_SECRET) return crypto.createHash('sha256').update(process.env.SESSION_SECRET).digest();
+    try {
+      const key = Buffer.from((await fs.readFile(this.sessionKeyPath, 'utf8')).trim(), 'base64url');
+      if (key.length !== 32) throw new Error('无效的会话加密密钥');
+      return key;
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+      const key = crypto.randomBytes(32);
+      await fs.writeFile(this.sessionKeyPath, key.toString('base64url'), { mode: 0o600 });
+      return key;
+    }
+  }
+
+  persistSessions() {
+    return this.withLock('sessions', async () => {
+      const sessions = [...this.sessions.entries()].map(([id, session]) => ({
+        id, userId: session.userId, workspaceKey: session.workspaceKey.toString('base64url'), expiresAt: session.expiresAt,
+      }));
+      const target = this.sessionsPath;
+      const tmp = `${target}.${randomId('tmp_')}`;
+      await fs.writeFile(tmp, encryptJson({ version: 1, sessions }, this.sessionKey), { mode: 0o600 });
+      await replaceFile(tmp, target);
+    });
   }
 
   async readVault(session) {
@@ -168,6 +223,8 @@ function validatePassword(value) {
   const password = String(value || '');
   if (password.length < 8 || password.length > 200) throw httpError(400, '密码长度需为 8–200 位');
 }
+
+function sessionId(token) { return crypto.createHash('sha256').update(String(token || '')).digest('base64url'); }
 
 export function httpError(status, message) { return Object.assign(new Error(message), { status }); }
 

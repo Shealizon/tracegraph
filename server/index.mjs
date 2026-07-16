@@ -4,6 +4,7 @@ import express from 'express';
 import { extractGenericTexGraph } from '../src/import/texGeneric.js';
 import { UserStore, httpError } from './userStore.mjs';
 import { TaskRunner } from './taskRunner.mjs';
+import { CodexAuthManager } from './codexAuth.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -12,6 +13,7 @@ const host = process.env.HOST || '0.0.0.0';
 const store = new UserStore(process.env.PAPER_GRAPH_DATA || path.join(root, 'server-data'));
 await store.init();
 const tasks = new TaskRunner(store);
+const codexAuth = new CodexAuthManager();
 const app = express();
 
 app.disable('x-powered-by');
@@ -24,6 +26,7 @@ app.use((req, res, next) => {
 });
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'paper-graph', time: new Date().toISOString(), codex: process.env.CODEX_ENABLED !== '0' }));
+app.get('/api/codex/status', asyncRoute(async (_req, res) => res.json(await codexAuth.status())));
 app.post('/api/auth/register', asyncRoute(async (req, res) => {
   if (process.env.ALLOW_REGISTRATION === '0') throw httpError(403, '服务器未开放自主注册');
   const user = await store.register(req.body || {});
@@ -37,7 +40,7 @@ app.post('/api/auth/login', asyncRoute(async (req, res) => {
   res.json({ user: result.user });
 }));
 app.post('/api/auth/logout', asyncRoute(async (req, res) => {
-  store.logout(readCookie(req, 'pg_session'));
+  await store.logout(readCookie(req, 'pg_session'));
   res.setHeader('Set-Cookie', 'pg_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
   res.status(204).end();
 }));
@@ -198,6 +201,10 @@ app.post('/api/tools/extract-tex', requireAuth, asyncRoute(async (req, res) => {
 
 app.get('/api/admin/users', requireAuth, asyncRoute(async (req, res) => res.json({ users: await store.listUsers(req.auth.user) })));
 app.patch('/api/admin/users/:id', requireAuth, asyncRoute(async (req, res) => res.json({ user: await store.updateUser(req.auth.user, req.params.id, req.body || {}) })));
+app.get('/api/admin/codex/status', requireAuth, requireAdmin, asyncRoute(async (_req, res) => res.json(await codexAuth.status({ force: true }))));
+app.post('/api/admin/codex/login/device', requireAuth, requireAdmin, asyncRoute(async (_req, res) => res.status(202).json({ login: await codexAuth.startDeviceLogin() })));
+app.get('/api/admin/codex/login/:id', requireAuth, requireAdmin, asyncRoute(async (req, res) => res.json({ login: codexAuth.getLogin(req.params.id) })));
+app.delete('/api/admin/codex/login/:id', requireAuth, requireAdmin, asyncRoute(async (req, res) => { codexAuth.cancelLogin(req.params.id); res.status(204).end(); }));
 
 app.use(express.static(path.join(root, 'dist'), { index: false, maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0 }));
 app.get('/{*path}', (_req, res) => res.sendFile(path.join(root, 'dist', 'index.html')));
@@ -213,6 +220,10 @@ app.listen(port, host, () => console.log(`Entail server listening on http://${ho
 async function requireAuth(req, res, next) {
   try { req.auth = await store.authenticate(readCookie(req, 'pg_session')); next(); }
   catch (error) { res.status(error.status || 401).json({ error: error.message || '请先登录' }); }
+}
+function requireAdmin(req, res, next) {
+  if (req.auth?.user?.role !== 'admin') { res.status(403).json({ error: '需要管理员权限' }); return; }
+  next();
 }
 function asyncRoute(handler) { return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next); }
 function readCookie(req, name) {

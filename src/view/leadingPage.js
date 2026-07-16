@@ -6,6 +6,8 @@ import { ICON } from '../ui/icons.js';
 import { toast } from '../ui/feedback.js';
 import { mountAccountControls } from '../cloud/accountUi.js';
 import { onSyncChange } from '../cloud/sync.js';
+import { serverApi } from '../cloud/api.js';
+import { sessionSnapshot } from '../cloud/session.js';
 
 let releaseSyncListener = null;
 
@@ -34,6 +36,11 @@ export function renderLeadingPage({ db, projects, currentProjectId }) {
         </div>
         <div class="leading-account-actions"><div data-leading-theme></div><div data-account></div></div>
       </header>
+      <button class="codex-auth-banner" data-codex-banner hidden>
+        <span class="codex-auth-banner-dot"></span>
+        <span><strong>服务器 Codex 尚未登录</strong><small>${sessionSnapshot().user?.role === 'admin' ? '前往管理员面板完成授权' : '请联系管理员完成授权'}</small></span>
+        <span class="codex-auth-banner-arrow">→</span>
+      </button>
       <section class="leading-panel">
         <div class="project-cards">
           ${projects.map((project) => projectCard(project, project.id === current?.id)).join('')}
@@ -46,6 +53,7 @@ export function renderLeadingPage({ db, projects, currentProjectId }) {
     </div>`;
   root.querySelector('[data-leading-theme]').appendChild(buildLeadingThemeSwitch());
   mountAccountControls(root.querySelector('[data-account]'), { onChanged: () => location.reload() });
+  mountCodexLoginBanner(root);
 
   // 整卡可点击打开（操作按钮内部已 stopPropagation）
   root.querySelectorAll('[data-card]').forEach((card) => card.addEventListener('click', () => {
@@ -129,6 +137,21 @@ export function renderLeadingPage({ db, projects, currentProjectId }) {
       refresh();
     });
   }));
+}
+
+async function mountCodexLoginBanner(root) {
+  const banner = root.querySelector('[data-codex-banner]');
+  try {
+    const status = await serverApi.codexStatus();
+    if (!root.isConnected || status.authenticated || !status.enabled) return;
+    banner.hidden = false;
+    if (sessionSnapshot().user?.role === 'admin') {
+      banner.addEventListener('click', () => { location.href = `${location.pathname}?screen=admin#codex`; });
+    } else {
+      banner.classList.add('is-static');
+      banner.disabled = true;
+    }
+  } catch { /* server unavailable: keep the local-first home page uncluttered */ }
 }
 
 // 拖拽导入：新建空项目，按后缀逐个导入；名称留默认（弹窗据首个文件名提示），返回最终项目

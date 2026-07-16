@@ -1400,9 +1400,21 @@ export function buildAiPanel(ctx) {
     if (legacy) {
       legacy.modelId = defaultModel.id;
       legacy.displayName = defaultModel.displayName || defaultModel.id;
-    } else if (!providerState.enabledModels.some((item) => item.providerId === provider.id)) {
-      enableModel(providerState, provider.id, defaultModel.id, defaultModel.displayName || defaultModel.id);
     }
+    for (const detail of details) {
+      const enabled = providerState.enabledModels.find((item) => item.providerId === provider.id && item.modelId === detail.id);
+      if (!enabled) enableModel(providerState, provider.id, detail.id, detail.displayName || detail.id);
+    }
+    const availableIds = new Set(modelIds);
+    const stale = providerState.enabledModels.filter((item) => item.providerId === provider.id && !availableIds.has(item.modelId));
+    const fallback = providerState.enabledModels.find((item) => item.providerId === provider.id && item.modelId === defaultModel.id);
+    for (const model of stale) {
+      for (const conversation of conversationState.conversations) {
+        if (conversation.modelId === model.id) conversation.modelId = fallback?.id || '';
+      }
+      if (providerState.activeModelId === model.id) providerState.activeModelId = fallback?.id || '';
+    }
+    providerState.enabledModels = providerState.enabledModels.filter((item) => item.providerId !== provider.id || availableIds.has(item.modelId));
     return { ...result, models: modelIds };
   }
 
