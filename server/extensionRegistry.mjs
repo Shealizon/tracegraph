@@ -89,15 +89,17 @@ export class ExtensionRegistry {
     throw httpError(404, 'Skill 不存在');
   }
 
-  definitions() {
+  definitions({ includeWrites = true } = {}) {
     return Object.values(this.registry.packages || {}).flatMap((record) => {
       const ready = record.manifest.requiredEnv.every((key) => this.environmentValue(key));
-      return ready ? record.manifest.tools.map((tool) => toolDefinition(tool.name, tool.description, tool.inputSchema)) : [];
+      return ready ? record.manifest.tools
+        .filter((tool) => includeWrites || tool.readOnly)
+        .map((tool) => toolDefinition(tool.name, tool.description, tool.inputSchema)) : [];
     });
   }
 
-  dynamicTools() {
-    return this.definitions().map((definition) => ({
+  dynamicTools(options = {}) {
+    return this.definitions(options).map((definition) => ({
       name: definition.function.name,
       description: definition.function.description,
       inputSchema: definition.function.parameters,
@@ -218,6 +220,7 @@ export class ExtensionRegistry {
   async execute(name, args, context = {}) {
     const found = this.findTool(name);
     if (!found) throw httpError(404, `工具不存在：${name}`);
+    if (!found.tool.readOnly && context.allowWrites === false) throw httpError(403, `当前对话不允许工具写入文件：${name}`);
     validateInput(args, found.tool.inputSchema);
     const missingEnv = found.record.manifest.requiredEnv.filter((key) => !this.environmentValue(key));
     if (missingEnv.length) throw httpError(503, `工具缺少服务器环境变量：${missingEnv.join(', ')}`);
@@ -446,6 +449,7 @@ function validateManifest(raw, files) {
       description: shortText(tool.description, '工具描述', 1000),
       inputSchema: jsonSchema(tool.inputSchema),
       entry,
+      readOnly: tool.readOnly === true,
       timeoutMs: Math.max(1_000, Math.min(10 * 60_000, Number(tool.timeoutMs) || TOOL_TIMEOUT)),
     };
   });
@@ -492,6 +496,7 @@ function publicPackage(record, includeInstructions, environmentStatus) {
       description: tool.description,
       inputSchema: tool.inputSchema,
       packageId: record.manifest.id,
+      readOnly: !!tool.readOnly,
       ready: missingEnv.length === 0,
     })),
   };

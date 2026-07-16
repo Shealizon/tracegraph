@@ -28,7 +28,12 @@ export class TaskRunner {
       id, type: 'ai', status: 'queued', providerId: input.providerId, model: input.model || '',
       projectId: input.projectId || '', conversationId: input.conversationId || '',
       workspaceScope: input.workspaceScope || `${input.projectId || 'default'}--${input.conversationId || 'default'}`,
-      input: { history: input.history || [], userText: String(input.userText || ''), systemPrompt: String(input.systemPrompt || '') },
+      input: {
+        history: input.history || [],
+        userText: String(input.userText || ''),
+        systemPrompt: String(input.systemPrompt || ''),
+        fileAccessMode: ['read-only', 'ask', 'allow'].includes(input.fileAccessMode) ? input.fileAccessMode : 'ask',
+      },
       output: '', blocks: [], error: '', createdAt: now, updatedAt: now,
     };
     if (!task.input.userText.trim()) throw httpError(400, '消息不能为空');
@@ -83,6 +88,7 @@ export class TaskRunner {
         extensions: this.extensions,
         userStore: this.userStore,
         session,
+        fileAccessMode: task.input.fileAccessMode,
       });
       await this.patch(session, task.id, { status: 'completed', output, updatedAt: new Date().toISOString() });
     } catch (error) {
@@ -127,6 +133,9 @@ export class TaskRunner {
       const workspaceFiles = Object.values(vault.files || {}).filter((item) => item.scope === task.workspaceScope);
       const prompt = [
         '当前目录是该用户此次任务的临时可写工作区快照；项目数据位于 project.paper-graph.json，附件保持原工作区相对路径。读写操作仅限这个临时工作区。',
+        task.input.fileAccessMode === 'allow'
+          ? '当前对话允许扩展工具写回文件。'
+          : '当前对话未授予后台任务交互式写入权限；不要尝试用扩展工具生成或修改用户文件。',
         this.extensions?.skillPrompt(),
         task.input.systemPrompt,
         ...task.input.history.map((m) => `${m.role}: ${m.content}`),
@@ -134,7 +143,7 @@ export class TaskRunner {
       ].filter(Boolean).join('\n\n');
       const output = await executeCodexStream({
         prompt, cwd: tempDir, model: task.model, signal: controller.signal,
-        dynamicTools: this.extensions?.dynamicTools() || [],
+        dynamicTools: this.extensions?.dynamicTools({ includeWrites: task.input.fileAccessMode === 'allow' }) || [],
         onDynamicToolCall: async (name, args) => {
           if (!this.extensions?.findTool(name)) throw new Error(`扩展工具不存在：${name}`);
           const execution = await this.extensions.execute(name, args, {
@@ -142,6 +151,7 @@ export class TaskRunner {
             workspaceScope: task.workspaceScope,
             projectId: task.projectId,
             signal: controller.signal,
+            allowWrites: task.input.fileAccessMode === 'allow',
           });
           const artifacts = await persistArtifacts(this.userStore, session, task.workspaceScope, execution);
           for (const artifact of execution.artifacts) {
@@ -260,6 +270,7 @@ async function callProvider(provider, task, signal, vault, extensionContext = {}
   const serverTools = createServerTools(vault, task.projectId, task.workspaceScope, {
     ...extensionContext,
     signal,
+    fileAccessMode: task.input.fileAccessMode,
   });
   let response;
   if (protocol === 'anthropic-messages') {
@@ -326,6 +337,7 @@ function sanitizeTask(task) {
 }
 
 export function createServerTools(vault, projectId, workspaceScope, extensionContext = {}) {
+  const allowExtensionWrites = !extensionContext.fileAccessMode || extensionContext.fileAccessMode === 'allow';
   const project = Object.hasOwn(vault.projects || {}, projectId) ? vault.projects[projectId] : null;
   const nodes = (project?.documents || []).flatMap((document) => (document.graph?.nodes || []).map((node) => ({ ...node, documentId: document.id, documentName: document.name })));
   const workspaceFiles = Object.values(vault.files || {}).filter((file) => file.scope === workspaceScope);
@@ -336,7 +348,7 @@ export function createServerTools(vault, projectId, workspaceScope, extensionCon
     toolDefinition('list_workspace', '列出当前对话已上传到云端工作区的文件。', { type: 'object', properties: {}, additionalProperties: false }),
     toolDefinition('read_file', '读取云端工作区中的 UTF-8 文本文件。', { type: 'object', properties: { path: { type: 'string' } }, required: ['path'], additionalProperties: false }),
     toolDefinition('read_pdf', '在服务端解析云端工作区 PDF 的文字层，可指定页码。', { type: 'object', properties: { path: { type: 'string' }, pages: { type: 'array', items: { type: 'integer', minimum: 1 }, maxItems: 20 } }, required: ['path'], additionalProperties: false }),
-    ...(extensionContext.extensions?.definitions() || []),
+    ...(extensionContext.extensions?.definitions({ includeWrites: allowExtensionWrites }) || []),
   ];
   const execute = async (name, args) => {
     if (name === 'get_project_summary') return project ? {
@@ -373,6 +385,7 @@ export function createServerTools(vault, projectId, workspaceScope, extensionCon
         workspaceScope,
         projectId,
         signal: extensionContext.signal,
+        allowWrites: allowExtensionWrites,
       });
       const artifacts = extensionContext.userStore && extensionContext.session
         ? await persistArtifacts(extensionContext.userStore, extensionContext.session, workspaceScope, execution)

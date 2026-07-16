@@ -1,7 +1,9 @@
 const TEXT_EXT = /\.(txt|md|tex|json|csv|js|mjs|ts|css|html|xml|yaml|yml)$/i;
 import { executeGraphTool, graphToolDefinitions, isGraphTool } from './graphContext.js';
+import { FILE_ACCESS_MODES, normalizeFileAccessMode } from './fileAccess.js';
 
 export function createClientTools(workspace, hooks = {}) {
+  const fileAccessMode = normalizeFileAccessMode(hooks.fileAccessMode);
   let sourceNumber = 0;
   let toolBatchNumber = 0;
   let overlapStreak = 0;
@@ -39,13 +41,15 @@ export function createClientTools(workspace, hooks = {}) {
         max_chars: { type: 'integer', minimum: 2000, maximum: 60000 },
       },
     }),
-    tool('write_file', '在当前对话创建或覆盖本地文本文件。执行前需要用户确认。', {
+    ...(fileAccessMode === FILE_ACCESS_MODES.READ_ONLY ? [] : [tool('write_file', fileAccessMode === FILE_ACCESS_MODES.ALLOW
+      ? '在当前对话创建或覆盖本地文本文件。用户已允许本对话直接写入。'
+      : '在当前对话创建或覆盖本地文本文件。每次执行前需要用户确认。', {
       type: 'object', required: ['path', 'content'], additionalProperties: false,
       properties: {
         path: { type: 'string' },
         content: { type: 'string' },
       },
-    }),
+    })]),
     tool('web_search', '搜索网页与公开学术文献索引。根据任务需要检索，避免只用近义词重复搜索同一问题。', {
       type: 'object', required: ['query'], additionalProperties: false,
       properties: {
@@ -101,7 +105,7 @@ export function createClientTools(workspace, hooks = {}) {
       else if (name === 'read_file') result = await readTextFile(workspace, args);
       else if (name === 'search_files') result = await searchFiles(workspace, args);
       else if (name === 'read_pdf') result = await readPdf(workspace, args);
-      else if (name === 'write_file') result = await writeFile(workspace, args, hooks.confirm);
+      else if (name === 'write_file') result = await writeFile(workspace, args, fileAccessMode, hooks.confirm);
       else if (name === 'web_search') {
         if (searchConverged) {
           result = convergedSearchResult(args.query, overlapStreak);
@@ -202,10 +206,12 @@ async function readPdf(workspace, args) {
   return { path: args.path, pageCount: parsed.pageCount, pages, truncated: parsed.truncated || pages.length < parsed.pages.length };
 }
 
-async function writeFile(workspace, args, confirm) {
+async function writeFile(workspace, args, mode, confirm) {
   const path = String(args.path || '').trim();
   const content = String(args.content ?? '');
-  const allowed = confirm ? await confirm({ name: 'write_file', path, preview: content.slice(0, 600) }) : false;
+  if (mode === FILE_ACCESS_MODES.READ_ONLY) return { path, written: false, reason: '当前对话为只读模式' };
+  const allowed = mode === FILE_ACCESS_MODES.ALLOW
+    || (mode === FILE_ACCESS_MODES.ASK && confirm ? await confirm({ name: 'write_file', path, preview: content.slice(0, 600) }) : false);
   if (!allowed) return { path, written: false, reason: '用户拒绝写入' };
   await workspace.writeFile(path, content);
   return { path, written: true, chars: content.length };

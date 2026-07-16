@@ -40,6 +40,7 @@ describe('paper graph extension registry', () => {
     expect(calls.some(([, args]) => args.includes('venv'))).toBe(true);
     expect(calls.some(([, args]) => args.includes('demo-lib>=1,<2'))).toBe(true);
     expect(registry.definitions()[0].function.name).toBe('example_read');
+    expect(registry.definitions({ includeWrites: false })).toHaveLength(0);
     expect(registry.skillPrompt()).toContain('Only read files from the workspace');
     expect(JSON.parse(await fs.readFile(path.join(root, 'registry.json'), 'utf8')).packages['example-tools']).toBeTruthy();
   });
@@ -227,14 +228,30 @@ describe('browser extension tools', () => {
     const tools = createExtensionTools({
       tools: [
         { name: 'pdf_merge', description: 'merge', inputSchema: { type: 'object' }, ready: true },
-        { name: 'paddle_ocr', description: 'ocr', inputSchema: { type: 'object' }, ready: false },
+        { name: 'paddle_ocr', description: 'ocr', inputSchema: { type: 'object' }, ready: false, readOnly: true },
       ],
-    }, { serverApi, workspace, workspaceScope: 'scope', projectId: 'project' });
+    }, { serverApi, workspace, workspaceScope: 'scope', projectId: 'project', fileAccessMode: 'allow' });
 
     expect(tools.definitions.map((item) => item.function.name)).toEqual(['pdf_merge']);
     await expect(tools.execute('pdf_merge', { files: [] })).resolves.toMatchObject({ pages: 2 });
-    expect(serverApi.executeExtensionTool).toHaveBeenCalledWith('pdf_merge', { files: [] }, 'scope', 'project');
+    expect(serverApi.executeExtensionTool).toHaveBeenCalledWith('pdf_merge', { files: [] }, 'scope', 'project', true);
     expect(workspace.writeFile).toHaveBeenCalledWith('generated/result.pdf', expect.any(Blob));
+  });
+
+  it('filters mutating extension tools in read-only mode and confirms them in ask mode', async () => {
+    const serverApi = { executeExtensionTool: vi.fn(async () => ({ result: { ok: true }, artifacts: [] })) };
+    const catalog = { tools: [
+      { name: 'pdf_info', description: 'read', inputSchema: { type: 'object' }, ready: true, readOnly: true },
+      { name: 'pdf_merge', description: 'write', inputSchema: { type: 'object' }, ready: true, readOnly: false },
+    ] };
+    const readOnly = createExtensionTools(catalog, { serverApi, fileAccessMode: 'read-only' });
+    expect(readOnly.definitions.map((item) => item.function.name)).toEqual(['pdf_info']);
+
+    const confirmWrite = vi.fn(async () => false);
+    const ask = createExtensionTools(catalog, { serverApi, fileAccessMode: 'ask', confirmWrite });
+    await expect(ask.execute('pdf_merge', {})).resolves.toMatchObject({ executed: false });
+    expect(confirmWrite).toHaveBeenCalledWith(expect.objectContaining({ name: 'pdf_merge' }));
+    expect(serverApi.executeExtensionTool).not.toHaveBeenCalled();
   });
 });
 

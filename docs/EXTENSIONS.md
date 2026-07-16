@@ -52,6 +52,7 @@
           "additionalProperties": false
         },
         "entry": "tools/example.py",
+        "readOnly": true,
         "timeoutMs": 180000
       }
     ]
@@ -77,6 +78,7 @@
 - Python 依赖只接受包名和版本约束，不接受 URL、文件路径、额外 pip 参数或 shell 命令。
 - 包最多 120 个文件，解码后最多 12 MB。
 - 工具入口当前只支持 Python `.py`。
+- 纯读取工具应声明 `"readOnly": true`。未声明时按“可能写入”处理，并受当前对话的文件写入权限控制。
 - `requiredEnv` 只声明变量名，不把密钥写进扩展包。缺少变量时工具对用户显示为不可用。
 
 ## Python 工具协议

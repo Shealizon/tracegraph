@@ -1,6 +1,8 @@
+import { normalizeFileAccessMode } from './fileAccess.js';
+
 const VERSION = 1;
 
-export function createConversation({ id = createId(), title = '新对话', messages = [], modelId = '' } = {}) {
+export function createConversation({ id = createId(), title = '新对话', messages = [], modelId = '', fileAccessMode = 'ask' } = {}) {
   const now = new Date().toISOString();
   return {
     id,
@@ -10,6 +12,7 @@ export function createConversation({ id = createId(), title = '新对话', messa
     attachments: [],
     contextAttachments: [],
     modelId,
+    fileAccessMode: normalizeFileAccessMode(fileAccessMode),
     createdAt: now,
     updatedAt: now,
   };
@@ -105,6 +108,7 @@ function normalizeConversation(value) {
     title: value.title || '新对话',
     messages: value.messages,
     modelId: value.modelId || '',
+    fileAccessMode: value.fileAccessMode,
   });
   return {
     ...conversation,
@@ -112,6 +116,7 @@ function normalizeConversation(value) {
     messages: Array.isArray(value.messages) ? value.messages : [],
     attachments: Array.isArray(value.attachments) ? value.attachments : [],
     contextAttachments: Array.isArray(value.contextAttachments) ? value.contextAttachments : [],
+    fileAccessMode: normalizeFileAccessMode(value.fileAccessMode),
   };
 }
 

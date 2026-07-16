@@ -5,7 +5,7 @@ import { compactConversation as compactModelContext, DEFAULT_SYSTEM_PROMPT, runA
 import { contextUsage, estimateContextTokens, formatTokenCount, resolveContextWindow } from '../ai/contextBudget.js';
 import { buildGraphContext } from '../ai/graphContext.js';
 import {
-  aiQuoteAttachment, appendUniqueContext, contextPrompt, graphFileAttachment, graphMemberAttachment, graphNodeAttachment, graphNoteAttachment, graphReferenceAttachment, graphSelectionAttachment, graphTagAttachment,
+  aiQuoteAttachment, appendUniqueContext, contextPrompt, graphFileAttachment, graphMemberAttachment, graphNodeAttachment, graphNoteAttachment, graphReferenceAttachment, graphSelectionAttachment, graphTagAttachment, pdfFieldAttachment,
   mentionQueryAt, replaceMention, searchMentionCandidates,
 } from '../ai/contextAttachments.js';
 import { appendReasoningBlock, appendTextBlock, mergeToolSources, messageBlocks, serializeMessageDebug, upsertToolBlock } from '../ai/messageBlocks.js';
@@ -26,6 +26,8 @@ import {
 import { serverApi } from '../cloud/api.js';
 import { sessionSnapshot } from '../cloud/session.js';
 import { saveCloudConversations, saveCloudProviders } from '../cloud/aiState.js';
+import { FILE_ACCESS_MODES, fileAccessLabel, normalizeFileAccessMode } from '../ai/fileAccess.js';
+import { createWorkspacePreviewController, downloadWorkspaceFile, isPreviewableWorkspaceFile } from './workspacePreview.js';
 
 const SETTINGS_KEY = 'paper-graph-ai-settings';
 const KEY_SESSION = 'paper-graph-ai-api-key';
@@ -122,6 +124,7 @@ export function buildAiPanel(ctx) {
         <div class="ai-input-actions">
           <button class="icon-btn" data-attach title="添加文件或 PDF">${paperclipIcon()}</button>
           <button class="ai-model-label" data-model-label title="切换模型">未配置模型</button>
+          <button class="ai-access-control" data-access-control title="文件写入权限" aria-label="文件写入权限" aria-expanded="false">${shieldIcon()}<i aria-hidden="true"></i></button>
           <button class="ai-context-toggle" data-context-toggle title="查看上下文使用量" aria-label="查看上下文使用量" aria-expanded="false"><span class="ai-context-ring" data-context-ring aria-hidden="true"></span></button>
           <button class="ai-send" data-send title="发送">${sendIcon()}</button>
         </div>
@@ -141,6 +144,15 @@ export function buildAiPanel(ctx) {
   const mentionMenu = panel.querySelector('[data-mention-menu]');
   const quoteSelectionButton = panel.querySelector('[data-quote-selection]');
   const contextToggle = panel.querySelector('[data-context-toggle]');
+  const accessControl = panel.querySelector('[data-access-control]');
+  const workspacePreview = createWorkspacePreviewController({
+    markdownOptions: () => markdownRenderOptions({ sources: [] }),
+    onPdfField: (selection) => {
+      const conversation = activeConversation(conversationState);
+      if (selection.conversationId !== conversation.id) return false;
+      return addContextAttachment(pdfFieldAttachment(selection));
+    },
+  });
 
   applyWidth(panel, Number(localStorage.getItem(WIDTH_KEY)) || Math.round(innerWidth / 3));
   const initialLayout = localStorage.getItem(LAYOUT_KEY) || 'floating';
@@ -164,6 +176,7 @@ export function buildAiPanel(ctx) {
   });
   panel.querySelector('[data-settings]').addEventListener('click', () => showSettings(true));
   panel.querySelector('[data-model-label]').addEventListener('click', showModelPicker);
+  accessControl.addEventListener('click', showAccessPicker);
   contextToggle.addEventListener('click', showContextPanel);
   panel.querySelector('[data-workspace]').addEventListener('click', () => showWorkspace(true));
   panel.querySelector('[data-conversations]').addEventListener('click', () => {
@@ -245,7 +258,7 @@ export function buildAiPanel(ctx) {
   });
   document.addEventListener('pointerdown', (event) => {
     if (subpanel.hidden || !subpanel.classList.contains('is-popover')) return;
-    if (subpanel.contains(event.target) || event.target.closest('[data-conversations], [data-model-label], [data-context-toggle]')) return;
+    if (subpanel.contains(event.target) || event.target.closest('[data-conversations], [data-model-label], [data-access-control], [data-context-toggle]')) return;
     closeSubpanel();
   });
   window.addEventListener('keydown', (event) => {
@@ -440,8 +453,15 @@ export function buildAiPanel(ctx) {
       workspace: turnWorkspace,
       workspaceScope,
       projectId,
+      fileAccessMode: conversation.fileAccessMode,
+      confirmWrite: ({ name, args, description }) => confirmDialog({
+        title: `允许 AI 执行写入工具 ${name}？`,
+        message: `${description || '该工具会在当前对话工作区生成或修改文件。'}\n\n参数预览：\n${JSON.stringify(args || {}, null, 2).slice(0, 1600)}`,
+        okText: '允许执行',
+      }),
     });
     const tools = createClientTools(turnWorkspace, {
+      fileAccessMode: conversation.fileAccessMode,
       graphModel: ctx.model,
       getGraphTags: () => ctx.graph?.getTags?.() || [],
       persistGraphTags: (tags) => ctx.persistTags?.(tags),
@@ -481,6 +501,7 @@ export function buildAiPanel(ctx) {
           projectId,
           conversationId: conversation.id,
           workspaceScope,
+          fileAccessMode: conversation.fileAccessMode,
           history,
           userText: resolvedUserText,
           systemPrompt: [modelConfig.systemPrompt?.trim() || DEFAULT_SYSTEM_PROMPT, buildGraphContext(ctx.model, selectedNodeId)].filter(Boolean).join('\n\n'),
@@ -1073,6 +1094,7 @@ export function buildAiPanel(ctx) {
     const current = activeConversation(conversationState);
     if (current.id !== id && isConversationEmpty(current)) removeConversation(conversationState, current.id);
     conversationState.activeId = id;
+    workspacePreview.close();
     workspace = createBrowserWorkspace(`${projectId}--${id}`);
     syncActiveWorkspaceFiles();
     state.editingIndex = -1;
@@ -1088,6 +1110,7 @@ export function buildAiPanel(ctx) {
     panel.querySelector('[data-conversation-title]').textContent = conversation.title || '新对话';
     renderAttachments();
     syncModelLabel();
+    syncAccessControl();
   }
 
   function renderAttachments() {
@@ -1096,7 +1119,7 @@ export function buildAiPanel(ctx) {
       const chip = document.createElement('span');
       chip.className = `ai-attachment-chip ai-context-chip is-${attachment.kind}`;
       chip.title = contextAttachmentTitle(attachment);
-      chip.innerHTML = `${attachment.kind === 'file-reference' ? fileIcon() : attachment.kind === 'ai-quote' ? quoteIcon() : graphContextIcon()}<span>${escapeHtml(attachment.label || attachment.nodeId || attachment.path)}</span><small>${attachment.kind === 'graph-tag-note' ? '笔记' : attachment.kind === 'graph-tag' ? '标签' : attachment.kind === 'graph-selection' ? '片段' : attachment.kind === 'graph-position' ? '位置' : attachment.kind === 'graph-node' ? '节点' : attachment.kind === 'ai-quote' ? '引用' : '文件'}</small>`;
+      chip.innerHTML = `${['file-reference', 'pdf-field'].includes(attachment.kind) ? fileIcon() : attachment.kind === 'ai-quote' ? quoteIcon() : graphContextIcon()}<span>${escapeHtml(attachment.label || attachment.nodeId || attachment.path)}</span><small>${attachment.kind === 'graph-tag-note' ? '笔记' : attachment.kind === 'graph-tag' ? '标签' : attachment.kind === 'graph-selection' ? '片段' : attachment.kind === 'pdf-field' ? 'PDF 字段' : attachment.kind === 'graph-position' ? '位置' : attachment.kind === 'graph-node' ? '节点' : attachment.kind === 'ai-quote' ? '引用' : '文件'}</small>`;
       const remove = button('ai-attachment-remove', '', `移除 ${attachment.label || '上下文'}`);
       remove.innerHTML = closeIcon();
       remove.addEventListener('click', () => removeContextAttachment(attachment.id));
@@ -1169,6 +1192,7 @@ export function buildAiPanel(ctx) {
   function contextAttachmentTitle(attachment) {
     if (attachment.kind === 'graph-tag-note') return `${attachment.label}\n${attachment.content || ''}`;
     if (attachment.kind === 'graph-selection' || attachment.kind === 'graph-tag') return `${attachment.label}\n${attachment.text || ''}`;
+    if (attachment.kind === 'pdf-field') return `${attachment.label}\n${attachment.text || ''}`;
     if (attachment.kind === 'ai-quote') return `${attachment.label}\n${attachment.text || ''}`;
     return attachment.label || attachment.name || attachment.nodeId || attachment.path || '上下文';
   }
@@ -1516,6 +1540,27 @@ export function buildAiPanel(ctx) {
     }
   }
 
+  function showAccessPicker() {
+    if (!openSubpanel('access', 'is-popover is-access-popover', true)) return;
+    positionSubpanel(accessControl, 'above', 'center');
+    const activeMode = normalizeFileAccessMode(activeConversation(conversationState).fileAccessMode);
+    const options = [
+      { mode: FILE_ACCESS_MODES.READ_ONLY, title: '只读', description: 'AI 可以读取对话文件，但不能创建或覆盖文件。', icon: eyeIcon() },
+      { mode: FILE_ACCESS_MODES.ASK, title: '每次询问用户写入', description: '每次写入前显示内容预览并等待你的确认。', icon: handIcon() },
+      { mode: FILE_ACCESS_MODES.ALLOW, title: '完全允许写入', description: 'AI 可直接写入当前对话工作区，不再逐次询问。', icon: shieldIcon() },
+    ];
+    subpanel.innerHTML = `<div class="ai-access-picker"><header><strong>文件写入权限</strong><small>仅作用于当前对话</small></header>${options.map((item) => `<button data-access-mode="${item.mode}" class="${item.mode === activeMode ? 'is-active' : ''}"><span>${item.icon}</span><div><strong>${item.title}</strong><small>${item.description}</small></div>${item.mode === activeMode ? checkIcon() : ''}</button>`).join('')}<p>云端后台任务无法中途弹窗；选择“每次询问”时，后台写入工具保持只读。</p></div>`;
+    for (const button of subpanel.querySelectorAll('[data-access-mode]')) {
+      button.addEventListener('click', () => {
+        const conversation = activeConversation(conversationState);
+        conversation.fileAccessMode = normalizeFileAccessMode(button.dataset.accessMode);
+        persist();
+        syncAccessControl();
+        closeSubpanel();
+      });
+    }
+  }
+
   function showContextPanel() {
     if (!openSubpanel('context', 'is-popover is-context-popover', true)) return;
     const snapshot = getContextSnapshot();
@@ -1605,11 +1650,27 @@ export function buildAiPanel(ctx) {
         const row = document.createElement('div');
         const folder = file.path.includes('/') ? file.path.slice(0, file.path.lastIndexOf('/')) : '工作区根目录';
         row.title = file.path;
-        row.innerHTML = `<span class="ai-workspace-file-icon">${fileIcon()}</span><span class="ai-workspace-file-meta"><strong>${escapeHtml(file.name || file.path.split('/').pop())}</strong><small>${escapeHtml(folder)} · ${formatBytes(file.size)}</small></span>`;
+        row.innerHTML = `<span class="ai-workspace-file-icon">${fileIcon()}</span><button type="button" class="ai-workspace-file-meta"><strong>${escapeHtml(file.name || file.path.split('/').pop())}</strong><small>${escapeHtml(folder)} · ${formatBytes(file.size)}</small></button><span class="ai-workspace-file-actions"></span>`;
+        const actions = row.querySelector('.ai-workspace-file-actions');
+        const open = () => openConversationFile(file);
+        const meta = row.querySelector('.ai-workspace-file-meta');
+        if (isPreviewableWorkspaceFile(file)) {
+          meta.addEventListener('click', open);
+          const preview = button('ai-file-action', '', `预览 ${file.path}`);
+          preview.innerHTML = eyeIcon();
+          preview.addEventListener('click', open);
+          actions.append(preview);
+        } else {
+          meta.disabled = true;
+        }
+        const download = button('ai-file-action', '', `下载 ${file.path}`);
+        download.innerHTML = downloadIcon();
+        download.addEventListener('click', () => downloadConversationFile(file));
+        actions.append(download);
         const remove = button('ai-file-remove', '', `删除 ${file.path}`);
         remove.innerHTML = trashIcon();
         remove.addEventListener('click', () => deleteConversationFile(file.path, { refreshFiles: true }));
-        row.append(remove);
+        actions.append(remove);
         list.append(row);
       }
       subpanel.querySelector('p')?.replaceWith(list);
@@ -1619,8 +1680,34 @@ export function buildAiPanel(ctx) {
     }
   }
 
+  async function openConversationFile(metadata) {
+    try {
+      const conversation = activeConversation(conversationState);
+      const file = await workspace.readFile(metadata.path);
+      await workspacePreview.open({
+        file,
+        path: metadata.path,
+        name: metadata.name || metadata.path.split('/').pop(),
+        conversationId: conversation.id,
+      });
+      closeSubpanel();
+    } catch (error) {
+      toast(`预览失败：${error?.message || error}`, { type: 'error' });
+    }
+  }
+
+  async function downloadConversationFile(metadata) {
+    try {
+      const file = await workspace.readFile(metadata.path);
+      await downloadWorkspaceFile(file, metadata.name || metadata.path.split('/').pop());
+    } catch (error) {
+      toast(`下载失败：${error?.message || error}`, { type: 'error' });
+    }
+  }
+
   async function deleteConversationFile(path, { refreshFiles = false } = {}) {
     try {
+      workspacePreview.closePath(path);
       await workspace.deleteFile(path);
       const conversation = activeConversation(conversationState);
       if (sessionSnapshot().user) {
@@ -1644,6 +1731,7 @@ export function buildAiPanel(ctx) {
     subpanel.hidden = false;
     panel.querySelector('[data-conversations]').setAttribute('aria-expanded', mode === 'conversations' ? 'true' : 'false');
     panel.querySelector('[data-model-label]').setAttribute('aria-expanded', mode === 'models' ? 'true' : 'false');
+    accessControl.setAttribute('aria-expanded', mode === 'access' ? 'true' : 'false');
     contextToggle.setAttribute('aria-expanded', mode === 'context' ? 'true' : 'false');
     return true;
   }
@@ -1655,6 +1743,7 @@ export function buildAiPanel(ctx) {
     delete subpanel.dataset.mode;
     panel.querySelector('[data-conversations]').setAttribute('aria-expanded', 'false');
     panel.querySelector('[data-model-label]').setAttribute('aria-expanded', 'false');
+    accessControl.setAttribute('aria-expanded', 'false');
     contextToggle.setAttribute('aria-expanded', 'false');
   }
   function positionSubpanel(anchor, placement, alignment = 'start') {
@@ -1858,6 +1947,12 @@ export function buildAiPanel(ctx) {
     const config = currentModelConfig();
     panel.querySelector('[data-model-label]').textContent = config?.displayName || '选择模型';
     syncContextUsage();
+  }
+  function syncAccessControl() {
+    const mode = normalizeFileAccessMode(activeConversation(conversationState).fileAccessMode);
+    accessControl.dataset.mode = mode;
+    accessControl.title = `文件写入权限：${fileAccessLabel(mode)}`;
+    accessControl.setAttribute('aria-label', accessControl.title);
   }
   function syncBusy() {
     const busy = tasks.has(activeConversation(conversationState).id);
@@ -2256,7 +2351,11 @@ function regenerateIcon() { return '<svg viewBox="0 0 24 24"><path d="M19 8V4l-2
 function noteAddIcon() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3.5h11l3 3V20.5H5zM16 3.5v4h3M8 12h8M12 8v8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
 function globeIcon() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3.8 12h16.4M12 3.5c2.2 2.3 3.3 5.1 3.3 8.5S14.2 18.2 12 20.5C9.8 18.2 8.7 15.4 8.7 12S9.8 5.8 12 3.5z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>'; }
 function folderIcon() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7.5h6l2-2h9v13h-17z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>'; }
+function shieldIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.5l6 2.3v4.5c0 3.8-2.4 6.7-6 8.2-3.6-1.5-6-4.4-6-8.2V4.8z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M7.4 10l1.7 1.7 3.7-4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>'; }
+function eyeIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 10s2.7-5 7.5-5 7.5 5 7.5 5-2.7 5-7.5 5-7.5-5-7.5-5z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="10" r="2.2" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>'; }
+function handIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6.8 9.4V5.7a1.2 1.2 0 012.4 0v2.5-4a1.2 1.2 0 012.4 0v4-3.1a1.2 1.2 0 012.4 0v3.5-2a1.2 1.2 0 012.4 0v4.7c0 3.2-2.2 5.2-5.4 5.2H9.6c-1.7 0-2.8-.8-3.8-2.1l-2-2.8a1.3 1.3 0 012-1.6z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
 function fileIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 2.8h6l4 4v10.4H5zM11 2.8v4h4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>'; }
+function downloadIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3.5v8M6.8 8.7L10 12l3.2-3.3M4 14v2.5h12V14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
 function trashIcon() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3M7.5 7l.8 13h7.4l.8-13M10 11v5M14 11v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
 function chevronIcon() { return '<svg class="ai-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="M6.5 8l3.5 3.5L13.5 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
 function activityIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.8l1.4 4.1 4.1 1.4-4.1 1.4-1.4 4.1-1.4-4.1-4.1-1.4 4.1-1.4L10 2.8zm5.1 10.1l.7 2 .2.1-2 .7-.7 2-.7-2-2-.7 2-.7.7-2 .7 2z" fill="currentColor"/></svg>'; }

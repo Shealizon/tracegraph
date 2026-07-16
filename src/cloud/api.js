@@ -28,9 +28,9 @@ export const serverApi = {
   deleteFile: (scope, path) => apiRequest(`/api/workspace/file?${new URLSearchParams({ scope, path })}`, { method: 'DELETE' }),
   extensionCatalog: () => apiRequest('/api/extensions/catalog'),
   getSkill: (id) => apiRequest(`/api/skills/${encodeURIComponent(id)}`),
-  executeExtensionTool: (name, args, workspaceScope, projectId) => apiRequest('/api/tools/execute', {
+  executeExtensionTool: (name, args, workspaceScope, projectId, writeApproved = false) => apiRequest('/api/tools/execute', {
     method: 'POST',
-    body: { name, args, workspaceScope, projectId },
+    body: { name, args, workspaceScope, projectId, writeApproved },
   }),
   users: () => apiRequest('/api/admin/users'),
   updateUser: (id, patch) => apiRequest(`/api/admin/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch }),

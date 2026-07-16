@@ -4,7 +4,7 @@ import { normalizeWorkspacePath } from '../src/ai/workspace.js';
 import { appendReasoningBlock, appendTextBlock, messageBlocks, serializeMessageDebug, upsertToolBlock } from '../src/ai/messageBlocks.js';
 import { canonicalSourceKey, createClientTools, extractDoi } from '../src/ai/tools.js';
 import {
-  aiQuoteAttachment, contextPrompt, graphNodeAttachment, graphSelectionAttachment, mentionQueryAt, replaceMention, searchMentionCandidates,
+  aiQuoteAttachment, contextPrompt, graphNodeAttachment, graphSelectionAttachment, mentionQueryAt, pdfFieldAttachment, replaceMention, searchMentionCandidates,
 } from '../src/ai/contextAttachments.js';
 import { formatGraphReferenceDisplay, normalizeCjkStrong, protectMarkdownMath, stripBlockquoteMathMarkers } from '../src/render/markdown.js';
 import { activityTimelineEntries, applyCloudTaskSnapshot, isActivityGroupActive, isScrollNearBottom, navigateGraphReference, normalizeAiText, noteFromAssistantMessage, replaceUserMessageBranch, shouldJoinActivityBlock } from '../src/ui/aiPanel.js';
@@ -61,6 +61,42 @@ describe('AI runtime helpers', () => {
     expect(prompt).toContain('不要重新概述整条回复');
     expect(prompt).toContain('前文：前文说明。');
     expect(prompt).toContain('后文：。后文说明。');
+  });
+
+  it('creates a conversation-scoped PDF field reference with page position', () => {
+    const attachment = pdfFieldAttachment({
+      path: 'uploads/paper.pdf',
+      name: 'paper.pdf',
+      page: 7,
+      text: 'Selected theorem statement',
+      rects: [{ x: 0.12, y: 0.34, width: 0.5, height: 0.04 }],
+      conversationId: 'chat-1',
+    });
+    const prompt = contextPrompt('解释这个字段', [attachment], null);
+    expect(attachment).toMatchObject({ kind: 'pdf-field', page: 7, conversationId: 'chat-1' });
+    expect(prompt).toContain('[PDF 字段引用]');
+    expect(prompt).toContain('页码：7');
+    expect(prompt).toContain('<selected_text>\nSelected theorem statement\n</selected_text>');
+    expect(prompt).toContain('PDF 字段引用中的 selected_text 是本次问题的主要解释对象');
+  });
+
+  it('enforces read-only, ask, and fully-allowed file write modes', async () => {
+    const call = { id: 'write', function: { name: 'write_file', arguments: '{"path":"notes/result.md","content":"hello"}' } };
+    const workspace = { writeFile: vi.fn(async () => {}) };
+    const readOnly = createClientTools(workspace, { fileAccessMode: 'read-only' });
+    expect(readOnly.definitions.map((item) => item.function.name)).not.toContain('write_file');
+    expect(JSON.parse(await readOnly.execute(call))).toMatchObject({ written: false, reason: '当前对话为只读模式' });
+
+    const confirm = vi.fn(async () => false);
+    const ask = createClientTools(workspace, { fileAccessMode: 'ask', confirm });
+    expect(JSON.parse(await ask.execute(call))).toMatchObject({ written: false, reason: '用户拒绝写入' });
+    expect(confirm).toHaveBeenCalledOnce();
+
+    const allowConfirm = vi.fn();
+    const allow = createClientTools(workspace, { fileAccessMode: 'allow', confirm: allowConfirm });
+    expect(JSON.parse(await allow.execute(call))).toMatchObject({ written: true, chars: 5 });
+    expect(allowConfirm).not.toHaveBeenCalled();
+    expect(workspace.writeFile).toHaveBeenCalledWith('notes/result.md', 'hello');
   });
 
   it('returns every matching @ candidate unless a limit is explicitly requested', () => {

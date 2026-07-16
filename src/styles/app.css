@@ -1030,11 +1030,11 @@ body {
 .toast-success { border-color: color-mix(in srgb, var(--lemma) 55%, var(--line)); }
 .confirm-back { position: fixed; inset: 0; z-index: 820; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0,0,0,.42); opacity: 0; backdrop-filter: blur(9px) saturate(.82); -webkit-backdrop-filter: blur(9px) saturate(.82); transition: opacity .14s ease; }
 .confirm-back.in { opacity: 1; }
-.confirm-pop { width: min(410px, 92vw); padding: 18px; border-radius: var(--r-lg); background: color-mix(in srgb, var(--bg-modal-solid) 94%, transparent); border: 1px solid var(--line); box-shadow: var(--shadow-modal); transform: translateY(8px) scale(.985); transition: transform .16s ease; }
+.confirm-pop { width: min(410px, 92vw); max-height: min(460px, calc(100dvh - 48px)); display: flex; flex-direction: column; overflow: hidden; padding: 18px; border-radius: var(--r-lg); background: color-mix(in srgb, var(--bg-modal-solid) 94%, transparent); border: 1px solid var(--line); box-shadow: var(--shadow-modal); transform: translateY(8px) scale(.985); transition: transform .16s ease; }
 .confirm-back.in .confirm-pop { transform: none; }
-.confirm-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
-.confirm-msg { font-size: 13px; color: var(--text); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
-.confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.confirm-title { flex: 0 0 auto; font-size: 14px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+.confirm-msg { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 5px; font-size: 13px; color: var(--text); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+.confirm-actions { flex: 0 0 auto; display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; padding-top: 2px; }
 .confirm-actions .btn { min-width: 76px; }
 .confirm-actions.is-multi { flex-direction: column; align-items: stretch; }
 .confirm-actions.is-multi .confirm-action { width: 100%; min-height: 36px; padding: 8px 12px; white-space: normal; line-height: 1.35; }
@@ -1222,7 +1222,7 @@ body {
     align-items: flex-end;
     padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   }
-  .confirm-pop { width: 100%; max-height: calc(100dvh - 24px); overflow-y: auto; padding: 16px; border-radius: 16px; }
+  .confirm-pop { width: 100%; max-height: min(440px, calc(100dvh - 24px)); padding: 16px; border-radius: 16px; }
   .confirm-actions .btn { min-height: 44px; }
 }
 

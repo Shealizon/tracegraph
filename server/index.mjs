@@ -64,6 +64,7 @@ app.post('/api/tools/execute', requireAuth, asyncRoute(async (req, res) => {
     workspaceFiles,
     workspaceScope,
     projectId: String(req.body?.projectId || ''),
+    allowWrites: req.body?.writeApproved === true,
   });
   const artifacts = await persistArtifacts(store, req.auth.session, workspaceScope, execution);
   res.json({ result: execution.result, artifacts });

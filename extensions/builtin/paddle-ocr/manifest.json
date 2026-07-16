@@ -1,7 +1,7 @@
 {
   "id": "paddle-ocr",
   "name": "PaddleOCR",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "通过 PaddleOCR VL 服务识别扫描 PDF 和图片，返回按页 Markdown。",
   "dependencies": {
     "python": [
@@ -33,6 +33,7 @@
         "additionalProperties": false
       },
       "entry": "tools/paddle_ocr.py",
+      "readOnly": true,
       "timeoutMs": 600000
     }
   ]

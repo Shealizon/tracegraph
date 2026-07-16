@@ -1,7 +1,7 @@
 {
   "id": "pdf-workbench",
   "name": "PDF Workbench",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "读取、检索、渲染、创建和编辑 PDF，并保留页码来源与视觉验收流程。",
   "dependencies": {
     "python": [
@@ -30,7 +30,8 @@
         "required": ["file"],
         "additionalProperties": false
       },
-      "entry": "tools/pdf_tool.py"
+      "entry": "tools/pdf_tool.py",
+      "readOnly": true
     },
     {
       "name": "pdf_extract_text",
@@ -45,7 +46,8 @@
         "required": ["file"],
         "additionalProperties": false
       },
-      "entry": "tools/pdf_tool.py"
+      "entry": "tools/pdf_tool.py",
+      "readOnly": true
     },
     {
       "name": "pdf_parse",
@@ -57,7 +59,8 @@
         "required": ["file"],
         "additionalProperties": false
       },
-      "entry": "tools/pdf_tool.py"
+      "entry": "tools/pdf_tool.py",
+      "readOnly": true
     },
     {
       "name": "pdf_search",
@@ -73,7 +76,8 @@
         "required": ["file", "query"],
         "additionalProperties": false
       },
-      "entry": "tools/pdf_tool.py"
+      "entry": "tools/pdf_tool.py",
+      "readOnly": true
     },
     {
       "name": "pdf_render",

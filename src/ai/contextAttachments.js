@@ -131,6 +131,29 @@ export function graphFileAttachment(file) {
   return { id: `file:${file.path}`, kind: 'file-reference', path: file.path, label: file.name || file.path };
 }
 
+export function pdfFieldAttachment({ path, name, page, text, rects = [], conversationId = '' } = {}) {
+  const selected = String(text || '').trim().slice(0, 6000);
+  const pageNumber = Math.max(1, Math.round(Number(page) || 1));
+  if (!path || !selected) return null;
+  const position = (rects || []).slice(0, 20).map((rect) => ({
+    x: roundUnit(rect.x),
+    y: roundUnit(rect.y),
+    width: roundUnit(rect.width),
+    height: roundUnit(rect.height),
+  }));
+  return {
+    id: `pdf-field:${path}:${pageNumber}:${shortHash(`${selected}:${JSON.stringify(position)}`)}`,
+    kind: 'pdf-field',
+    path,
+    fileName: name || String(path).split('/').pop(),
+    page: pageNumber,
+    text: selected,
+    rects: position,
+    conversationId,
+    label: `${name || String(path).split('/').pop()} · p. ${pageNumber}`,
+  };
+}
+
 export function aiQuoteAttachment(message, messageIndex, selectedText, conversationTitle = '') {
   const text = String(selectedText || '').trim().slice(0, 6000);
   if (!message || message.role !== 'assistant' || !text) return null;
@@ -159,17 +182,22 @@ export function appendUniqueContext(items, attachment) {
 export function contextPrompt(text, attachments, model) {
   const blocks = (attachments || []).map((item) => describeContext(item, model)).filter(Boolean);
   if (!blocks.length) return String(text || '');
-  const selectionScoped = (attachments || []).some((item) => item.kind === 'graph-selection' || (item.kind === 'graph-tag' && item.memberType === 'span'))
+  const graphSelectionScoped = (attachments || []).some((item) => item.kind === 'graph-selection' || (item.kind === 'graph-tag' && item.memberType === 'span'))
     && !(attachments || []).some((item) => item.kind === 'graph-node');
+  const pdfFieldScoped = (attachments || []).some((item) => item.kind === 'pdf-field');
   const quoteScoped = (attachments || []).some((item) => item.kind === 'ai-quote');
-  const scopeRules = `${selectionScoped ? `
+  const scopeRules = `${graphSelectionScoped ? `
 <selection_scope priority="high">
 选中内容是本次问题的唯一主要解释对象。节点信息、位置、前文和后文只用于定位与消歧，不是要求解释的内容。
 除非用户明确要求“整个节点”“全文”“完整证明”“依赖关系”或同等范围，否则：
 1. 只回答选中内容直接涉及的含义、符号与局部推理；不要概述整个定理或整段证明。
 2. 若附件已足够回答，不要调用 get_graph_node、get_graph_neighbors 或其他工具扩展到完整节点。
 3. 不要因为存在 node_id 就主动补充该节点的全局地位、完整结构或全部依赖。
-</selection_scope>` : ''}${quoteScoped ? `
+</selection_scope>` : ''}${pdfFieldScoped ? `
+<pdf_field_scope priority="high">
+PDF 字段引用中的 selected_text 是本次问题的主要解释对象，文件名、页码和页面坐标只用于定位。
+除非用户明确要求整页或整份文件，否则只围绕所选字段回答；附件已足够时不要再次读取整份 PDF。
+</pdf_field_scope>` : ''}${quoteScoped ? `
 <conversation_quote_scope priority="high">
 用户引用的是先前 AI 回复中的指定片段。请直接围绕 quoted_text 回答；相邻文本仅用于消歧。除非用户明确要求，不要重新概述整条回复。
 </conversation_quote_scope>` : ''}`;
@@ -209,6 +237,10 @@ export function searchMentionCandidates(model, files, query, limit = Infinity) {
 
 function describeContext(item, model) {
   if (item.kind === 'file-reference') return `引用文件：${item.path}\n需要内容时请调用 read_file 或 read_pdf。`;
+  if (item.kind === 'pdf-field') {
+    const positions = (item.rects || []).map((rect) => `(${rect.x}, ${rect.y}, ${rect.width}, ${rect.height})`).join('；');
+    return `[PDF 字段引用]\n文件：${item.fileName || item.path}\n路径：${item.path}\n页码：${item.page}\n页面归一化位置 (x, y, width, height)：${positions || '未记录'}\n<selected_text>\n${item.text}\n</selected_text>`;
+  }
   if (item.kind === 'ai-quote') {
     return `[AI 对话引用片段]\n<quoted_text>\n${item.text}\n</quoted_text>\n来源：${item.conversationTitle || '当前对话'}第 ${Number(item.messageIndex) + 1} 条消息\n<disambiguation_context>\n前文：${item.before || ''}\n后文：${item.after || ''}\n</disambiguation_context>`;
   }
@@ -246,3 +278,9 @@ function describeContext(item, model) {
 function nodeNumber(node) { return String(node.number || node.tag || node.id); }
 function clamp(value, min, max) { const n = Number(value); return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : min; }
 function round(value) { return Number.isFinite(value) ? Math.round(value * 10) / 10 : '未知'; }
+function roundUnit(value) { const number = Number(value); return Number.isFinite(number) ? Math.max(0, Math.min(1, Math.round(number * 10000) / 10000)) : 0; }
+function shortHash(value) {
+  let hash = 2166136261;
+  for (const char of String(value)) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+  return (hash >>> 0).toString(36);
+}

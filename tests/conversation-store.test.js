@@ -26,6 +26,18 @@ describe('AI conversation store', () => {
     expect(second).toMatchObject({ title: '手动标题', titleMode: 'manual' });
     removeConversation(state, second.id);
     expect(activeConversation(state).id).toBe(first.id);
+    expect(first.fileAccessMode).toBe('ask');
+  });
+
+  it('persists a per-conversation file access mode and normalizes invalid values', () => {
+    const stored = JSON.stringify({
+      version: 1,
+      activeId: 'chat-1',
+      conversations: [{ id: 'chat-1', title: '权限测试', messages: [], fileAccessMode: 'allow' }],
+    });
+    expect(activeConversation(loadConversationState(memoryStorage(stored), 'key')).fileAccessMode).toBe('allow');
+    const invalid = stored.replace('"allow"', '"unknown"');
+    expect(activeConversation(loadConversationState(memoryStorage(invalid), 'key')).fileAccessMode).toBe('ask');
   });
 
   it('generates a concise title from the first user sentence without overriding manual titles', () => {

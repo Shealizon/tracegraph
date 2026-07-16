@@ -3,9 +3,17 @@ import workerSrc from 'pdfjs-dist/build/pdf.worker.mjs?url';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
 
-export async function extractPdfText(file, { maxPages = 80 } = {}) {
+export async function openPdfDocument(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const doc = await pdfjs.getDocument({ data: bytes }).promise;
+  return pdfjs.getDocument({ data: bytes }).promise;
+}
+
+export function createPdfTextLayer(options) {
+  return new pdfjs.TextLayer(options);
+}
+
+export async function extractPdfText(file, { maxPages = 80 } = {}) {
+  const doc = await openPdfDocument(file);
   const pages = [];
   const count = Math.min(doc.numPages, Math.max(1, maxPages));
   for (let pageNumber = 1; pageNumber <= count; pageNumber += 1) {

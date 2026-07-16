@@ -252,6 +252,13 @@ details[open] > summary > .ai-chevron { transform: rotate(180deg); }
 .ai-input-actions { display: flex; align-items: center; gap: 5px; padding: 3px 6px 6px; }
 .ai-model-label { min-width: 0; max-width: 150px; overflow: hidden; padding: 3px 6px; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); background: transparent; border: 0; border-radius: 5px; font: 10.5px var(--font); cursor: pointer; }
 .ai-model-label:hover { color: var(--text); background: var(--bg-hover, var(--bg-soft)); }
+.ai-access-control { position: relative; width: 24px; height: 24px; flex: 0 0 24px; display: grid; place-items: center; padding: 0; color: var(--text-dim); background: transparent; border: 0; border-radius: 6px; cursor: pointer; }
+.ai-access-control:hover, .ai-access-control[aria-expanded="true"] { color: var(--text); background: var(--bg-hover, var(--bg-soft)); }
+.ai-access-control svg { width: 15px; height: 15px; }
+.ai-access-control > i { position: absolute; right: 3px; bottom: 3px; width: 5px; height: 5px; border: 1px solid var(--bg); border-radius: 50%; background: var(--warning); }
+.ai-access-control[data-mode="read-only"] > i { background: var(--text-dim); }
+.ai-access-control[data-mode="allow"] { color: var(--warning); }
+.ai-access-control[data-mode="allow"] > i { background: var(--warning); }
 .ai-context-toggle { width: 24px; height: 24px; flex: 0 0 24px; display: inline-flex; align-items: center; justify-content: center; padding: 0; color: var(--text-dim); background: transparent; border: 0; border-radius: 6px; cursor: pointer; }
 .ai-context-toggle:hover, .ai-context-toggle[aria-expanded="true"] { color: var(--text); background: var(--bg-hover, var(--bg-soft)); }
 .ai-context-toggle.is-warning { color: #b7791f; }
@@ -302,6 +309,22 @@ details[open] > summary > .ai-chevron { transform: rotate(180deg); }
 .ai-workspace-empty { max-width: 252px; color: var(--text-dim) !important; font-size: 11.5px !important; line-height: 1.65 !important; }
 .ai-subpanel.is-layout-popover { width: 290px !important; }
 .ai-subpanel.is-context-popover { width: max-content !important; max-width: calc(100% - 20px); padding: 5px 7px; }
+.ai-subpanel.is-access-popover { width: min(330px, calc(100% - 20px)) !important; padding: 7px; }
+.ai-access-picker { display: grid; gap: 2px; }
+.ai-access-picker > header { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 6px 7px 8px; border-bottom: 1px solid var(--line-soft); }
+.ai-access-picker > header strong { font-size: 11.5px; }
+.ai-access-picker > header small { color: var(--text-dim); font-size: 9px; }
+.ai-access-picker > button { width: 100%; min-width: 0; display: grid; grid-template-columns: 30px minmax(0, 1fr) 16px; align-items: center; gap: 8px; padding: 8px 7px; color: var(--text); background: transparent; border: 0; border-radius: 8px; text-align: left; cursor: pointer; }
+.ai-access-picker > button:hover, .ai-access-picker > button.is-active { background: var(--accent-bg); }
+.ai-access-picker > button[data-access-mode="allow"].is-active { background: var(--warning-bg); }
+.ai-access-picker > button > span { width: 30px; height: 30px; display: grid; place-items: center; color: var(--accent); background: var(--bg-soft); border-radius: 7px; }
+.ai-access-picker > button[data-access-mode="allow"] > span { color: var(--warning); }
+.ai-access-picker svg { width: 15px; height: 15px; }
+.ai-access-picker > button > div { min-width: 0; display: grid; gap: 2px; }
+.ai-access-picker strong { font-size: 10.5px; font-weight: 600; }
+.ai-access-picker small { color: var(--text-dim); font-size: 9px; line-height: 1.4; }
+.ai-access-picker > button > svg { color: var(--accent); }
+.ai-access-picker > p { margin: 5px 7px 3px; color: var(--text-dim); font-size: 8.5px; line-height: 1.45; }
 .ai-context-inline { min-width: 0; min-height: 27px; display: flex; align-items: center; justify-content: center; gap: 7px; white-space: nowrap; }
 .ai-context-inline > strong { color: var(--text); font-size: 11.5px; font-weight: 650; letter-spacing: -.01em; }
 .ai-context-inline > small { color: var(--text-dim); font-size: 9px; }
@@ -378,16 +401,81 @@ details[open] > summary > .ai-chevron { transform: rotate(180deg); }
 .ai-model-settings-link { margin-top: 14px; padding: 0; color: var(--text-dim); background: transparent; border: 0; font: 10px var(--font); cursor: pointer; }
 .ai-subpanel.is-model-popover .ai-model-settings-link { display: block; margin: 6px 6px 4px; }
 .ai-workspace-list { width: 100%; min-width: 0; display: grid; gap: 2px; overflow-x: hidden; }
-.ai-workspace-list > div { width: 100%; min-width: 0; min-height: 40px; display: grid; grid-template-columns: 26px minmax(0, 1fr) 24px; align-items: center; gap: 7px; padding: 4px; background: transparent; border-radius: 8px; transition: background .14s; }
+.ai-workspace-list > div { width: 100%; min-width: 0; min-height: 40px; display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 4px; background: transparent; border-radius: 8px; transition: background .14s; }
 .ai-workspace-list > div:hover { background: var(--bg-soft); }
 .ai-workspace-file-icon { width: 26px; height: 26px; display: grid; place-items: center; color: var(--accent); background: var(--accent-bg); border-radius: 7px; }
 .ai-workspace-file-icon svg { width: 14px; height: 14px; }
-.ai-workspace-file-meta { min-width: 0; display: grid; gap: 2px; overflow: hidden; }
+.ai-workspace-file-meta { min-width: 0; display: grid; gap: 2px; overflow: hidden; padding: 0; color: inherit; background: transparent; border: 0; text-align: left; cursor: pointer; }
+.ai-workspace-file-meta:disabled { cursor: default; }
 .ai-workspace-file-meta strong, .ai-workspace-file-meta small { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ai-workspace-file-meta strong { color: var(--text); font-size: 10.5px; font-weight: 560; }
 .ai-workspace-file-meta small { color: var(--text-dim); font-size: 8.8px; }
-.ai-file-remove { flex: none; width: 24px; height: 24px; }
-.ai-file-remove svg { width: 13px; height: 13px; }
+.ai-workspace-file-actions { display: flex; align-items: center; gap: 1px; }
+.ai-file-action, .ai-file-remove { flex: none; width: 24px; height: 24px; display: grid; place-items: center; padding: 0; color: var(--text-dim); background: transparent; border: 0; border-radius: 5px; cursor: pointer; }
+.ai-file-action:hover { color: var(--accent); background: var(--accent-bg); }
+.ai-file-action svg, .ai-file-remove svg { width: 13px; height: 13px; }
+
+/* Workspace file previews -------------------------------------------------- */
+.ai-workspace-preview { position: fixed; z-index: 720; min-width: min(320px, calc(100vw - 16px)); min-height: min(320px, calc(100vh - 16px)); max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); display: flex; flex-direction: column; overflow: hidden; resize: both; pointer-events: auto; }
+.ai-file-preview-head { position: relative !important; flex: 0 0 auto; min-height: 44px; display: grid !important; grid-template-columns: 28px minmax(0, 1fr) 30px 30px; align-items: center; gap: 7px; padding: 6px 8px !important; cursor: grab; user-select: none; }
+.ai-file-preview-head:active { cursor: grabbing; }
+.ai-file-preview-head > span { width: 28px; height: 28px; display: grid; place-items: center; color: var(--accent); background: var(--accent-bg); border-radius: 7px; }
+.ai-file-preview-head > span svg { width: 14px; height: 14px; }
+.ai-file-preview-head > div { min-width: 0; display: grid; gap: 2px; }
+.ai-file-preview-head strong, .ai-file-preview-head small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-file-preview-head strong { font-size: 11.5px; }
+.ai-file-preview-head small { color: var(--text-dim); font-size: 9px; font-weight: 400; }
+.ai-file-preview-head button { width: 30px; height: 30px; display: grid; place-items: center; padding: 0; color: var(--text-dim); background: transparent; border: 0; border-radius: 7px; cursor: pointer; }
+.ai-file-preview-head button:hover { color: var(--accent); background: var(--accent-bg); }
+.ai-file-preview-head button:last-child:hover { color: var(--danger); background: var(--danger-bg); }
+.ai-file-preview-head button svg { width: 14px; height: 14px; }
+.ai-file-preview-body { flex: 1 1 auto; min-height: 0; overflow: auto; color: var(--text); }
+.ai-file-preview-body.tag-note-preview-content { padding: 17px 20px 24px; }
+.ai-file-plain-text { min-height: 100%; margin: 0; padding: 18px 20px 28px; box-sizing: border-box; color: var(--text); font: 12.5px/1.7 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
+
+.ai-pdf-preview { position: fixed; z-index: 730; min-width: min(360px, calc(100vw - 16px)); min-height: min(420px, calc(100vh - 16px)); max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); display: grid; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; color: var(--text); background: var(--bg-modal-solid); border: 1px solid var(--line); border-radius: 13px; box-shadow: var(--shadow-modal); }
+.ai-pdf-preview-head { min-height: 46px; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px 8px; border-bottom: 1px solid var(--line-soft); cursor: grab; user-select: none; }
+.ai-pdf-preview-head:active { cursor: grabbing; }
+.ai-pdf-preview-mark { width: 30px; height: 30px; display: grid; place-items: center; color: var(--accent); background: var(--accent-bg); border-radius: 8px; }
+.ai-pdf-preview-mark svg { width: 15px; height: 15px; }
+.ai-pdf-preview-head > div:not(.ai-pdf-window-controls) { min-width: 0; display: grid; gap: 2px; }
+.ai-pdf-preview-head strong, .ai-pdf-preview-head small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-pdf-preview-head strong { font-size: 11.5px; }
+.ai-pdf-preview-head small { color: var(--text-dim); font-size: 9px; }
+.ai-pdf-window-controls { display: flex; gap: 1px; }
+.ai-pdf-preview button { display: grid; place-items: center; padding: 0; color: var(--text-dim); background: transparent; border: 0; border-radius: 7px; cursor: pointer; }
+.ai-pdf-preview button:hover { color: var(--accent); background: var(--accent-bg); }
+.ai-pdf-preview button:disabled { opacity: .35; cursor: default; background: transparent; }
+.ai-pdf-preview button svg { width: 14px; height: 14px; }
+.ai-pdf-window-controls button { width: 30px; height: 30px; }
+.ai-pdf-window-controls [data-close]:hover { color: var(--danger); background: var(--danger-bg); }
+.ai-pdf-toolbar { min-height: 38px; display: flex; align-items: center; gap: 5px; padding: 4px 10px; border-bottom: 1px solid var(--line-soft); background: var(--hover); }
+.ai-pdf-toolbar > button { width: 28px; height: 28px; }
+.ai-pdf-toolbar form { display: flex; align-items: center; gap: 5px; color: var(--text-dim); font-size: 9.5px; }
+.ai-pdf-toolbar label { display: flex; align-items: center; gap: 4px; }
+.ai-pdf-toolbar input { width: 44px; height: 26px; padding: 0 4px; color: var(--text); background: var(--bg-modal-solid); border: 1px solid var(--line); border-radius: 6px; outline: 0; text-align: center; font: 10px var(--font); }
+.ai-pdf-toolbar input:focus { border-color: var(--accent); }
+.ai-pdf-toolbar b { color: var(--text); font-weight: 600; }
+.ai-pdf-toolbar > small { min-width: 0; overflow: hidden; margin-left: auto; color: var(--text-dim); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.ai-pdf-stage { position: relative; min-height: 0; overflow: auto; padding: 14px; overscroll-behavior: contain; background: color-mix(in srgb, var(--bg) 82%, #000); }
+.ai-pdf-loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-dim); font-size: 11px; }
+.ai-pdf-loading[hidden] { display: none; }
+.ai-pdf-page { --scale-factor: 1; --user-unit: 1; --total-scale-factor: calc(var(--scale-factor) * var(--user-unit)); --scale-round-x: 1px; --scale-round-y: 1px; position: relative; margin: 0 auto; background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,.28); }
+.ai-pdf-page[hidden] { display: none; }
+.ai-pdf-page canvas { position: absolute; inset: 0; display: block; }
+.ai-pdf-page .textLayer { position: absolute; inset: 0; z-index: 1; overflow: clip; text-align: initial; line-height: 1; opacity: 1; transform-origin: 0 0; -webkit-text-size-adjust: none; text-size-adjust: none; forced-color-adjust: none; }
+.ai-pdf-page .textLayer :is(span, br) { position: absolute; color: transparent; white-space: pre; cursor: text; transform-origin: 0 0; }
+.ai-pdf-page .textLayer > :not(.markedContent), .ai-pdf-page .textLayer .markedContent span:not(.markedContent) { z-index: 1; }
+.ai-pdf-page .textLayer span.markedContent { top: 0; height: 0; }
+.ai-pdf-page .textLayer span[role="img"] { user-select: none; cursor: default; }
+.ai-pdf-page .textLayer ::selection { color: transparent; background: color-mix(in srgb, var(--accent) 28%, transparent); }
+.ai-pdf-resize-handle { position: absolute; z-index: 4; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize; touch-action: none; }
+.ai-pdf-resize-handle::after { content: ''; position: absolute; right: 4px; bottom: 4px; width: 7px; height: 7px; border-right: 2px solid var(--text-dim); border-bottom: 2px solid var(--text-dim); opacity: .7; }
+.ai-pdf-selection-actions { position: fixed; z-index: 780; display: flex; gap: 2px; padding: 3px; color: var(--text); background: var(--bg-modal-solid); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow-pop); }
+.ai-pdf-selection-actions[hidden] { display: none; }
+.ai-pdf-selection-actions button { height: 30px; display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; color: var(--text); background: transparent; border: 0; border-radius: 6px; font: 10px var(--font); cursor: pointer; }
+.ai-pdf-selection-actions button:hover { color: var(--accent); background: var(--accent-bg); }
+.ai-pdf-selection-actions svg { width: 13px; height: 13px; }
 .ai-conversation-list { display: grid; gap: 4px; }
 .ai-conversation-item { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 30px 30px; align-items: center; gap: 2px; padding: 4px; border: 1px solid transparent; border-radius: 9px; }
 .ai-conversation-item:hover, .ai-conversation-item.is-active { background: var(--bg-soft); }
@@ -442,6 +530,7 @@ details[open] > summary > .ai-chevron { transform: rotate(180deg); }
   .ai-input-actions { min-height: 38px; padding-bottom: 5px; }
   .ai-input-actions > .icon-btn, .ai-send { width: 36px; height: 36px; }
   .ai-model-label { flex: 1 1 auto; max-width: 42vw; font-size: 11px; }
+  .ai-access-control { width: 36px; height: 36px; flex-basis: 36px; }
   .ai-context-toggle { width: 36px; height: 36px; flex-basis: 36px; }
   .ai-context-ring { flex-basis: 16px; width: 16px; height: 16px; }
   .ai-attachment-row { padding-bottom: 2px; }
@@ -458,12 +547,16 @@ details[open] > summary > .ai-chevron { transform: rotate(180deg); }
   .ai-subpanel.is-files-popover { width: min(360px, calc(100vw - 20px)) !important; }
   .ai-subpanel.is-context-popover { width: max-content !important; max-width: calc(100vw - 20px); }
   .ai-subpanel input, .ai-subpanel select { height: 40px; }
+  .ai-workspace-preview, .ai-pdf-preview { left: 8px !important; top: 8px !important; width: calc(100vw - 16px) !important; height: calc(100dvh - 16px) !important; max-width: none; max-height: none; border-radius: 12px; }
+  .ai-workspace-preview { resize: none; }
+  .ai-pdf-resize-handle { display: none; }
+  .ai-file-preview-head, .ai-pdf-preview-head { min-height: 52px; }
 }
 
 @media (hover: none) and (pointer: coarse) {
   .ai-panel button, .ai-panel a { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-  .ai-brand:hover, .ai-model-label:hover, .ai-send:hover, .ai-starters button:hover { color: inherit; background: transparent; border-color: var(--line-soft); transform: none; filter: none; }
-  .ai-brand:active, .ai-model-label:active, .ai-send:active, .ai-message-action:active, .ai-starters button:active { color: var(--accent); background: var(--accent-bg); }
+  .ai-brand:hover, .ai-model-label:hover, .ai-access-control:hover, .ai-send:hover, .ai-starters button:hover { color: inherit; background: transparent; border-color: var(--line-soft); transform: none; filter: none; }
+  .ai-brand:active, .ai-model-label:active, .ai-access-control:active, .ai-send:active, .ai-message-action:active, .ai-starters button:active { color: var(--accent); background: var(--accent-bg); }
   .ai-graph-ref:active, .ai-web-results a:active, .ai-sources a:active { background: var(--accent-bg); }
 }
 
