@@ -5,10 +5,12 @@ import path from 'node:path';
 const STATUS_CACHE_MS = 10_000;
 const COMMAND_TIMEOUT_MS = 15_000;
 const LOGIN_TTL_MS = 30 * 60_000;
+const LOGIN_START_TIMEOUT_MS = 20_000;
 
 export class CodexAuthManager {
-  constructor({ spawnImpl = spawn } = {}) {
+  constructor({ spawnImpl = spawn, loginStartTimeoutMs = LOGIN_START_TIMEOUT_MS } = {}) {
     this.spawnImpl = spawnImpl;
+    this.loginStartTimeoutMs = loginStartTimeoutMs;
     this.logins = new Map();
     this.cachedStatus = null;
   }
@@ -44,37 +46,93 @@ export class CodexAuthManager {
 
     const state = {
       id: randomUUID(), status: 'waiting', verificationUrl: '', userCode: '', message: '', error: '',
-      createdAt: Date.now(), updatedAt: Date.now(), child: null,
+      createdAt: Date.now(), updatedAt: Date.now(), child: null, loginId: '', send: null, startupTimer: null,
     };
-    const { command, args } = codexCommand(['login', '--device-auth']);
+    const { command, args } = codexCommand(['app-server']);
     const child = this.spawnImpl(command, args, {
-      windowsHide: true, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, NO_COLOR: '1' },
     });
     state.child = child;
     this.logins.set(state.id, state);
 
-    const consume = (chunk) => {
-      state.message = appendBounded(state.message, chunk, 6_000);
-      const parsed = parseDeviceLoginOutput(state.message);
-      state.verificationUrl ||= parsed.verificationUrl;
-      state.userCode ||= parsed.userCode;
-      state.updatedAt = Date.now();
-    };
-    child.stdout?.on('data', consume);
-    child.stderr?.on('data', consume);
-    child.on('error', (error) => {
-      state.status = 'failed';
-      state.error = error?.code === 'ENOENT' ? '服务器未安装 Codex CLI' : String(error?.message || error);
-      state.updatedAt = Date.now();
-    });
-    child.on('close', (code) => {
+    const send = (message) => child.stdin?.write(`${JSON.stringify(message)}\n`);
+    state.send = send;
+    const fail = (error) => {
       if (state.status !== 'waiting') return;
-      state.status = code === 0 ? 'completed' : 'failed';
-      if (code !== 0) state.error = cleanLoginMessage(state.message) || `Codex 登录进程退出码 ${code}`;
+      clearTimeout(state.startupTimer);
+      state.status = 'failed';
+      state.error = String(error?.message || error || 'Codex 登录失败');
       state.updatedAt = Date.now();
       state.child = null;
       this.cachedStatus = null;
+      terminateChild(child);
+    };
+    let stdout = '';
+    const handle = (message) => {
+      if (message.id === 0) {
+        if (message.error) { fail(message.error.message); return; }
+        send({ method: 'initialized', params: {} });
+        send({ method: 'account/login/start', id: 1, params: { type: 'chatgptDeviceCode' } });
+        return;
+      }
+      if (message.id === 1) {
+        if (message.error) { fail(message.error.message); return; }
+        const result = message.result || {};
+        if (!result.loginId || !result.verificationUrl || !result.userCode) {
+          fail('Codex app-server 未返回完整设备码');
+          return;
+        }
+        clearTimeout(state.startupTimer);
+        state.loginId = String(result.loginId);
+        state.verificationUrl = String(result.verificationUrl);
+        state.userCode = String(result.userCode).toUpperCase();
+        state.message = '设备码已生成，等待授权。';
+        state.updatedAt = Date.now();
+        return;
+      }
+      if (message.id != null && message.error) {
+        fail(message.error.message || 'Codex app-server 请求失败');
+        return;
+      }
+      if (message.method !== 'account/login/completed') return;
+      const params = message.params || {};
+      if (state.loginId && params.loginId && params.loginId !== state.loginId) return;
+      clearTimeout(state.startupTimer);
+      state.status = params.success ? 'completed' : 'failed';
+      state.error = params.success ? '' : String(params.error || 'Codex 登录未完成');
+      state.updatedAt = Date.now();
+      state.child = null;
+      this.cachedStatus = null;
+      terminateChild(child);
+    };
+    child.stdout?.on('data', (chunk) => {
+      stdout += String(chunk);
+      let newline;
+      while ((newline = stdout.indexOf('\n')) >= 0) {
+        const line = stdout.slice(0, newline).trim();
+        stdout = stdout.slice(newline + 1);
+        if (!line) continue;
+        try { handle(JSON.parse(line)); } catch { /* ignore non-protocol diagnostics */ }
+      }
+    });
+    child.stderr?.on('data', (chunk) => {
+      state.message = appendBounded(state.message, chunk, 6_000);
+      state.updatedAt = Date.now();
+    });
+    child.on('error', (error) => fail(error?.code === 'ENOENT' ? '服务器未安装 Codex CLI' : error));
+    child.on('close', (code) => {
+      if (state.status !== 'waiting') return;
+      fail(cleanLoginMessage(state.message) || `Codex 登录进程退出码 ${code}`);
+    });
+    state.startupTimer = setTimeout(() => fail('获取 Codex 设备码超时，请检查服务器代理后重试'), this.loginStartTimeoutMs);
+    state.startupTimer.unref?.();
+    send({
+      method: 'initialize', id: 0,
+      params: {
+        clientInfo: { name: 'paper_graph', title: 'Paper Graph', version: '0.1.0' },
+        capabilities: { experimentalApi: true },
+      },
     });
     return publicLogin(state);
   }
@@ -90,9 +148,16 @@ export class CodexAuthManager {
     const state = this.logins.get(String(id || ''));
     if (!state) return;
     if (state.status === 'waiting') {
+      clearTimeout(state.startupTimer);
+      if (state.loginId) {
+        try { state.send?.({ method: 'account/login/cancel', id: 2, params: { loginId: state.loginId } }); }
+        catch { /* process may already be closing */ }
+      }
       state.status = 'cancelled';
       state.updatedAt = Date.now();
-      terminateChild(state.child);
+      const child = state.child;
+      const timer = setTimeout(() => terminateChild(child), 250);
+      timer.unref?.();
       state.child = null;
     }
   }
@@ -101,17 +166,11 @@ export class CodexAuthManager {
     const cutoff = Date.now() - LOGIN_TTL_MS;
     for (const [id, state] of this.logins) {
       if (state.createdAt >= cutoff) continue;
+      clearTimeout(state.startupTimer);
       terminateChild(state.child);
       this.logins.delete(id);
     }
   }
-}
-
-export function parseDeviceLoginOutput(value) {
-  const text = String(value || '').replace(/\u001b\[[0-9;]*m/g, '');
-  const verificationUrl = text.match(/https?:\/\/[^\s<>]+/i)?.[0]?.replace(/[),.;]+$/, '') || '';
-  const userCode = text.match(/\b[A-Z0-9]{4}(?:-[A-Z0-9]{4})+\b/i)?.[0]?.toUpperCase() || '';
-  return { verificationUrl, userCode };
 }
 
 async function captureCodex(args, spawnImpl) {
