@@ -5,6 +5,7 @@ import path from 'node:path';
 const REGION_ERROR = /unsupported_country_region_territory|country, region, or territory not supported/i;
 const DEFAULT_DISCOVERY_TIMEOUT = 25_000;
 const DEFAULT_TASK_TIMEOUT = 10 * 60_000;
+const CODEX_SANDBOX = 'workspace-write';
 
 export async function discoverCodexModels(options = {}) {
   if (process.env.CODEX_ENABLED === '0') throw new Error('服务器未启用 Codex');
@@ -180,7 +181,7 @@ export async function executeCodexStream({ prompt, cwd, model = '', signal, time
         send({
           method: 'thread/start', id: 1,
           params: {
-            cwd, model: String(model || '').trim() || undefined, sandbox: 'read-only', approvalPolicy: 'never', ephemeral: true,
+            cwd, model: String(model || '').trim() || undefined, sandbox: CODEX_SANDBOX, approvalPolicy: 'never', ephemeral: true,
             config: { model_reasoning_summary: 'detailed', hide_agent_reasoning: false, show_raw_agent_reasoning: false },
           },
         });
@@ -282,7 +283,7 @@ export function normalizeCodexItemEvent(item, phase = 'running') {
 export function buildCodexExecArgs({ model = '', outputPath }) {
   const args = [
     'exec', '--skip-git-repo-check', '--ephemeral', '--color', 'never',
-    '--sandbox', 'read-only', '--json', '--output-last-message', outputPath,
+    '--sandbox', CODEX_SANDBOX, '--json', '--output-last-message', outputPath,
   ];
   const selected = String(model || '').trim();
   if (selected && selected !== 'codex') args.push('--model', selected);
