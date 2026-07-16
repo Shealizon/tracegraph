@@ -54,13 +54,22 @@ describe('workspace file previews', () => {
   });
 
   it('assigns distinct icons to common file types', () => {
+    const kinds = ['pdf', 'markdown', 'image', 'text', 'spreadsheet', 'document', 'presentation', 'archive', 'code', 'file'];
     expect(workspaceFileKind({ path: 'paper.pdf' })).toBe('pdf');
     expect(workspaceFileKind({ path: 'README.md' })).toBe('markdown');
     expect(workspaceFileKind({ path: 'figure.png' })).toBe('image');
     expect(workspaceFileKind({ path: 'table.xlsx' })).toBe('spreadsheet');
     expect(workspaceFileKind({ path: 'source.ts' })).toBe('code');
-    expect(workspaceFileIcon('pdf')).not.toBe(workspaceFileIcon('image'));
-    expect(workspaceFileIcon('markdown')).toContain('<svg');
+    expect(new Set(kinds.map((kind) => workspaceFileIcon(kind))).size).toBe(kinds.length);
+    for (const kind of kinds) {
+      const template = document.createElement('template');
+      template.innerHTML = workspaceFileIcon(kind);
+      const svg = template.content.firstElementChild;
+      expect(svg?.tagName.toLowerCase(), kind).toBe('svg');
+      expect(svg?.getAttribute('viewBox'), kind).toBe('0 0 24 24');
+      expect(svg?.querySelectorAll('svg').length, kind).toBe(0);
+      expect(svg?.outerHTML, kind).not.toMatch(/NaN|undefined|null/);
+    }
   });
 
   it('opens TXT in a read-only note-style window', async () => {
@@ -84,9 +93,19 @@ describe('workspace file previews', () => {
 
     const preview = document.querySelector('.ai-image-file-preview');
     expect(preview?.getAttribute('role')).toBe('dialog');
-    expect(preview?.textContent).toContain('图片 · 只读');
+    expect(preview?.textContent).toContain('图片 · Ctrl + 滚轮缩放 · 只读');
     expect(preview?.querySelector('img')?.src).toBe('blob:workspace-preview');
     expect(preview?.querySelector('[data-kind="image"]')).toBeTruthy();
+    const image = preview.querySelector('img');
+    Object.defineProperties(image, {
+      naturalWidth: { configurable: true, value: 800 },
+      naturalHeight: { configurable: true, value: 600 },
+    });
+    image.dispatchEvent(new Event('load'));
+    const wheel = new WheelEvent('wheel', { ctrlKey: true, deltaY: -120, clientX: 20, clientY: 20, bubbles: true, cancelable: true });
+    preview.querySelector('.ai-image-preview-body').dispatchEvent(wheel);
+    expect(wheel.defaultPrevented).toBe(true);
+    expect(preview.querySelector('small').textContent).toMatch(/1[2-9]\d%/);
     controller.close();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:workspace-preview');
     expect(document.querySelector('.ai-image-file-preview')).toBeNull();
@@ -100,9 +119,24 @@ describe('workspace file previews', () => {
     const preview = document.querySelector('.ai-pdf-preview');
     expect(preview?.querySelector('[data-page-count]')?.textContent).toBe('3');
     expect(preview?.querySelector('.textLayer')?.textContent).toContain('Selectable PDF text');
-    expect(preview?.querySelector('[data-window-smaller]')).toBeTruthy();
-    expect(preview?.querySelector('[data-window-larger]')).toBeTruthy();
-    expect(preview?.querySelector('.ai-pdf-resize-handle')).toBeTruthy();
+    expect(preview?.querySelector('[data-window-smaller]')).toBeNull();
+    expect(preview?.querySelector('[data-window-larger]')).toBeNull();
+    expect(preview?.querySelector('.ai-pdf-resize-handle')).toBeNull();
+    expect(preview?.querySelectorAll('[data-resize-edge]')).toHaveLength(8);
+
+    Object.defineProperty(preview, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ left: 100, top: 50, right: 600, bottom: 550, width: 500, height: 500 }),
+    });
+    preview.querySelector('[data-resize-edge="e"]').dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientX: 600, clientY: 200, bubbles: true, cancelable: true }));
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 650, clientY: 200 }));
+    window.dispatchEvent(new MouseEvent('pointerup'));
+    expect(preview.style.width).toBe('550px');
+
+    const wheel = new WheelEvent('wheel', { ctrlKey: true, deltaY: -120, clientX: 40, clientY: 40, bubbles: true, cancelable: true });
+    preview.querySelector('.ai-pdf-stage').dispatchEvent(wheel);
+    expect(wheel.defaultPrevented).toBe(true);
+    expect(preview.querySelector('[data-page-status]').textContent).toMatch(/1[2-9]\d%/);
 
     preview.querySelector('[data-next]').click();
     await vi.waitFor(() => expect(preview.querySelector('[data-page-status]').textContent).toContain('第 2 页'));
