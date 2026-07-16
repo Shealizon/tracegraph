@@ -34,7 +34,7 @@ describe('provider and protocol adapters', () => {
     const cloudModel = enableModel(state, cloud.id, 'gpt-test');
     expect(resolveModelConfig(state, cloudModel.id, memoryStorage(), 'keys')).toMatchObject({ runtime: 'server', providerId: cloud.id });
     const codex = addProvider(state, { name: 'Codex', protocol: 'server-codex', runtime: 'local' });
-    expect(codex).toMatchObject({ id: 'server-codex', runtime: 'server', modelsCache: ['codex'] });
+    expect(codex).toMatchObject({ id: 'server-codex', runtime: 'server', modelsCache: [] });
   });
 
   it('discovers Gemini generation models through the provider model endpoint', async () => {

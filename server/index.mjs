@@ -173,6 +173,17 @@ app.post('/api/providers/:id/models', requireAuth, asyncRoute(async (req, res) =
   res.json({ models: [...new Set(models.filter(Boolean))].sort() });
 }));
 
+app.get('/api/codex/models', requireAuth, asyncRoute(async (req, res) => {
+  if (process.env.CODEX_ENABLED === '0') throw httpError(503, '服务器未启用 Codex');
+  const result = await tasks.listCodexModels({ force: req.query.refresh === '1' });
+  res.json({
+    models: result.models,
+    defaultModel: result.models.find((model) => model.isDefault)?.id || result.models[0]?.id || '',
+    latencyMs: result.latencyMs,
+    cachedAt: new Date(result.cachedAt).toISOString(),
+  });
+}));
+
 app.post('/api/ai/tasks', requireAuth, asyncRoute(async (req, res) => res.status(202).json({ task: await tasks.create(req.auth.session, req.body || {}) })));
 app.get('/api/ai/tasks', requireAuth, asyncRoute(async (req, res) => res.json({ tasks: await tasks.list(req.auth.session, req.query) })));
 app.get('/api/ai/tasks/:id', requireAuth, asyncRoute(async (req, res) => res.json({ task: await tasks.get(req.auth.session, req.params.id) })));

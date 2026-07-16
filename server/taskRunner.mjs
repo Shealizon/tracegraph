@@ -1,19 +1,24 @@
-import { spawn } from 'node:child_process';
 import path from 'node:path';
 import os from 'node:os';
 import fs from 'node:fs/promises';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { randomId } from './security.mjs';
 import { httpError } from './userStore.mjs';
+import { discoverCodexModels, executeCodex } from './codexCli.mjs';
 
 export class TaskRunner {
   constructor(userStore) {
     this.userStore = userStore;
     this.codexQueue = Promise.resolve();
     this.controllers = new Map();
+    this.recoveredUsers = new Set();
+    this.startedAt = Date.now();
+    this.codexModelCache = null;
+    this.codexModelRequest = null;
   }
 
   async create(session, input) {
+    await this.recoverInterrupted(session);
     const id = randomId('task_');
     const now = new Date().toISOString();
     const task = {
@@ -37,6 +42,7 @@ export class TaskRunner {
   }
 
   async list(session, { projectId = '', conversationId = '' } = {}) {
+    await this.recoverInterrupted(session);
     const vault = await this.userStore.readVault(session);
     return Object.values(vault.tasks || {})
       .filter((task) => !projectId || task.projectId === projectId)
@@ -46,6 +52,7 @@ export class TaskRunner {
   }
 
   async get(session, id) {
+    await this.recoverInterrupted(session);
     const vault = await this.userStore.readVault(session);
     const task = vault.tasks?.[id];
     if (!task) throw httpError(404, '任务不存在');
@@ -81,19 +88,48 @@ export class TaskRunner {
       await this.patch(session, task.id, { status: 'failed', error: '服务器未启用 Codex', updatedAt: new Date().toISOString() });
       return;
     }
+    const latest = await this.get(session, task.id);
+    if (latest.status === 'cancelled') return;
+    const controller = new AbortController();
+    this.controllers.set(`${session.userId}:${task.id}`, controller);
     await this.patch(session, task.id, { status: 'running', updatedAt: new Date().toISOString() });
     let tempDir = '';
     try {
       const vault = await this.userStore.readVault(session);
       tempDir = await materializeCodexWorkspace(vault, task);
       const prompt = ['当前目录是该用户此次任务的临时只读工作区快照；项目数据位于 project.paper-graph.json，附件保持原工作区相对路径。', task.input.systemPrompt, ...task.input.history.map((m) => `${m.role}: ${m.content}`), `user: ${task.input.userText}`].filter(Boolean).join('\n\n');
-      const output = await spawnCodex(prompt, tempDir);
+      const output = await executeCodex({ prompt, cwd: tempDir, model: task.model, signal: controller.signal });
       await this.patch(session, task.id, { status: 'completed', output, updatedAt: new Date().toISOString() });
     } catch (error) {
-      await this.patch(session, task.id, { status: 'failed', error: error?.message || String(error), updatedAt: new Date().toISOString() });
+      const status = controller.signal.aborted || error?.name === 'AbortError' ? 'cancelled' : 'failed';
+      await this.patch(session, task.id, { status, error: error?.message || String(error), updatedAt: new Date().toISOString() });
     } finally {
+      this.controllers.delete(`${session.userId}:${task.id}`);
       if (tempDir) await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
+  }
+
+  async listCodexModels({ force = false } = {}) {
+    if (!force && this.codexModelCache && Date.now() - this.codexModelCache.cachedAt < 10 * 60_000) return this.codexModelCache;
+    if (this.codexModelRequest) return this.codexModelRequest;
+    this.codexModelRequest = discoverCodexModels().then((result) => {
+      this.codexModelCache = { ...result, cachedAt: Date.now() };
+      return this.codexModelCache;
+    }).finally(() => { this.codexModelRequest = null; });
+    return this.codexModelRequest;
+  }
+
+  async recoverInterrupted(session) {
+    if (this.recoveredUsers.has(session.userId)) return;
+    await this.userStore.updateVault(session, (vault) => {
+      for (const task of Object.values(vault.tasks || {})) {
+        if (!['queued', 'running'].includes(task.status) || Date.parse(task.updatedAt || task.createdAt || 0) >= this.startedAt) continue;
+        task.status = 'failed';
+        task.error = '服务器重启中断了该任务，请重试';
+        task.updatedAt = new Date().toISOString();
+      }
+    });
+    this.recoveredUsers.add(session.userId);
   }
 
   patch(session, id, patch) {
@@ -170,24 +206,6 @@ async function jsonResponse(response) {
   const text = await response.text();
   if (!response.ok) throw new Error(`模型请求失败（${response.status}）：${text.slice(0, 500)}`);
   try { return JSON.parse(text); } catch { throw new Error('模型返回了无效 JSON'); }
-}
-
-function spawnCodex(prompt, cwd) {
-  return new Promise((resolve, reject) => {
-    const codexArgs = ['exec', '--skip-git-repo-check', '--ephemeral', '--color', 'never', prompt];
-    let command = process.env.CODEX_BIN || 'codex';
-    let args = codexArgs;
-    if (process.platform === 'win32' && !process.env.CODEX_BIN) {
-      command = process.execPath;
-      args = [path.join(process.env.APPDATA || '', 'npm', 'node_modules', '@openai', 'codex', 'bin', 'codex.js'), ...codexArgs];
-    }
-    const child = spawn(command, args, { cwd, windowsHide: true, env: { ...process.env, NO_COLOR: '1' } });
-    let stdout = '', stderr = '';
-    child.stdout.on('data', (chunk) => { stdout += chunk; });
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.on('error', reject);
-    child.on('close', (code) => code === 0 ? resolve(stdout.trim()) : reject(new Error(stderr.trim() || `Codex 退出码 ${code}`)));
-  });
 }
 
 function sanitizeTask(task) {

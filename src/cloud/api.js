@@ -31,6 +31,7 @@ export const serverApi = {
   saveProvider: (id, provider) => apiRequest(`/api/providers/${encodeURIComponent(id)}`, { method: 'PUT', body: provider }),
   deleteProvider: (id) => apiRequest(`/api/providers/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   discoverServerModels: (id) => apiRequest(`/api/providers/${encodeURIComponent(id)}/models`, { method: 'POST', body: {} }),
+  discoverCodexModels: (refresh = false) => apiRequest(`/api/codex/models${refresh ? '?refresh=1' : ''}`),
   createTask: (input) => apiRequest('/api/ai/tasks', { method: 'POST', body: input }),
   getTask: (id) => apiRequest(`/api/ai/tasks/${encodeURIComponent(id)}`),
   listTasks: (query = {}) => apiRequest(`/api/ai/tasks?${new URLSearchParams(query)}`),

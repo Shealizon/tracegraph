@@ -44,7 +44,8 @@ export function createProvider(input = {}) {
     protocol,
     baseUrl: normalizeBaseUrl(input.baseUrl || defaultUrl),
     runtime: protocol === 'server-codex' ? 'server' : (input.runtime === 'server' ? 'server' : 'local'),
-    modelsCache: protocol === 'server-codex' ? ['codex'] : uniqueStrings(input.modelsCache || []),
+    modelsCache: uniqueStrings(input.modelsCache || []),
+    modelDetailsCache: normalizeModelDetails(input.modelDetailsCache),
     status: input.status || 'unknown',
     statusText: input.statusText || '',
     checkedAt: input.checkedAt || '',
@@ -153,5 +154,12 @@ function normalizeProviderState(value) {
 
 function normalizeBaseUrl(value) { return String(value || '').trim().replace(/\/+$/, ''); }
 function uniqueStrings(items) { return [...new Set(items.map(String).map((item) => item.trim()).filter(Boolean))]; }
+function normalizeModelDetails(items) {
+  return (Array.isArray(items) ? items : []).filter((item) => item?.id).map((item) => ({
+    id: String(item.id), displayName: String(item.displayName || item.id), description: String(item.description || ''),
+    isDefault: Boolean(item.isDefault), defaultReasoningEffort: String(item.defaultReasoningEffort || ''),
+    supportedReasoningEfforts: uniqueStrings(item.supportedReasoningEfforts || []),
+  }));
+}
 function makeId(prefix) { return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`; }
 function hostnameLabel(url) { try { return new URL(url).hostname.replace(/^api\./, ''); } catch { return ''; } }

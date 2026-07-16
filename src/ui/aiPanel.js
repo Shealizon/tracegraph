@@ -1345,13 +1345,16 @@ export function buildAiPanel(ctx) {
       return;
     }
     for (const modelId of provider.modelsCache) {
+      const detail = provider.modelDetailsCache?.find((item) => item.id === modelId);
       const existing = providerState.enabledModels.find((item) => item.providerId === provider.id && item.modelId === modelId);
       const row = button('ai-discovered-model', '', existing ? `移除 ${modelId}` : `启用 ${modelId}`);
-      row.innerHTML = `<span>${escapeHtml(modelId)}</span><small aria-hidden="true">${existing ? checkIcon() : plusIcon()}</small>`;
+      const label = detail?.displayName && detail.displayName !== modelId ? `${detail.displayName} · ${modelId}` : modelId;
+      row.innerHTML = `<span>${escapeHtml(label)}</span><small aria-hidden="true">${existing ? checkIcon() : plusIcon()}</small>`;
+      row.title = [detail?.description, detail?.isDefault ? '服务器默认模型' : '', detail?.defaultReasoningEffort ? `默认推理强度：${detail.defaultReasoningEffort}` : ''].filter(Boolean).join('\n');
       row.classList.toggle('is-enabled', Boolean(existing));
       row.addEventListener('click', () => {
         if (existing) disableModel(providerState, existing.id);
-        else enableModel(providerState, provider.id, modelId, modelId);
+        else enableModel(providerState, provider.id, modelId, detail?.displayName || modelId);
         persistProviders(); renderProviderSettings(); syncModelLabel();
       });
       container.append(row);
@@ -1366,17 +1369,41 @@ export function buildAiPanel(ctx) {
     try {
       const key = sessionStorage.getItem(`${PROVIDER_KEY_SESSION}:${provider.id}`) || '';
       const result = provider.protocol === 'server-codex'
-        ? { models: ['codex'], latencyMs: 0 }
+        ? await refreshCodexProvider(provider, true)
         : provider.runtime === 'server'
           ? { ...(await serverApi.discoverServerModels(provider.id)), latencyMs: 0 }
           : await discoverProviderModels(provider, key);
-      updateProvider(providerState, provider.id, { modelsCache: result.models, status: 'ok', statusText: `${result.models.length} 个模型 · ${result.latencyMs} ms`, checkedAt: new Date().toISOString() });
+      if (provider.protocol !== 'server-codex') updateProvider(providerState, provider.id, { modelsCache: result.models, status: 'ok', statusText: `${result.models.length} 个模型 · ${result.latencyMs} ms`, checkedAt: new Date().toISOString() });
       expandedProviders.add(provider.id);
       toast(`已发现 ${result.models.length} 个模型`);
     } catch (error) {
       updateProvider(providerState, provider.id, { status: 'error', statusText: error?.message || String(error), checkedAt: new Date().toISOString() });
     }
     persistProviders(); renderProviderSettings();
+  }
+
+  async function refreshCodexProvider(provider, force = false) {
+    if (!sessionSnapshot().user) throw new Error('请先登录再获取服务端 Codex 模型');
+    const result = await serverApi.discoverCodexModels(force);
+    const details = Array.isArray(result.models) ? result.models : [];
+    const modelIds = details.map((item) => item.id).filter(Boolean);
+    if (!modelIds.length) throw new Error('Codex 未返回可用模型');
+    updateProvider(providerState, provider.id, {
+      modelsCache: modelIds,
+      modelDetailsCache: details,
+      status: 'ok',
+      statusText: `${modelIds.length} 个模型 · ${result.latencyMs || 0} ms`,
+      checkedAt: new Date().toISOString(),
+    });
+    const defaultModel = details.find((item) => item.id === result.defaultModel) || details.find((item) => item.isDefault) || details[0];
+    const legacy = providerState.enabledModels.find((item) => item.providerId === provider.id && item.modelId === 'codex');
+    if (legacy) {
+      legacy.modelId = defaultModel.id;
+      legacy.displayName = defaultModel.displayName || defaultModel.id;
+    } else if (!providerState.enabledModels.some((item) => item.providerId === provider.id)) {
+      enableModel(providerState, provider.id, defaultModel.id, defaultModel.displayName || defaultModel.id);
+    }
+    return { ...result, models: modelIds };
   }
 
   function showProviderEditor(provider = null) {
@@ -1417,7 +1444,10 @@ export function buildAiPanel(ctx) {
         catch (error) { toast(error.message, { type: 'error' }); return; }
         sessionStorage.removeItem(`${PROVIDER_KEY_SESSION}:${saved.id}`);
       } else if (saved.runtime === 'local') sessionStorage.setItem(`${PROVIDER_KEY_SESSION}:${saved.id}`, apiKey);
-      if (saved.protocol === 'server-codex' && !providerState.enabledModels.some((item) => item.providerId === saved.id)) enableModel(providerState, saved.id, 'codex', 'Codex Cloud');
+      if (saved.protocol === 'server-codex') {
+        try { await refreshCodexProvider(saved, true); }
+        catch (error) { updateProvider(providerState, saved.id, { status: 'error', statusText: error?.message || String(error), checkedAt: new Date().toISOString() }); }
+      }
       expandedProviders.add(saved.id);
       persistProviders(); renderProviderSettings();
     });
@@ -1897,6 +1927,13 @@ export function buildAiPanel(ctx) {
   panel._aiPanelApi = api;
   syncActiveWorkspaceFiles();
   queueMicrotask(() => restoreCloudMessages());
+  if (sessionSnapshot().user) queueMicrotask(async () => {
+    for (const provider of providerState.providers.filter((item) => item.protocol === 'server-codex')) {
+      try { await refreshCodexProvider(provider); }
+      catch (error) { updateProvider(providerState, provider.id, { status: 'error', statusText: error?.message || String(error), checkedAt: new Date().toISOString() }); }
+    }
+    persistProviders(); syncModelLabel();
+  });
   return api;
 }
 
@@ -1926,9 +1963,9 @@ async function waitForCloudTask(taskId, signal, onStatus) {
     const { task } = await serverApi.getTask(taskId);
     onStatus?.(task);
     if (['completed', 'failed', 'cancelled'].includes(task.status)) return task;
-    await new Promise((resolve, reject) => {
+    await new Promise((resolve) => {
       const timer = setTimeout(resolve, 850);
-      signal?.addEventListener('abort', () => { clearTimeout(timer); reject(signal.reason || new DOMException('Aborted', 'AbortError')); }, { once: true });
+      signal?.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
     });
   }
 }
