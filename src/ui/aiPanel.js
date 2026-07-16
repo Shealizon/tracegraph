@@ -1951,6 +1951,8 @@ export function buildAiPanel(ctx) {
   }
   function setCollapsed(collapsed, { persist = true } = {}) {
     const next = !!collapsed;
+    const wasCollapsed = panel.classList.contains('is-collapsed');
+    if (wasCollapsed && !next) persistCollapsedPosition(panel);
     panel.classList.toggle('is-collapsed', next);
     const collapseButton = panel.querySelector('[data-collapse]');
     collapseButton.title = next ? '展开面板' : '折叠面板';
@@ -2271,11 +2273,7 @@ function initCollapsedDrag(panel) {
       handle.removeEventListener('pointerup', up);
       handle.removeEventListener('pointercancel', up);
       if (!dragged) return;
-      const finalRect = panel.getBoundingClientRect();
-      localStorage.setItem(COLLAPSED_POSITION_KEY, JSON.stringify({
-        left: Math.round(finalRect.left),
-        top: Math.round(finalRect.top),
-      }));
+      persistCollapsedPosition(panel);
       suppressClick = true;
       setTimeout(() => { suppressClick = false; }, 0);
     };
@@ -2288,22 +2286,31 @@ function initCollapsedDrag(panel) {
   window.addEventListener('resize', () => {
     if (!panel.classList.contains('is-collapsed')) return;
     const rect = panel.getBoundingClientRect();
-    applyCollapsedPosition(panel, { left: rect.left, top: rect.top });
+    const position = applyCollapsedPosition(panel, { left: rect.left, top: rect.top });
+    localStorage.setItem(COLLAPSED_POSITION_KEY, JSON.stringify(position));
   });
 }
 
 function applyCollapsedPosition(panel, position) {
-  const rect = panel.getBoundingClientRect();
   const mobile = matchMedia('(max-width: 720px)').matches;
-  const minLeft = mobile ? 8 : 30;
-  const margin = mobile ? 8 : 10;
-  const fallbackLeft = innerWidth - rect.width - margin;
-  const left = Math.max(minLeft, Math.min(innerWidth - rect.width - margin, Number(position?.left) || fallbackLeft));
-  const top = Math.max(margin, Math.min(innerHeight - rect.height - margin, Number(position?.top) || margin));
+  const resolved = clampCollapsedPosition(position, {
+    viewportWidth: innerWidth,
+    viewportHeight: innerHeight,
+    mobile,
+  });
+  const { left, top } = resolved;
   panel.style.left = `${Math.round(left)}px`;
   panel.style.top = `${Math.round(top)}px`;
   panel.style.right = 'auto';
   panel.style.bottom = 'auto';
+  return resolved;
+}
+
+function persistCollapsedPosition(panel) {
+  const rect = panel.getBoundingClientRect();
+  const position = applyCollapsedPosition(panel, { left: rect.left, top: rect.top });
+  localStorage.setItem(COLLAPSED_POSITION_KEY, JSON.stringify(position));
+  return position;
 }
 
 function clearCollapsedPosition(panel) {
@@ -2311,6 +2318,28 @@ function clearCollapsedPosition(panel) {
   panel.style.removeProperty('top');
   panel.style.removeProperty('right');
   panel.style.removeProperty('bottom');
+}
+
+export function clampCollapsedPosition(position, {
+  viewportWidth = globalThis.innerWidth,
+  viewportHeight = globalThis.innerHeight,
+  mobile = false,
+} = {}) {
+  const margin = mobile ? 8 : 10;
+  const width = Math.min(390, Math.max(0, viewportWidth - margin * 2));
+  const height = Math.min(56, Math.max(0, viewportHeight - margin * 2));
+  const fallbackLeft = viewportWidth - width - margin;
+  const requestedLeft = Number(position?.left);
+  const requestedTop = Number(position?.top);
+  const left = Math.max(margin, Math.min(
+    viewportWidth - width - margin,
+    Number.isFinite(requestedLeft) ? requestedLeft : fallbackLeft,
+  ));
+  const top = Math.max(margin, Math.min(
+    viewportHeight - height - margin,
+    Number.isFinite(requestedTop) ? requestedTop : margin,
+  ));
+  return { left: Math.round(left), top: Math.round(top) };
 }
 
 function applyWidth(panel, width) {
