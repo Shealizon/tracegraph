@@ -1493,8 +1493,7 @@ export function buildAiPanel(ctx) {
   function showContextPanel() {
     if (!openSubpanel('context', 'is-popover is-context-popover', true)) return;
     const snapshot = getContextSnapshot();
-    subpanel.innerHTML = `<div class="ai-context-inline" aria-label="上下文使用量"><span class="ai-context-panel-ring" data-context-meter aria-hidden="true"></span><strong data-context-panel-value></strong><small data-context-panel-percent></small><button class="ai-context-compact" data-context-compact title="压缩上下文">压缩</button><button class="icon-btn" data-sub-close title="关闭">${closeIcon()}</button></div>`;
-    subpanel.querySelector('[data-sub-close]').addEventListener('click', closeSubpanel);
+    subpanel.innerHTML = `<div class="ai-context-inline" aria-label="上下文使用量"><strong data-context-panel-value></strong><small data-context-panel-percent></small><button class="ai-context-compact" data-context-compact>压缩上下文</button></div>`;
     subpanel.querySelector('[data-context-compact]').addEventListener('click', async () => {
       const button = subpanel.querySelector('[data-context-compact]');
       button.disabled = true;
@@ -1504,7 +1503,7 @@ export function buildAiPanel(ctx) {
         button.disabled = state.compacting;
       }
     });
-    positionSubpanel(contextToggle, 'above');
+    positionSubpanel(contextToggle, 'above', 'center');
     updateContextPanel(snapshot);
   }
 
@@ -1542,8 +1541,6 @@ export function buildAiPanel(ctx) {
 
   function updateContextPanel(snapshot) {
     if (subpanel.hidden || subpanel.dataset.mode !== 'context') return;
-    const meter = subpanel.querySelector('[data-context-meter]');
-    if (meter) meter.style.setProperty('--context-ratio', `${Math.min(1, snapshot.ratio) * 100}%`);
     const value = subpanel.querySelector('[data-context-panel-value]');
     const percent = subpanel.querySelector('[data-context-panel-percent]');
     if (value) value.textContent = `${formatTokenCount(snapshot.tokens)} / ${formatTokenCount(snapshot.total)}`;
@@ -1634,12 +1631,17 @@ export function buildAiPanel(ctx) {
     panel.querySelector('[data-model-label]').setAttribute('aria-expanded', 'false');
     contextToggle.setAttribute('aria-expanded', 'false');
   }
-  function positionSubpanel(anchor, placement) {
+  function positionSubpanel(anchor, placement, alignment = 'start') {
     const panelRect = panel.getBoundingClientRect();
     const anchorRect = anchor.getBoundingClientRect();
     const width = Math.min(340, panelRect.width - 24);
-    const left = Math.max(10, Math.min(panelRect.width - width - 10, anchorRect.left - panelRect.left));
     subpanel.style.width = `${Math.round(width)}px`;
+    const renderedWidth = subpanel.getBoundingClientRect().width;
+    const anchorLeft = anchorRect.left - panelRect.left;
+    const preferredLeft = alignment === 'center'
+      ? anchorLeft + anchorRect.width / 2 - renderedWidth / 2
+      : anchorLeft;
+    const left = Math.max(10, Math.min(panelRect.width - renderedWidth - 10, preferredLeft));
     subpanel.style.left = `${Math.round(left)}px`;
     if (placement === 'above') {
       subpanel.style.bottom = `${Math.round(panelRect.bottom - anchorRect.top + 7)}px`;
