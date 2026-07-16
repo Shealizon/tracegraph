@@ -278,7 +278,10 @@ export async function executeCodexStream({
     signal?.addEventListener('abort', onAbort, { once: true });
     send({
       method: 'initialize', id: 0,
-      params: { clientInfo: { name: 'paper_graph', title: 'Paper Graph', version: '0.1.0' } },
+      params: {
+        clientInfo: { name: 'paper_graph', title: 'Paper Graph', version: '0.1.0' },
+        capabilities: { experimentalApi: dynamicTools.length > 0 },
+      },
     });
   });
 }
