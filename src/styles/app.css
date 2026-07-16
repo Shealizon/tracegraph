@@ -1303,6 +1303,19 @@ body {
 .admin-status { display: inline-flex; padding: 3px 7px; border-radius: var(--r-pill); background: var(--bg-soft); color: var(--text-dim); font-size: 10px; }
 .admin-status.is-active { color: #74c69d; background: color-mix(in srgb, #74c69d 12%, transparent); }
 .admin-codex { scroll-margin-top: 18px; margin: 20px 0; padding: 18px; border: 1px solid var(--line-soft); border-radius: 14px; background: var(--glass-bg); }
+.admin-extensions { scroll-margin-top: 18px; margin: 20px 0; padding: 18px; border: 1px solid var(--line-soft); border-radius: 14px; background: var(--glass-bg); }
+.admin-extension-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 15px; }
+.admin-extension-list > article { min-width: 0; padding: 13px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--bg-soft); display: grid; gap: 9px; }
+.admin-extension-title { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.admin-extension-title > div { display: grid; gap: 3px; min-width: 0; }
+.admin-extension-title strong { font-size: 12px; }
+.admin-extension-title small, .admin-extension-list p, .admin-extension-list details small { color: var(--text-dim); font-size: 10.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.admin-extension-list p { margin: 0; }
+.admin-extension-counts { display: flex; gap: 6px; }
+.admin-extension-counts span { padding: 3px 7px; border-radius: var(--r-pill); background: var(--accent-bg); color: var(--accent); font-size: 9.5px; }
+.admin-extension-list details summary { cursor: pointer; color: var(--text-dim); font-size: 10.5px; }
+.admin-extension-list details ul { margin: 7px 0 0; padding-left: 18px; color: var(--text-dim); font-size: 10px; line-height: 1.7; }
+.admin-extension-list .admin-action { justify-self: start; }
 .admin-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .admin-section-heading h2 { margin: 3px 0 0; font-size: 16px; }
 .admin-section-heading p { margin: 6px 0 0; color: var(--text-dim); font-size: 11px; line-height: 1.5; }
@@ -1329,6 +1342,7 @@ body {
   .account-button { min-height: 34px !important; height: 34px !important; }
   .admin-page { width: calc(100vw - 24px); padding-top: 18px; }
   .admin-summary { grid-template-columns: 1fr; }
+  .admin-extension-list { grid-template-columns: 1fr; }
   .admin-table-wrap { overflow-x: auto; }
   .admin-table { min-width: 680px; }
   .admin-section-heading, .codex-device-login { align-items: stretch; flex-direction: column; }

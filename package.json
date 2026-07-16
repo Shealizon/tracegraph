@@ -6,6 +6,8 @@
   "description": "Interactive relation graph viewer for papers and structured knowledge graphs",
   "scripts": {
     "extract": "node scripts/extract.mjs",
+    "pack:extension": "node scripts/pack-extension.mjs",
+    "verify:extensions": "node scripts/verify-extensions.mjs",
     "dev": "vite",
     "dev:server": "node --watch server/index.mjs",
     "server": "node server/index.mjs",

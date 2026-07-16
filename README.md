@@ -42,6 +42,14 @@ URL 以查询参数区分两个界面：
   - `.tex` / `.txt` — 通用 TeX 自动识别：本地发现定理类环境并自动编号，无需固定格式。
 - **导出** — 下载 `*.paper-graph-project.json`，可再导入到任意设备。
 
+## Skills 与工具扩展
+
+管理员可以导入 `paper-graph-extension@1` 扩展包。服务端会为 Python 工具创建隔离环境并
+自动安装声明的依赖；可用的 Skill 提示与工具定义会自动加入所有已登录用户的本地、云端和
+Codex AI 会话。仓库内置 PDF 工作台和 PaddleOCR 扩展，后者需配置
+`PADDLEOCR_TOKEN`。扩展格式、工具协议、安全限制和打包方式见
+[`docs/EXTENSIONS.md`](docs/EXTENSIONS.md)。
+
 ## 数据格式（relation-graph@1）
 
 通用数据 schema 与领域解耦，运行时由 `data/adapter.js` 编译为内部格式。完整说明见

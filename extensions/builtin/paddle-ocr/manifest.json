@@ -1,0 +1,39 @@
+{
+  "id": "paddle-ocr",
+  "name": "PaddleOCR",
+  "version": "1.0.0",
+  "description": "通过 PaddleOCR VL 服务识别扫描 PDF 和图片，返回按页 Markdown。",
+  "dependencies": {
+    "python": [
+      "requests>=2.32,<3",
+      "pypdf>=6,<7"
+    ]
+  },
+  "requiredEnv": ["PADDLEOCR_TOKEN"],
+  "skills": [
+    {
+      "id": "paddle-ocr",
+      "name": "PaddleOCR",
+      "description": "在 PDF 文字层不足或用户明确要求 OCR 时识别扫描页。",
+      "file": "skills/paddle-ocr.md"
+    }
+  ],
+  "tools": [
+    {
+      "name": "paddle_ocr",
+      "action": "ocr",
+      "description": "识别工作区 PDF 或图片；支持中文和英文，返回按页 Markdown。仅在文字层不足或用户明确要求 OCR 时使用。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file": { "type": "string", "description": "工作区 PDF 或图片相对路径" },
+          "pages": { "type": "string", "description": "可选 PDF 页码范围，如 1-5 或 1,3,5-8" }
+        },
+        "required": ["file"],
+        "additionalProperties": false
+      },
+      "entry": "tools/paddle_ocr.py",
+      "timeoutMs": 600000
+    }
+  ]
+}

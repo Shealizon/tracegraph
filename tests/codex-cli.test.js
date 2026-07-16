@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
 import { buildCodexExecArgs, executeCodexStream, formatCodexFailure, normalizeCodexItemEvent, normalizeCodexModels } from '../server/codexCli.mjs';
@@ -81,6 +81,66 @@ describe('server Codex adapter', () => {
     expect(threadStart?.params).toMatchObject({ sandbox: 'workspace-write', approvalPolicy: 'never' });
     expect(events.map((event) => event.type)).toEqual(['reasoning_delta', 'reasoning_delta', 'tool', 'tool', 'text_delta', 'text_delta']);
     expect(events.find((event) => event.type === 'tool' && event.status === 'done')?.result).toMatchObject({ output: 'project.json', exitCode: 0 });
+  });
+
+  it('registers and executes app-server dynamic tools', async () => {
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const stdin = new PassThrough();
+    const child = Object.assign(new EventEmitter(), { stdin, stdout, stderr, kill() {} });
+    let threadStart;
+    let toolResponse;
+    stdin.on('data', (chunk) => {
+      for (const line of String(chunk).trim().split('\n')) {
+        const request = JSON.parse(line);
+        if (request.id === 0) stdout.write(`${JSON.stringify({ id: 0, result: {} })}\n`);
+        if (request.id === 1) {
+          threadStart = request;
+          stdout.write(`${JSON.stringify({ id: 1, result: { thread: { id: 'thr-dynamic' } } })}\n`);
+        }
+        if (request.id === 2) {
+          stdout.write(`${JSON.stringify({
+            id: 40,
+            method: 'item/tool/call',
+            params: {
+              threadId: 'thr-dynamic',
+              turnId: 'turn-dynamic',
+              callId: 'call-pdf',
+              tool: 'pdf_info',
+              arguments: { file: 'paper.pdf' },
+            },
+          })}\n`);
+        }
+        if (request.id === 40) {
+          toolResponse = request;
+          stdout.write(`${JSON.stringify({ method: 'item/started', params: { item: { id: 'a2', type: 'agentMessage', phase: 'final_answer', text: '' } } })}\n`);
+          stdout.write(`${JSON.stringify({ method: 'item/agentMessage/delta', params: { itemId: 'a2', delta: 'PDF 共 3 页。' } })}\n`);
+          stdout.write(`${JSON.stringify({ method: 'turn/completed', params: { turn: { id: 'turn-dynamic', status: 'completed' } } })}\n`);
+        }
+      }
+    });
+    const onDynamicToolCall = vi.fn(async () => ({ pages: 3 }));
+    const events = [];
+    const result = await executeCodexStream({
+      prompt: 'inspect pdf',
+      cwd: '/tmp',
+      spawnImpl: () => child,
+      dynamicTools: [{
+        name: 'pdf_info',
+        description: 'PDF info',
+        inputSchema: { type: 'object', properties: { file: { type: 'string' } }, required: ['file'] },
+      }],
+      onDynamicToolCall,
+      onEvent: (event) => events.push(event),
+    });
+    expect(result).toBe('PDF 共 3 页。');
+    expect(threadStart.params.dynamicTools[0].name).toBe('pdf_info');
+    expect(onDynamicToolCall).toHaveBeenCalledWith('pdf_info', { file: 'paper.pdf' }, expect.objectContaining({ callId: 'call-pdf' }));
+    expect(toolResponse.result).toEqual({
+      success: true,
+      contentItems: [{ type: 'inputText', text: '{"pages":3}' }],
+    });
+    expect(events.filter((event) => event.name === 'pdf_info').map((event) => event.status)).toEqual(['running', 'done']);
   });
 
   it('normalizes web and MCP items for the visible tool timeline', () => {

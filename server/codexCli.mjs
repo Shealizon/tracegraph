@@ -136,7 +136,10 @@ export async function executeCodex({ prompt, cwd, model = '', signal, timeoutMs,
   }
 }
 
-export async function executeCodexStream({ prompt, cwd, model = '', signal, timeoutMs, spawnImpl, onEvent } = {}) {
+export async function executeCodexStream({
+  prompt, cwd, model = '', signal, timeoutMs, spawnImpl, onEvent,
+  dynamicTools = [], onDynamicToolCall,
+} = {}) {
   if (process.env.CODEX_ENABLED === '0') throw new Error('服务器未启用 Codex');
   if (signal?.aborted) throw abortError(signal.reason);
   const child = spawnCodex(['app-server'], spawnImpl, cwd);
@@ -183,6 +186,7 @@ export async function executeCodexStream({ prompt, cwd, model = '', signal, time
           params: {
             cwd, model: String(model || '').trim() || undefined, sandbox: CODEX_SANDBOX, approvalPolicy: 'never', ephemeral: true,
             config: { model_reasoning_summary: 'detailed', hide_agent_reasoning: false, show_raw_agent_reasoning: false },
+            dynamicTools,
           },
         });
         return;
@@ -194,6 +198,33 @@ export async function executeCodexStream({ prompt, cwd, model = '', signal, time
       }
       if (message.id != null && message.error) {
         finish(new Error(message.error.message || 'Codex app-server 请求失败'));
+        return;
+      }
+      if (message.id != null && message.method === 'item/tool/call') {
+        const params = message.params || {};
+        emit({ type: 'tool', id: params.callId || String(message.id), name: params.tool || 'dynamic_tool', status: 'running', args: params.arguments });
+        Promise.resolve()
+          .then(() => onDynamicToolCall?.(params.tool, params.arguments || {}, params))
+          .then((value) => {
+            emit({ type: 'tool', id: params.callId || String(message.id), name: params.tool || 'dynamic_tool', status: 'done', args: params.arguments, result: value });
+            send({
+              id: message.id,
+              result: {
+                success: true,
+                contentItems: [{ type: 'inputText', text: JSON.stringify(value ?? {}) }],
+              },
+            });
+          })
+          .catch((error) => {
+            emit({ type: 'tool', id: params.callId || String(message.id), name: params.tool || 'dynamic_tool', status: 'error', args: params.arguments, error: error?.message || String(error) });
+            send({
+              id: message.id,
+              result: {
+                success: false,
+                contentItems: [{ type: 'inputText', text: error?.message || String(error) }],
+              },
+            });
+          });
         return;
       }
       if (message.id != null && message.method) {

@@ -1,0 +1,236 @@
+{
+  "id": "pdf-workbench",
+  "name": "PDF Workbench",
+  "version": "1.0.2",
+  "description": "读取、检索、渲染、创建和编辑 PDF，并保留页码来源与视觉验收流程。",
+  "dependencies": {
+    "python": [
+      "pypdf>=6,<7",
+      "PyMuPDF>=1.26,<2",
+      "Pillow>=11,<13",
+      "reportlab>=4.4,<5"
+    ]
+  },
+  "skills": [
+    {
+      "id": "pdf-workbench",
+      "name": "PDF Workbench",
+      "description": "处理 PDF 阅读、检索、创建、页面编辑、转图与视觉检查。",
+      "file": "skills/pdf-workbench.md"
+    }
+  ],
+  "tools": [
+    {
+      "name": "pdf_info",
+      "action": "info",
+      "description": "读取工作区 PDF 的页数、文件大小和元数据。",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "file": { "type": "string", "description": "工作区 PDF 相对路径" } },
+        "required": ["file"],
+        "additionalProperties": false
+      },
+      "entry": "tools/pdf_tool.py"
+    },
+    {
+      "name": "pdf_extract_text",
+      "action": "extract_text",
+      "description": "提取 PDF 指定页的文字层并保留页码；同时报告疑似扫描页。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file": { "type": "string" },
+          "pages": { "type": "string", "description": "页码范围，如 1,3,5-8；默认 all" }
+        },
+        "required": ["file"],
+        "additionalProperties": false
+      },
+      "entry": "tools/pdf_tool.py"
+    },
+    {
+      "name": "pdf_parse",
+      "action": "parse",
+      "description": "解析 PDF 文字层，按页切块并创建可复用的本地 JSON 检索索引。",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "file": { "type": "string" } },
+        "required": ["file"],
+        "additionalProperties": false
+      },
+      "entry": "tools/pdf_tool.py"
+    },
+    {
+      "name": "pdf_search",
+      "action": "search",
+      "description": "对工作区 PDF 建立或复用索引，执行中英文页码感知全文检索。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file": { "type": "string" },
+          "query": { "type": "string" },
+          "top_k": { "type": "integer", "minimum": 1, "maximum": 20 }
+        },
+        "required": ["file", "query"],
+        "additionalProperties": false
+      },
+      "entry": "tools/pdf_tool.py"
+    },
+    {
+      "name": "pdf_render",
+      "action": "render",
+      "description": "把 PDF 指定页渲染成 PNG 并写回当前对话工作区。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file": { "type": "string" },
+          "pages": { "type": "string" },
+          "dpi": { "type": "integer", "minimum": 72, "maximum": 600 }
+        },
+        "required": ["file"],
+        "additionalProperties": false
+      },
+      "entry": "tools/pdf_tool.py"
+    },
+    {
+      "name": "pdf_merge",
+      "action": "merge",
+      "description": "按给定顺序合并多个工作区 PDF。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "files": { "type": "array", "items": { "type": "string" }, "minItems": 2, "maxItems": 20 },
+          "output": { "type": "string" }
+        },
+        "required": ["files"],
+        "additionalProperties": false
+      },
+      "entry": "tools/pdf_tool.py"
+    },
+    {
+      "name": "pdf_extract_pages",
+      "action": "extract_pages",
+      "description": "从 PDF 中抽取指定页面并生成新 PDF。",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "file": { "type": "string" }, "pages": { "type": "string" }, "output": { "type": "string" } },
+        "required": ["file", "pages"],
+        "additionalProperties": false
+      },
+      "entry": "tools/pdf_tool.py"
+    },
+    {
+      "name": "pdf_rotate",
+      "action": "rotate",
+      "description": "旋转 PDF 的全部或指定页面。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file": { "type": "string" },
+          "angle": { "type": "integer", "enum": [90, 180, 270] },
+          "pages": { "type": "string" },
+          "output": { "type": "string" }
+        },
+        "required": ["file", "angle"],
+        "additionalProperties": false
+      },
+      "entry": "tools/pdf_tool.py"
+    },
+    {
+      "name": "pdf_split",
+      "action": "split",
+      "description": "把 PDF 拆分成逐页 PDF 文件。",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "file": { "type": "string" } },
+        "required": ["file"],
+        "additionalProperties": false
+      },
+      "entry": "tools/pdf_tool.py"
+    },
+    {
+      "name": "pdf_remove_pages",
+      "action": "remove_pages",
+      "description": "删除 PDF 中的指定页面并生成新 PDF。",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "file": { "type": "string" }, "pages": { "type": "string" }, "output": { "type": "string" } },
+        "required": ["file", "pages"],
+        "additionalProperties": false
+      },
+      "entry": "tools/pdf_tool.py"
+    },
+    {
+      "name": "pdf_insert_pages",
+      "action": "insert_pages",
+      "description": "把来源 PDF 的页面插入目标 PDF 指定位置。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file": { "type": "string", "description": "目标 PDF" },
+          "source": { "type": "string", "description": "来源 PDF" },
+          "position": { "type": "integer", "minimum": 1 },
+          "pages": { "type": "string" },
+          "output": { "type": "string" }
+        },
+        "required": ["file", "source", "position"],
+        "additionalProperties": false
+      },
+      "entry": "tools/pdf_tool.py"
+    },
+    {
+      "name": "pdf_add_image",
+      "action": "add_image",
+      "description": "在 PDF 指定页面按左上角坐标叠加工作区图片。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file": { "type": "string" },
+          "image": { "type": "string" },
+          "page": { "type": "integer", "minimum": 1 },
+          "x": { "type": "number" },
+          "y": { "type": "number" },
+          "width": { "type": "number", "minimum": 1 },
+          "opacity": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+          "output": { "type": "string" }
+        },
+        "required": ["file", "image"],
+        "additionalProperties": false
+      },
+      "entry": "tools/pdf_tool.py"
+    },
+    {
+      "name": "pdf_watermark",
+      "action": "watermark",
+      "description": "在 PDF 每一页居中叠加半透明图片水印。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file": { "type": "string" },
+          "image": { "type": "string" },
+          "width_ratio": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+          "opacity": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+          "output": { "type": "string" }
+        },
+        "required": ["file", "image"],
+        "additionalProperties": false
+      },
+      "entry": "tools/pdf_tool.py"
+    },
+    {
+      "name": "pdf_create_text",
+      "action": "create_text",
+      "description": "从 UTF-8 文本或工作区文本文件创建基础分页 PDF。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string" },
+          "source": { "type": "string" },
+          "title": { "type": "string" },
+          "output": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "entry": "tools/pdf_tool.py"
+    }
+  ]
+}

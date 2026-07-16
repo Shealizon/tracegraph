@@ -7,6 +7,7 @@ services:
       NODE_ENV: production
       PAPER_GRAPH_DATA: /app/server-data
       CODEX_ENABLED: "0"
+      PADDLEOCR_TOKEN: "${PADDLEOCR_TOKEN:-}"
     volumes:
       - entail-data:/app/server-data
     restart: unless-stopped

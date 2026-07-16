@@ -65,6 +65,7 @@ export function createClientTools(workspace, hooks = {}) {
       properties: { doi: { type: 'string', description: 'DOI 或 https://doi.org/ URL' } },
     }),
     ...(hooks.graphModel ? graphToolDefinitions() : []),
+    ...(hooks.extensionTools?.definitions || []),
   ];
 
   function registerSource(item) {
@@ -137,6 +138,7 @@ export function createClientTools(workspace, hooks = {}) {
       else if (name === 'open_url') result = await openUrl(args, registerSource);
       else if (name === 'resolve_doi') result = await resolveDoi(args, registerSource);
       else if (hooks.graphModel && isGraphTool(name)) result = await executeGraphTool(hooks.graphModel, name, args, hooks);
+      else if (hooks.extensionTools?.has(name)) result = await hooks.extensionTools.execute(name, args);
       else throw new Error(`未知工具：${name}`);
       hooks.onEnd?.({ id: call.id, name, args, result });
       return JSON.stringify(result);

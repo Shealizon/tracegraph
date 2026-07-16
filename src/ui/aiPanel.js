@@ -1,5 +1,6 @@
 import { createBrowserWorkspace } from '../ai/workspace.js';
 import { createClientTools } from '../ai/tools.js';
+import { createExtensionTools } from '../ai/extensionTools.js';
 import { compactConversation as compactModelContext, DEFAULT_SYSTEM_PROMPT, runAgentTurn } from '../ai/modelClient.js';
 import { contextUsage, estimateContextTokens, formatTokenCount, resolveContextWindow } from '../ai/contextBudget.js';
 import { buildGraphContext } from '../ai/graphContext.js';
@@ -427,6 +428,19 @@ export function buildAiPanel(ctx) {
     renderMessages({ follow: shouldFollow });
 
     const turnWorkspace = workspace;
+    const workspaceScope = `${projectId}--${conversation.id}`;
+    const extensionCatalog = sessionSnapshot().user
+      ? await serverApi.extensionCatalog().catch((error) => {
+        console.warn('failed to load extension catalog', error);
+        return null;
+      })
+      : null;
+    const extensionTools = createExtensionTools(extensionCatalog, {
+      serverApi,
+      workspace: turnWorkspace,
+      workspaceScope,
+      projectId,
+    });
     const tools = createClientTools(turnWorkspace, {
       graphModel: ctx.model,
       getGraphTags: () => ctx.graph?.getTags?.() || [],
@@ -453,13 +467,13 @@ export function buildAiPanel(ctx) {
         message: `${path}\n\n内容预览：\n${preview}`,
         okText: '允许写入',
       }),
+      extensionTools,
     });
 
     try {
       const resolvedUserText = contextPrompt(text.trim(), [...turnContexts, ...turnFiles.map(graphFileAttachment).filter(Boolean)], ctx.model);
       if (modelConfig?.runtime === 'server') {
         if (!sessionSnapshot().user) throw new Error('云端模型需要先登录');
-        const workspaceScope = `${projectId}--${conversation.id}`;
         await uploadCloudFiles(turnWorkspace, turnFiles, workspaceScope);
         const created = await serverApi.createTask({
           providerId: modelConfig.providerId,
@@ -491,8 +505,19 @@ export function buildAiPanel(ctx) {
           appendTextBlock(assistantMessage, assistantMessage.content);
         }
         updateAssistantDom(conversation, assistantMessage);
-      } else await runAgentTurn({
-        config: { ...(modelConfig || {}), contextPrompt: buildGraphContext(ctx.model, selectedNodeId) },
+      } else {
+        if (extensionTools.definitions.length && sessionSnapshot().user) {
+          await uploadCloudFiles(turnWorkspace, turnFiles, workspaceScope);
+        }
+        await runAgentTurn({
+        config: {
+          ...(modelConfig || {}),
+          systemPrompt: [
+            modelConfig?.systemPrompt?.trim() || DEFAULT_SYSTEM_PROMPT,
+            extensionCatalog?.systemPrompt,
+          ].filter(Boolean).join('\n\n'),
+          contextPrompt: buildGraphContext(ctx.model, selectedNodeId),
+        },
         history,
         userText: resolvedUserText,
         tools,
@@ -513,7 +538,8 @@ export function buildAiPanel(ctx) {
           task.retryAttempt = event.attempt || 0;
           syncBusy();
         },
-      });
+        });
+      }
       if (!assistantMessage.content.trim()) {
         assistantMessage.content = '操作已完成。';
         appendTextBlock(assistantMessage, assistantMessage.content);

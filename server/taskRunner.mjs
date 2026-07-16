@@ -5,10 +5,12 @@ import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { randomId } from './security.mjs';
 import { httpError } from './userStore.mjs';
 import { discoverCodexModels, executeCodexStream } from './codexCli.mjs';
+import { persistArtifacts } from './extensionRegistry.mjs';
 
 export class TaskRunner {
-  constructor(userStore) {
+  constructor(userStore, extensions = null) {
     this.userStore = userStore;
+    this.extensions = extensions;
     this.codexQueue = Promise.resolve();
     this.controllers = new Map();
     this.liveTasks = new Map();
@@ -77,7 +79,11 @@ export class TaskRunner {
       const vault = await this.userStore.readVault(session);
       const provider = Object.hasOwn(vault.providers || {}, task.providerId) ? vault.providers[task.providerId] : null;
       if (!provider) throw new Error('云端模型服务不存在，请重新保存服务商配置');
-      const output = await callProvider(provider, task, controller.signal, vault);
+      const output = await callProvider(provider, task, controller.signal, vault, {
+        extensions: this.extensions,
+        userStore: this.userStore,
+        session,
+      });
       await this.patch(session, task.id, { status: 'completed', output, updatedAt: new Date().toISOString() });
     } catch (error) {
       const status = controller.signal.aborted ? 'cancelled' : 'failed';
@@ -118,9 +124,36 @@ export class TaskRunner {
     try {
       const vault = await this.userStore.readVault(session);
       tempDir = await materializeCodexWorkspace(vault, task);
-      const prompt = ['当前目录是该用户此次任务的临时可写工作区快照；项目数据位于 project.paper-graph.json，附件保持原工作区相对路径。读写操作仅限这个临时工作区。', task.input.systemPrompt, ...task.input.history.map((m) => `${m.role}: ${m.content}`), `user: ${task.input.userText}`].filter(Boolean).join('\n\n');
+      const workspaceFiles = Object.values(vault.files || {}).filter((item) => item.scope === task.workspaceScope);
+      const prompt = [
+        '当前目录是该用户此次任务的临时可写工作区快照；项目数据位于 project.paper-graph.json，附件保持原工作区相对路径。读写操作仅限这个临时工作区。',
+        this.extensions?.skillPrompt(),
+        task.input.systemPrompt,
+        ...task.input.history.map((m) => `${m.role}: ${m.content}`),
+        `user: ${task.input.userText}`,
+      ].filter(Boolean).join('\n\n');
       const output = await executeCodexStream({
         prompt, cwd: tempDir, model: task.model, signal: controller.signal,
+        dynamicTools: this.extensions?.dynamicTools() || [],
+        onDynamicToolCall: async (name, args) => {
+          if (!this.extensions?.findTool(name)) throw new Error(`扩展工具不存在：${name}`);
+          const execution = await this.extensions.execute(name, args, {
+            workspaceFiles,
+            workspaceScope: task.workspaceScope,
+            projectId: task.projectId,
+            signal: controller.signal,
+          });
+          const artifacts = await persistArtifacts(this.userStore, session, task.workspaceScope, execution);
+          for (const artifact of execution.artifacts) {
+            workspaceFiles.push({ ...artifact, scope: task.workspaceScope });
+            const target = path.resolve(tempDir, artifact.path);
+            if (target.startsWith(`${path.resolve(tempDir)}${path.sep}`)) {
+              await fs.mkdir(path.dirname(target), { recursive: true });
+              await fs.writeFile(target, Buffer.from(artifact.data, 'base64'));
+            }
+          }
+          return { ...execution.result, artifacts };
+        },
         onEvent: (event) => { applyCodexProgress(task, event); scheduleProgress(); },
       });
       if (progressTimer) await flushProgress();
@@ -215,15 +248,19 @@ function syncFinalTextBlock(task) {
   else textBlocks.at(-1).content += String(task.output || '').slice(blockText.length);
 }
 
-async function callProvider(provider, task, signal, vault) {
+async function callProvider(provider, task, signal, vault, extensionContext = {}) {
   const protocol = provider.protocol || 'openai-chat';
   const base = String(provider.baseUrl || '').replace(/\/+$/, '');
   const messages = [
+    ...(extensionContext.extensions?.skillPrompt() ? [{ role: 'system', content: extensionContext.extensions.skillPrompt() }] : []),
     ...(task.input.systemPrompt ? [{ role: 'system', content: task.input.systemPrompt }] : []),
     ...task.input.history.filter((m) => ['user', 'assistant'].includes(m.role)).map((m) => ({ role: m.role, content: String(m.content || '') })),
     { role: 'user', content: task.input.userText },
   ];
-  const serverTools = createServerTools(vault, task.projectId, task.workspaceScope);
+  const serverTools = createServerTools(vault, task.projectId, task.workspaceScope, {
+    ...extensionContext,
+    signal,
+  });
   let response;
   if (protocol === 'anthropic-messages') {
     const system = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n');
@@ -288,7 +325,7 @@ function sanitizeTask(task) {
   return { ...safe, inputPreview: input?.userText?.slice(0, 160) || '' };
 }
 
-function createServerTools(vault, projectId, workspaceScope) {
+export function createServerTools(vault, projectId, workspaceScope, extensionContext = {}) {
   const project = Object.hasOwn(vault.projects || {}, projectId) ? vault.projects[projectId] : null;
   const nodes = (project?.documents || []).flatMap((document) => (document.graph?.nodes || []).map((node) => ({ ...node, documentId: document.id, documentName: document.name })));
   const workspaceFiles = Object.values(vault.files || {}).filter((file) => file.scope === workspaceScope);
@@ -299,6 +336,7 @@ function createServerTools(vault, projectId, workspaceScope) {
     toolDefinition('list_workspace', '列出当前对话已上传到云端工作区的文件。', { type: 'object', properties: {}, additionalProperties: false }),
     toolDefinition('read_file', '读取云端工作区中的 UTF-8 文本文件。', { type: 'object', properties: { path: { type: 'string' } }, required: ['path'], additionalProperties: false }),
     toolDefinition('read_pdf', '在服务端解析云端工作区 PDF 的文字层，可指定页码。', { type: 'object', properties: { path: { type: 'string' }, pages: { type: 'array', items: { type: 'integer', minimum: 1 }, maxItems: 20 } }, required: ['path'], additionalProperties: false }),
+    ...(extensionContext.extensions?.definitions() || []),
   ];
   const execute = async (name, args) => {
     if (name === 'get_project_summary') return project ? {
@@ -328,6 +366,19 @@ function createServerTools(vault, projectId, workspaceScope) {
       if (!file) return { error: 'file_not_found', path: args.path };
       if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.path)) return { error: 'not_pdf', path: file.path, type: file.type };
       return readPdfText(file, args.pages);
+    }
+    if (extensionContext.extensions?.findTool(name)) {
+      const execution = await extensionContext.extensions.execute(name, args, {
+        workspaceFiles,
+        workspaceScope,
+        projectId,
+        signal: extensionContext.signal,
+      });
+      const artifacts = extensionContext.userStore && extensionContext.session
+        ? await persistArtifacts(extensionContext.userStore, extensionContext.session, workspaceScope, execution)
+        : execution.artifacts.map(({ data: _data, ...artifact }) => artifact);
+      for (const artifact of execution.artifacts) workspaceFiles.push({ ...artifact, scope: workspaceScope });
+      return { ...execution.result, artifacts };
     }
     return { error: 'unknown_tool', name };
   };

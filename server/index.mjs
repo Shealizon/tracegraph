@@ -5,6 +5,7 @@ import { extractGenericTexGraph } from '../src/import/texGeneric.js';
 import { UserStore, httpError } from './userStore.mjs';
 import { TaskRunner } from './taskRunner.mjs';
 import { CodexAuthManager } from './codexAuth.mjs';
+import { ExtensionRegistry, persistArtifacts } from './extensionRegistry.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -12,7 +13,11 @@ const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || '0.0.0.0';
 const store = new UserStore(process.env.PAPER_GRAPH_DATA || path.join(root, 'server-data'));
 await store.init();
-const tasks = new TaskRunner(store);
+const extensions = new ExtensionRegistry(path.join(store.dataRoot, 'extensions'), {
+  builtinsRoot: path.join(root, 'extensions', 'builtin'),
+});
+await extensions.init();
+const tasks = new TaskRunner(store, extensions);
 const codexAuth = new CodexAuthManager();
 const app = express();
 
@@ -45,6 +50,23 @@ app.post('/api/auth/logout', asyncRoute(async (req, res) => {
   res.status(204).end();
 }));
 app.get('/api/auth/me', requireAuth, (req, res) => res.json({ user: req.auth.user }));
+
+app.get('/api/extensions/catalog', requireAuth, (_req, res) => {
+  res.json({ ...extensions.list(), systemPrompt: extensions.skillPrompt() });
+});
+app.get('/api/skills/:id', requireAuth, (req, res) => res.json({ skill: extensions.getSkill(req.params.id) }));
+app.post('/api/tools/execute', requireAuth, asyncRoute(async (req, res) => {
+  const workspaceScope = workspacePart(req.body?.workspaceScope, 'workspaceScope');
+  const vault = await store.readVault(req.auth.session);
+  const workspaceFiles = Object.values(vault.files || {}).filter((file) => file.scope === workspaceScope);
+  const execution = await extensions.execute(String(req.body?.name || ''), req.body?.args || {}, {
+    workspaceFiles,
+    workspaceScope,
+    projectId: String(req.body?.projectId || ''),
+  });
+  const artifacts = await persistArtifacts(store, req.auth.session, workspaceScope, execution);
+  res.json({ result: execution.result, artifacts });
+}));
 
 app.post('/api/sync', requireAuth, asyncRoute(async (req, res) => {
   const localProjects = Array.isArray(req.body?.projects) ? req.body.projects : [];
@@ -205,6 +227,15 @@ app.get('/api/admin/codex/status', requireAuth, requireAdmin, asyncRoute(async (
 app.post('/api/admin/codex/login/device', requireAuth, requireAdmin, asyncRoute(async (_req, res) => res.status(202).json({ login: await codexAuth.startDeviceLogin() })));
 app.get('/api/admin/codex/login/:id', requireAuth, requireAdmin, asyncRoute(async (req, res) => res.json({ login: codexAuth.getLogin(req.params.id) })));
 app.delete('/api/admin/codex/login/:id', requireAuth, requireAdmin, asyncRoute(async (req, res) => { codexAuth.cancelLogin(req.params.id); res.status(204).end(); }));
+app.get('/api/admin/extensions', requireAuth, requireAdmin, (_req, res) => res.json(extensions.list({ includeInstructions: true })));
+app.post('/api/admin/extensions/import', requireAuth, requireAdmin, asyncRoute(async (req, res) => {
+  const extension = await extensions.install(req.body || {}, { actor: req.auth.user.id });
+  res.status(201).json({ extension });
+}));
+app.delete('/api/admin/extensions/:id', requireAuth, requireAdmin, asyncRoute(async (req, res) => {
+  await extensions.uninstall(req.params.id);
+  res.status(204).end();
+}));
 
 app.use(express.static(path.join(root, 'dist'), { index: false, maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0 }));
 app.get('/{*path}', (_req, res) => res.sendFile(path.join(root, 'dist', 'index.html')));
