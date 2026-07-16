@@ -323,10 +323,10 @@ function createCitation(source, number) {
 }
 
 function injectGraphReferences(root, labelIndex, handlers) {
-  if (!labelIndex?.size) return;
+  const labels = labelIndex instanceof Map ? labelIndex : new Map();
   for (const code of [...root.querySelectorAll('code:not(pre code)')]) {
     const key = code.textContent?.trim();
-    const entry = key && labelIndex.get(key);
+    const entry = key && labels.get(key);
     if (entry) code.replaceWith(createGraphReference(formatGraphReferenceDisplay(entry, key), entry, handlers, key));
   }
 
@@ -334,21 +334,26 @@ function injectGraphReferences(root, labelIndex, handlers) {
   const nodes = [];
   while (walker.nextNode()) {
     const node = walker.currentNode;
-    if (/[-\w.]+:[-\w.:]+/.test(node.nodeValue || '') && !node.parentElement?.closest('a, button, code, pre, .katex')) nodes.push(node);
+    const value = node.nodeValue || '';
+    if ((/\\(?:ref|eqref)\{[^}\n]+\}/.test(value) || /[-\w.]+:[-\w.:]+/.test(value))
+      && !node.parentElement?.closest('a, button, code, pre, .katex')) nodes.push(node);
   }
   for (const node of nodes) {
     const text = node.nodeValue || '';
-    const pattern = /\\(ref|eqref)\{([-\w.]+:[-\w.:]+)\}|([-\w.]+:[-\w.:]+)/g;
+    const pattern = /\\(ref|eqref)\{([^}\n]+)\}|([-\w.]+:[-\w.:]+)/g;
     const fragment = document.createDocumentFragment();
     let from = 0;
     let match;
     let changed = false;
     while ((match = pattern.exec(text))) {
-      const key = match[2] || match[3];
-      const entry = labelIndex.get(key);
-      if (!entry) continue;
-      const display = formatGraphReferenceDisplay(entry, key, match[1] || 'ref');
-      fragment.append(text.slice(from, match.index), createGraphReference(display, entry, handlers, key));
+      const syntax = match[1] || 'ref';
+      const key = (match[2] || match[3] || '').trim();
+      const entry = labels.get(key);
+      if (!entry && !match[1]) continue;
+      const replacement = entry
+        ? createGraphReference(formatGraphReferenceDisplay(entry, key, syntax), entry, handlers, key)
+        : createUnresolvedFileReference(syntax, key);
+      fragment.append(text.slice(from, match.index), replacement);
       from = match.index + match[0].length;
       changed = true;
     }
@@ -356,6 +361,26 @@ function injectGraphReferences(root, labelIndex, handlers) {
     fragment.append(text.slice(from));
     node.replaceWith(fragment);
   }
+}
+
+function createUnresolvedFileReference(syntax, key) {
+  const span = document.createElement('span');
+  span.className = 'ai-file-ref';
+  span.textContent = formatUnresolvedFileReference(syntax, key);
+  span.title = `上传文件中的内部引用未链接到当前图谱：${key}`;
+  return span;
+}
+
+export function formatUnresolvedFileReference(syntax = 'ref', key = '') {
+  const normalized = String(key || '').trim();
+  const [prefix = '', ...tail] = normalized.split(':');
+  const kind = syntax === 'eqref' ? '公式' : ({
+    thm: '定理', theorem: '定理', lem: '引理', lemma: '引理',
+    prop: '命题', proposition: '命题', cor: '推论', corollary: '推论',
+    def: '定义', definition: '定义', sec: '章节', section: '章节',
+  }[prefix.toLowerCase()] || '文内引用');
+  const identifier = (tail.join(':') || (syntax === 'eqref' ? normalized : '')).replace(/[-_.]+/g, ' ').trim();
+  return identifier ? `${kind}「${identifier}」` : kind;
 }
 
 /**

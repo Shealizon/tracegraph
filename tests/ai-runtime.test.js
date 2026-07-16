@@ -445,6 +445,12 @@ T^2 c_0 c_1 > \frac{1}{16}
     expect(DEFAULT_SYSTEM_PROMPT).toContain('DOI 未找到时不要重复解析');
   });
 
+  it('keeps uploaded-file citations separate from graph references', () => {
+    expect(DEFAULT_SYSTEM_PROMPT).toContain('project.paper-graph.json 和图谱节点不能代替该文件');
+    expect(DEFAULT_SYSTEM_PROMPT).toContain('绝对不要输出文件源码中的 \\ref{...}');
+    expect(DEFAULT_SYSTEM_PROMPT).toContain('《文件名》p. 页码');
+  });
+
   it('uses Crossref as a scholarly fallback for web search', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url) => {
       if (String(url).includes('crossref.org')) return {
