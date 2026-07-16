@@ -425,7 +425,7 @@ details[open] > summary > .ai-chevron { transform: rotate(180deg); }
 
 /* Workspace file previews -------------------------------------------------- */
 .ai-workspace-preview { position: fixed; z-index: 720; min-width: min(320px, calc(100vw - 16px)); min-height: min(320px, calc(100vh - 16px)); max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); display: flex; flex-direction: column; overflow: hidden; resize: both; pointer-events: auto; }
-.ai-file-preview-head { position: relative !important; flex: 0 0 auto; min-height: 44px; display: grid !important; grid-template-columns: 28px minmax(0, 1fr) 30px 30px; align-items: center; gap: 7px; padding: 6px 8px !important; cursor: grab; user-select: none; }
+.ai-file-preview-head { position: relative !important; flex: 0 0 auto; min-height: 44px; display: grid !important; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 7px; padding: 6px 8px !important; cursor: grab; user-select: none; }
 .ai-file-preview-head:active { cursor: grabbing; }
 .ai-file-preview-head > span { width: 28px; height: 28px; display: grid; place-items: center; color: var(--accent); background: var(--accent-bg); border-radius: 7px; }
 .ai-file-preview-head > span svg { width: 14px; height: 14px; }
@@ -433,6 +433,7 @@ details[open] > summary > .ai-chevron { transform: rotate(180deg); }
 .ai-file-preview-head strong, .ai-file-preview-head small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ai-file-preview-head strong { font-size: 11.5px; }
 .ai-file-preview-head small { color: var(--text-dim); font-size: 9px; font-weight: 400; }
+.ai-file-preview-actions { display: flex !important; align-items: center; gap: 1px !important; }
 .ai-file-preview-head button { width: 30px; height: 30px; display: grid; place-items: center; padding: 0; color: var(--text-dim); background: transparent; border: 0; border-radius: 7px; cursor: pointer; }
 .ai-file-preview-head button:hover { color: var(--accent); background: var(--accent-bg); }
 .ai-file-preview-head button:last-child:hover { color: var(--danger); background: var(--danger-bg); }
@@ -492,11 +493,11 @@ details[open] > summary > .ai-chevron { transform: rotate(180deg); }
 .ai-window-resize-edge.is-se { right: 0; bottom: 0; cursor: nwse-resize; }
 .ai-window-resize-edge.is-sw { bottom: 0; left: 0; cursor: nesw-resize; }
 .ai-window-resize-edge.is-nw { top: 0; left: 0; cursor: nwse-resize; }
-.ai-pdf-selection-actions { position: fixed; z-index: 780; display: flex; gap: 2px; padding: 3px; color: var(--text); background: var(--bg-modal-solid); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow-pop); }
-.ai-pdf-selection-actions[hidden] { display: none; }
-.ai-pdf-selection-actions button { height: 30px; display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; color: var(--text); background: transparent; border: 0; border-radius: 6px; font: 10px var(--font); cursor: pointer; }
-.ai-pdf-selection-actions button:hover { color: var(--accent); background: var(--accent-bg); }
-.ai-pdf-selection-actions svg { width: 13px; height: 13px; }
+.ai-pdf-selection-actions, .ai-file-selection-actions { position: fixed; z-index: 780; display: flex; gap: 2px; padding: 3px; color: var(--text); background: var(--bg-modal-solid); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow-pop); }
+.ai-pdf-selection-actions[hidden], .ai-file-selection-actions[hidden] { display: none; }
+.ai-pdf-selection-actions button, .ai-file-selection-actions button { height: 30px; display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; color: var(--text); background: transparent; border: 0; border-radius: 6px; font: 10px var(--font); cursor: pointer; }
+.ai-pdf-selection-actions button:hover, .ai-file-selection-actions button:hover { color: var(--accent); background: var(--accent-bg); }
+.ai-pdf-selection-actions svg, .ai-file-selection-actions svg { width: 13px; height: 13px; }
 .ai-conversation-list { display: grid; gap: 4px; }
 .ai-conversation-item { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 30px 30px 30px; align-items: center; gap: 2px; padding: 4px; border: 1px solid transparent; border-radius: 9px; }
 .ai-conversation-item:hover, .ai-conversation-item.is-active { background: var(--bg-soft); }

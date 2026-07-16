@@ -56,15 +56,26 @@ describe('standalone note editor', () => {
     expect(title.value).toBe('Original'); expect(textarea.value).toBe('Body');
   });
 
-  it('uses the same shared row actions in the sidebar and leaves row clicks inert', () => {
+  it('uses shared row actions and opens row clicks directly in reading mode', () => {
     ctx.openNoteEditor = vi.fn();
     const section = buildMemberNotes(ctx, tags[0], tags[0].members[0], tags[0].members[0].instanceId);
     const row = section.querySelector('.note-ui-row');
-    row.click(); expect(ctx.openNoteEditor).not.toHaveBeenCalled();
+    row.click();
+    expect(ctx.openNoteEditor).toHaveBeenCalledWith('note-a', expect.objectContaining({ anchor: row, mode: 'preview' }));
+    ctx.openNoteEditor.mockClear();
     row.querySelector('[title="引用到 AI"]').click();
     expect(ctx.aiPanel.attachNote).toHaveBeenCalledWith(notes[0]);
     row.querySelector('[title="编辑笔记"]').click();
     expect(ctx.openNoteEditor).toHaveBeenCalledWith('note-a', expect.any(Object));
+  });
+
+  it('opens an existing note directly in the editor preview shape', () => {
+    const editor = openNoteEditor(ctx, 'note-a', { mode: 'preview' });
+    expect(editor.dataset.mode).toBe('preview');
+    expect(editor.querySelector('.tag-note-edit-surface').style.display).toBe('none');
+    expect(editor.querySelector('.tag-note-preview').style.display).toBe('block');
+    expect(editor.querySelector('.tag-note-preview-content').textContent).toContain('Body');
+    expect(ctx.persistNotes).not.toHaveBeenCalled();
   });
 
   it('copies all content and attaches the independent note to AI', async () => {

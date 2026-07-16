@@ -757,7 +757,7 @@ export function openTagNoteEditor(ctx, tagId, { memberKey: targetMemberKey = '',
   return openNoteEditor(ctx, noteId, { tagPointer: notePointerFromMember(tag, member), anchor });
 }
 
-export function openNoteEditor(ctx, noteId = '', { tagPointer = undefined, anchor = null } = {}) {
+export function openNoteEditor(ctx, noteId = '', { tagPointer = undefined, anchor = null, mode: initialMode = 'edit' } = {}) {
   ctx._tagNoteEditorClose?.();
   ctx.noteWindows?.close?.();
   const tags = ctx.graph.getTags() || [];
@@ -862,14 +862,17 @@ export function openNoteEditor(ctx, noteId = '', { tagPointer = undefined, ancho
       },
     });
   };
-  const setMode = (mode) => {
+  const setMode = (mode, { persist = true } = {}) => {
     const showingPreview = mode === 'preview';
     editor.dataset.mode = showingPreview ? 'preview' : 'edit';
     editSurface.hidden = showingPreview; editSurface.style.display = showingPreview ? 'none' : '';
     preview.hidden = !showingPreview; preview.style.display = showingPreview ? 'block' : 'none';
     previewToggle.classList.toggle('on', showingPreview);
     previewToggle.title = showingPreview ? '返回编辑' : '预览';
-    if (showingPreview) { persistNow(); renderPreview(); } else textarea.focus();
+    if (showingPreview) {
+      if (persist) persistNow();
+      renderPreview();
+    } else textarea.focus();
   };
   const renderPicker = () => {
     picker.replaceChildren();
@@ -963,8 +966,11 @@ export function openNoteEditor(ctx, noteId = '', { tagPointer = undefined, ancho
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); persistNow({ force: true }); }
   });
   updateIdentity();
+  setMode(initialMode === 'preview' && existing ? 'preview' : 'edit', { persist: false });
   requestAnimationFrame(growTextarea);
-  requestAnimationFrame(() => (existing ? textarea : title).focus());
+  requestAnimationFrame(() => {
+    if (editor.dataset.mode !== 'preview') (existing ? textarea : title).focus();
+  });
   return editor;
 }
 

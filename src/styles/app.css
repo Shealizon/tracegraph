@@ -570,7 +570,7 @@ body {
   .tag-note-editor { max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); }
 }
 
-.note-ui-row { display: flex; align-items: center; gap: 5px; min-height: 30px; padding: 3px 5px; border-radius: 6px; color: var(--text); }
+.note-ui-row { display: flex; align-items: center; gap: 5px; min-height: 30px; padding: 3px 5px; border-radius: 6px; color: var(--text); cursor: pointer; }
 .note-ui-row:hover { background: var(--hover); }
 .note-ui-row.is-note-revealed { position: relative; color: var(--text); background: color-mix(in srgb, var(--accent) 18%, var(--bg)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 76%, transparent), 0 0 18px color-mix(in srgb, var(--accent) 35%, transparent); animation: noteRevealPulse 1.1s ease-in-out 2; }
 .note-ui-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; }

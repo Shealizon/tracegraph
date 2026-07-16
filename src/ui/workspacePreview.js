@@ -54,7 +54,13 @@ export async function downloadWorkspaceFile(file, name = file?.name || 'download
   setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
-export function createWorkspacePreviewController({ markdownOptions = () => ({}), onPdfField = () => false } = {}) {
+export function createWorkspacePreviewController({
+  markdownOptions = () => ({}),
+  onAttachFile = () => false,
+  onAddMarkdownToNotes = () => false,
+  onPdfField = () => false,
+  onTextExcerpt = () => false,
+} = {}) {
   let active = null;
   let requestVersion = 0;
 
@@ -75,9 +81,12 @@ export function createWorkspacePreviewController({ markdownOptions = () => ({}),
     };
     let next;
     const kind = workspaceFileKind({ path, name: source.name, type: file?.type });
-    if (kind === 'pdf') next = await openPdfPreview(source, onPdfField);
-    else if (kind === 'markdown' || kind === 'text') next = await openTextPreview(source, markdownOptions, kind);
-    else if (kind === 'image') next = await openImagePreview(source);
+    if (kind === 'pdf') next = await openPdfPreview(source, { onAttachFile, onPdfField });
+    else if (kind === 'markdown' || kind === 'text') {
+      next = await openTextPreview(source, {
+        markdownOptions, kind, onAttachFile, onAddMarkdownToNotes, onTextExcerpt,
+      });
+    } else if (kind === 'image') next = await openImagePreview(source, onAttachFile);
     else throw new Error('当前只支持预览 PDF、Markdown、TXT 和图片文件');
     if (version !== requestVersion) {
       next?.close?.();
@@ -95,16 +104,26 @@ export function createWorkspacePreviewController({ markdownOptions = () => ({}),
   };
 }
 
-async function openTextPreview(source, markdownOptions, kind = workspaceFileKind(source)) {
+async function openTextPreview(source, {
+  markdownOptions,
+  kind = workspaceFileKind(source),
+  onAttachFile,
+  onAddMarkdownToNotes,
+  onTextExcerpt,
+}) {
   const text = await source.file.text();
   const shell = document.createElement('aside');
   shell.className = 'tag-note-hover-preview note-window ai-workspace-preview ai-text-file-preview';
   shell.setAttribute('role', 'dialog');
   shell.setAttribute('aria-label', `文件预览：${source.name}`);
-  shell.innerHTML = `<header class="ai-file-preview-head" data-drag-handle><span data-kind="${kind}">${workspaceFileIcon(kind)}</span><div><strong></strong><small>${kind === 'markdown' ? 'Markdown · 只读' : '纯文本 · 只读'}</small></div><button type="button" title="下载">${ICON.download}</button><button type="button" title="关闭">${ICON.close}</button></header><div class="tag-note-hover-body ai-file-preview-body"></div>`;
+  shell.innerHTML = `<header class="ai-file-preview-head" data-drag-handle><span data-kind="${kind}">${workspaceFileIcon(kind)}</span><div><strong></strong><small>${kind === 'markdown' ? 'Markdown · 只读' : '纯文本 · 只读'}</small></div><div class="ai-file-preview-actions"><button type="button" data-attach-ai title="附到 AI">${ICON.aiAdd}</button>${kind === 'markdown' ? `<button type="button" data-add-note title="添加到笔记">${ICON.note}</button>` : ''}<button type="button" data-download title="下载">${ICON.download}</button><button type="button" data-close title="关闭">${ICON.close}</button></div></header><div class="tag-note-hover-body ai-file-preview-body"></div>`;
   shell.querySelector('strong').textContent = source.name;
-  const [download, dismiss] = shell.querySelectorAll('header > button');
-  download.addEventListener('click', () => downloadWorkspaceFile(source.file, source.name));
+  shell.querySelector('[data-attach-ai]').addEventListener('click', () => attachPreviewFile(source, onAttachFile));
+  shell.querySelector('[data-add-note]')?.addEventListener('click', () => {
+    const added = onAddMarkdownToNotes({ ...source, text });
+    toast(added ? '已添加到游离笔记' : '无法添加到笔记', { type: added ? 'success' : 'error' });
+  });
+  shell.querySelector('[data-download]').addEventListener('click', () => downloadWorkspaceFile(source.file, source.name));
   const body = shell.querySelector('.ai-file-preview-body');
   if (kind === 'markdown') {
     body.classList.add('ai-markdown', 'tag-note-preview-content');
@@ -116,26 +135,27 @@ async function openTextPreview(source, markdownOptions, kind = workspaceFileKind
     body.append(pre);
   }
   document.body.append(shell);
+  const selection = bindTextSelectionActions({ shell, body, source, onTextExcerpt });
   applySavedRect(shell, TEXT_RECT_KEY, defaultTextRect());
   const disconnectDrag = bindDrag(shell, shell.querySelector('[data-drag-handle]'), () => saveRect(shell, TEXT_RECT_KEY));
   const observer = observeRect(shell, TEXT_RECT_KEY);
   const close = () => {
     disconnectDrag();
     observer?.disconnect();
+    selection.close();
     shell.remove();
   };
-  dismiss.addEventListener('click', close);
+  shell.querySelector('[data-close]').addEventListener('click', close);
   return { element: shell, path: source.path, close };
 }
 
-async function openImagePreview(source) {
+async function openImagePreview(source, onAttachFile) {
   const shell = document.createElement('aside');
   shell.className = 'tag-note-hover-preview note-window ai-workspace-preview ai-image-file-preview';
   shell.setAttribute('role', 'dialog');
   shell.setAttribute('aria-label', `图片预览：${source.name}`);
-  shell.innerHTML = `<header class="ai-file-preview-head" data-drag-handle><span data-kind="image">${workspaceFileIcon('image')}</span><div><strong></strong><small>图片 · Ctrl + 滚轮缩放 · 只读</small></div><button type="button" title="下载">${ICON.download}</button><button type="button" title="关闭">${ICON.close}</button></header><div class="ai-file-preview-body ai-image-preview-body" title="按住 Ctrl 并滚动滚轮缩放图片"><div class="ai-image-preview-canvas"><img alt=""></div></div>`;
+  shell.innerHTML = `<header class="ai-file-preview-head" data-drag-handle><span data-kind="image">${workspaceFileIcon('image')}</span><div><strong></strong><small>图片 · Ctrl + 滚轮缩放 · 只读</small></div><div class="ai-file-preview-actions"><button type="button" data-attach-ai title="附到 AI">${ICON.aiAdd}</button><button type="button" data-download title="下载">${ICON.download}</button><button type="button" data-close title="关闭">${ICON.close}</button></div></header><div class="ai-file-preview-body ai-image-preview-body" title="按住 Ctrl 并滚动滚轮缩放图片"><div class="ai-image-preview-canvas"><img alt=""></div></div>`;
   shell.querySelector('strong').textContent = source.name;
-  const [download, dismiss] = shell.querySelectorAll('header > button');
   const image = shell.querySelector('img');
   const detail = shell.querySelector('small');
   const body = shell.querySelector('.ai-image-preview-body');
@@ -189,7 +209,8 @@ async function openImagePreview(source) {
   });
   image.src = objectUrl;
   body.addEventListener('wheel', onWheelZoom, { passive: false });
-  download.addEventListener('click', () => downloadWorkspaceFile(source.file, source.name));
+  shell.querySelector('[data-attach-ai]').addEventListener('click', () => attachPreviewFile(source, onAttachFile));
+  shell.querySelector('[data-download]').addEventListener('click', () => downloadWorkspaceFile(source.file, source.name));
   document.body.append(shell);
   applySavedRect(shell, TEXT_RECT_KEY, defaultTextRect());
   const disconnectDrag = bindDrag(shell, shell.querySelector('[data-drag-handle]'), () => saveRect(shell, TEXT_RECT_KEY));
@@ -203,17 +224,17 @@ async function openImagePreview(source) {
     URL.revokeObjectURL(objectUrl);
     shell.remove();
   };
-  dismiss.addEventListener('click', close);
+  shell.querySelector('[data-close]').addEventListener('click', close);
   return { element: shell, path: source.path, close };
 }
 
-async function openPdfPreview(source, onPdfField) {
+async function openPdfPreview(source, { onAttachFile, onPdfField }) {
   const { createPdfTextLayer, openPdfDocument } = await import('../ai/pdf.js');
   const shell = document.createElement('aside');
   shell.className = 'ai-pdf-preview';
   shell.setAttribute('role', 'dialog');
   shell.setAttribute('aria-label', `PDF 阅读器：${source.name}`);
-  shell.innerHTML = `<header class="ai-pdf-preview-head" data-drag-handle><span class="ai-pdf-preview-mark" data-kind="pdf">${workspaceFileIcon('pdf')}</span><div><strong></strong><small>PDF 阅读器 · Ctrl + 滚轮缩放</small></div><div class="ai-pdf-window-controls"><button type="button" data-download title="下载">${ICON.download}</button><button type="button" data-close title="关闭">${ICON.close}</button></div></header><div class="ai-pdf-toolbar"><button type="button" data-prev title="上一页">${leftIcon()}</button><form data-page-form><label>第 <input type="number" min="1" value="1" inputmode="numeric"> 页</label><span>/ <b data-page-count>—</b></span></form><button type="button" data-next title="下一页">${rightIcon()}</button><small data-page-status>正在加载…</small></div><div class="ai-pdf-stage" title="按住 Ctrl 并滚动滚轮缩放 PDF 内容"><div class="ai-pdf-loading">正在打开 PDF…</div><div class="ai-pdf-page" hidden><canvas></canvas><div class="textLayer"></div></div></div>${edgeResizeHandles()}`;
+  shell.innerHTML = `<header class="ai-pdf-preview-head" data-drag-handle><span class="ai-pdf-preview-mark" data-kind="pdf">${workspaceFileIcon('pdf')}</span><div><strong></strong><small>PDF 阅读器 · Ctrl + 滚轮缩放</small></div><div class="ai-pdf-window-controls"><button type="button" data-attach-ai title="附到 AI">${ICON.aiAdd}</button><button type="button" data-download title="下载">${ICON.download}</button><button type="button" data-close title="关闭">${ICON.close}</button></div></header><div class="ai-pdf-toolbar"><button type="button" data-prev title="上一页">${leftIcon()}</button><form data-page-form><label>第 <input type="number" min="1" value="1" inputmode="numeric"> 页</label><span>/ <b data-page-count>—</b></span></form><button type="button" data-next title="下一页">${rightIcon()}</button><small data-page-status>正在加载…</small></div><div class="ai-pdf-stage" title="按住 Ctrl 并滚动滚轮缩放 PDF 内容"><div class="ai-pdf-loading">正在打开 PDF…</div><div class="ai-pdf-page" hidden><canvas></canvas><div class="textLayer"></div></div></div>${edgeResizeHandles()}`;
   shell.querySelector('strong').textContent = source.name;
   document.body.append(shell);
   applySavedRect(shell, PDF_RECT_KEY, defaultPdfRect());
@@ -358,6 +379,7 @@ async function openPdfPreview(source, onPdfField) {
   previous.addEventListener('click', () => goToPage(pageNumber - 1));
   next.addEventListener('click', () => goToPage(pageNumber + 1));
   shell.querySelector('[data-page-form]').addEventListener('submit', (event) => { event.preventDefault(); goToPage(pageInput.value); });
+  shell.querySelector('[data-attach-ai]').addEventListener('click', () => attachPreviewFile(source, onAttachFile));
   shell.querySelector('[data-download]').addEventListener('click', () => downloadWorkspaceFile(source.file, source.name));
   shell.querySelector('[data-close]').addEventListener('click', () => close());
   stage.addEventListener('wheel', onWheelZoom, { passive: false });
@@ -427,6 +449,71 @@ async function openPdfPreview(source, onPdfField) {
     throw error;
   }
   return { element: shell, path: source.path, close };
+}
+
+function attachPreviewFile(source, onAttachFile) {
+  const attached = onAttachFile(source);
+  toast(attached ? '文件已附到 AI' : '无法附到 AI', { type: attached ? 'success' : 'error' });
+  return attached;
+}
+
+function bindTextSelectionActions({ shell, body, source, onTextExcerpt }) {
+  const selectionBar = document.createElement('div');
+  selectionBar.className = 'ai-file-selection-actions';
+  selectionBar.hidden = true;
+  selectionBar.innerHTML = `<button type="button" data-text-reference>${quoteIcon()}<span>片段引用</span></button><button type="button" data-copy-text>${copyIcon()}<span>复制文本</span></button>`;
+  document.body.append(selectionBar);
+  let snapshot = null;
+  const hide = ({ clear = false } = {}) => {
+    selectionBar.hidden = true;
+    snapshot = null;
+    if (clear) window.getSelection()?.removeAllRanges();
+  };
+  const update = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.rangeCount) { hide(); return; }
+    const anchor = selection.anchorNode?.parentElement || selection.anchorNode;
+    const focus = selection.focusNode?.parentElement || selection.focusNode;
+    if (!body.contains(anchor) || !body.contains(focus)) { hide(); return; }
+    const selected = selection.toString().trim();
+    if (!selected) { hide(); return; }
+    const visibleText = body.innerText || body.textContent || '';
+    const found = visibleText.indexOf(selected);
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect?.() || { left: 8, top: 8, bottom: 38 };
+    snapshot = {
+      text: selected,
+      before: found >= 0 ? visibleText.slice(Math.max(0, found - 320), found) : '',
+      after: found >= 0 ? visibleText.slice(found + selected.length, found + selected.length + 480) : '',
+    };
+    selectionBar.style.left = `${Math.round(clamp(rect.left, 8, innerWidth - 240))}px`;
+    selectionBar.style.top = `${Math.round(rect.top > 54 ? rect.top - 42 : rect.bottom + 8)}px`;
+    selectionBar.hidden = false;
+  };
+  const scheduleUpdate = () => setTimeout(update, 0);
+  body.addEventListener('pointerup', scheduleUpdate);
+  body.addEventListener('keyup', scheduleUpdate);
+  body.addEventListener('scroll', update, { passive: true });
+  for (const button of selectionBar.querySelectorAll('button')) button.addEventListener('pointerdown', (event) => event.preventDefault());
+  selectionBar.querySelector('[data-copy-text]').addEventListener('click', async () => {
+    if (!snapshot?.text) return;
+    await writePlainText(snapshot.text);
+    toast('已复制纯文本');
+  });
+  selectionBar.querySelector('[data-text-reference]').addEventListener('click', () => {
+    if (!snapshot?.text) return;
+    const attached = onTextExcerpt({ ...source, ...snapshot });
+    toast(attached ? '已添加片段引用' : '该文件不属于当前对话', { type: attached ? 'success' : 'error' });
+    if (attached) hide({ clear: true });
+  });
+  return {
+    close() {
+      body.removeEventListener('pointerup', scheduleUpdate);
+      body.removeEventListener('keyup', scheduleUpdate);
+      body.removeEventListener('scroll', update);
+      selectionBar.remove();
+    },
+  };
 }
 
 function bindDrag(element, handle, onEnd = () => {}) {

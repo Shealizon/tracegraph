@@ -154,6 +154,22 @@ export function pdfFieldAttachment({ path, name, page, text, rects = [], convers
   };
 }
 
+export function fileExcerptAttachment({ path, name, text, before = '', after = '', conversationId = '' } = {}) {
+  const selected = String(text || '').trim().slice(0, 6000);
+  if (!path || !selected) return null;
+  return {
+    id: `file-excerpt:${path}:${shortHash(`${selected}:${before}:${after}`)}`,
+    kind: 'file-excerpt',
+    path,
+    fileName: name || String(path).split('/').pop(),
+    text: selected,
+    before: String(before || '').slice(-320),
+    after: String(after || '').slice(0, 480),
+    conversationId,
+    label: `${name || String(path).split('/').pop()} · 选中片段`,
+  };
+}
+
 export function aiQuoteAttachment(message, messageIndex, selectedText, conversationTitle = '') {
   const text = String(selectedText || '').trim().slice(0, 6000);
   if (!message || message.role !== 'assistant' || !text) return null;
@@ -185,6 +201,7 @@ export function contextPrompt(text, attachments, model) {
   const graphSelectionScoped = (attachments || []).some((item) => item.kind === 'graph-selection' || (item.kind === 'graph-tag' && item.memberType === 'span'))
     && !(attachments || []).some((item) => item.kind === 'graph-node');
   const pdfFieldScoped = (attachments || []).some((item) => item.kind === 'pdf-field');
+  const fileExcerptScoped = (attachments || []).some((item) => item.kind === 'file-excerpt');
   const quoteScoped = (attachments || []).some((item) => item.kind === 'ai-quote');
   const scopeRules = `${graphSelectionScoped ? `
 <selection_scope priority="high">
@@ -197,7 +214,11 @@ export function contextPrompt(text, attachments, model) {
 <pdf_field_scope priority="high">
 PDF 字段引用中的 selected_text 是本次问题的主要解释对象，文件名、页码和页面坐标只用于定位。
 除非用户明确要求整页或整份文件，否则只围绕所选字段回答；附件已足够时不要再次读取整份 PDF。
-</pdf_field_scope>` : ''}${quoteScoped ? `
+</pdf_field_scope>` : ''}${fileExcerptScoped ? `
+<file_excerpt_scope priority="high">
+文件片段引用中的 selected_text 是本次问题的主要解释对象，文件路径和相邻文本只用于定位与消歧。
+除非用户明确要求整份文件，否则只围绕选中片段回答；附件已足够时不要再次读取完整文件。
+</file_excerpt_scope>` : ''}${quoteScoped ? `
 <conversation_quote_scope priority="high">
 用户引用的是先前 AI 回复中的指定片段。请直接围绕 quoted_text 回答；相邻文本仅用于消歧。除非用户明确要求，不要重新概述整条回复。
 </conversation_quote_scope>` : ''}`;
@@ -240,6 +261,9 @@ function describeContext(item, model) {
   if (item.kind === 'pdf-field') {
     const positions = (item.rects || []).map((rect) => `(${rect.x}, ${rect.y}, ${rect.width}, ${rect.height})`).join('；');
     return `[PDF 字段引用]\n文件：${item.fileName || item.path}\n路径：${item.path}\n页码：${item.page}\n页面归一化位置 (x, y, width, height)：${positions || '未记录'}\n<selected_text>\n${item.text}\n</selected_text>`;
+  }
+  if (item.kind === 'file-excerpt') {
+    return `[文件片段引用]\n文件：${item.fileName || item.path}\n路径：${item.path}\n<selected_text>\n${item.text}\n</selected_text>\n<disambiguation_context>\n前文：${item.before || ''}\n后文：${item.after || ''}\n</disambiguation_context>`;
   }
   if (item.kind === 'ai-quote') {
     return `[AI 对话引用片段]\n<quoted_text>\n${item.text}\n</quoted_text>\n来源：${item.conversationTitle || '当前对话'}第 ${Number(item.messageIndex) + 1} 条消息\n<disambiguation_context>\n前文：${item.before || ''}\n后文：${item.after || ''}\n</disambiguation_context>`;

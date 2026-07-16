@@ -190,6 +190,12 @@ export function createNoteRow(ctx, note, { className = '', showDelete = true } =
     if (ok) { ctx.closeTagInstanceMenu?.(); ctx.persistNotes?.(removeNote(ctx.getNotes?.() || [], note.id)); }
   }, 'note-ui-delete');
   row.append(label, actions);
+  row.addEventListener('click', (event) => {
+    if (event.target.closest('button')) return;
+    ctx.noteWindows?.close();
+    ctx.openNoteEditor?.(note.id, { anchor: row, mode: 'preview' });
+    ctx.closeTagInstanceMenu?.();
+  });
   if (supportsHover()) {
     row.addEventListener('pointerenter', () => ctx.noteWindows?.show(note, row));
     row.addEventListener('pointerleave', () => ctx.noteWindows?.scheduleClose());

@@ -4,10 +4,10 @@ import { normalizeWorkspacePath } from '../src/ai/workspace.js';
 import { appendReasoningBlock, appendTextBlock, messageBlocks, serializeMessageDebug, upsertToolBlock } from '../src/ai/messageBlocks.js';
 import { canonicalSourceKey, createClientTools, extractDoi } from '../src/ai/tools.js';
 import {
-  aiQuoteAttachment, contextPrompt, graphNodeAttachment, graphSelectionAttachment, mentionQueryAt, pdfFieldAttachment, replaceMention, searchMentionCandidates,
+  aiQuoteAttachment, contextPrompt, fileExcerptAttachment, graphNodeAttachment, graphSelectionAttachment, mentionQueryAt, pdfFieldAttachment, replaceMention, searchMentionCandidates,
 } from '../src/ai/contextAttachments.js';
 import { formatGraphReferenceDisplay, normalizeCjkStrong, protectMarkdownMath, stripBlockquoteMathMarkers } from '../src/render/markdown.js';
-import { activityTimelineEntries, applyCloudTaskSnapshot, deletedWorkspacePaths, isActivityGroupActive, isScrollNearBottom, navigateGraphReference, normalizeAiText, noteFromAssistantMessage, reconcileCloudWorkspaceChanges, replaceUserMessageBranch, shouldJoinActivityBlock, shouldSyncWorkspaceAfterTask } from '../src/ui/aiPanel.js';
+import { activityTimelineEntries, applyCloudTaskSnapshot, deletedWorkspacePaths, isActivityGroupActive, isScrollNearBottom, navigateGraphReference, normalizeAiText, noteFromAssistantMessage, noteFromWorkspaceMarkdown, reconcileCloudWorkspaceChanges, replaceUserMessageBranch, shouldJoinActivityBlock, shouldSyncWorkspaceAfterTask } from '../src/ui/aiPanel.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -116,6 +116,38 @@ describe('AI runtime helpers', () => {
     expect(prompt).toContain('页码：7');
     expect(prompt).toContain('<selected_text>\nSelected theorem statement\n</selected_text>');
     expect(prompt).toContain('PDF 字段引用中的 selected_text 是本次问题的主要解释对象');
+  });
+
+  it('creates a scoped Markdown or TXT excerpt reference', () => {
+    const attachment = fileExcerptAttachment({
+      path: 'notes/readme.md',
+      name: 'readme.md',
+      text: 'Selected paragraph',
+      before: 'Earlier context. ',
+      after: ' Later context.',
+      conversationId: 'chat-1',
+    });
+    const prompt = contextPrompt('解释这个片段', [attachment], null);
+    expect(attachment).toMatchObject({ kind: 'file-excerpt', path: 'notes/readme.md', conversationId: 'chat-1' });
+    expect(prompt).toContain('[文件片段引用]');
+    expect(prompt).toContain('<selected_text>\nSelected paragraph\n</selected_text>');
+    expect(prompt).toContain('前文：Earlier context.');
+    expect(prompt).toContain('不要再次读取完整文件');
+  });
+
+  it('turns a Markdown workspace file into a floating note', () => {
+    const note = noteFromWorkspaceMarkdown(
+      { path: 'notes/research.md', name: 'research.md', text: '# Result\n\nImportant.' },
+      { id: 'note-md', now: '2026-07-16T00:00:00.000Z' },
+    );
+    expect(note).toEqual({
+      id: 'note-md',
+      title: 'research',
+      content: '# Result\n\nImportant.',
+      tagPointer: null,
+      createdAt: '2026-07-16T00:00:00.000Z',
+      updatedAt: '2026-07-16T00:00:00.000Z',
+    });
   });
 
   it('enforces read-only, ask, and fully-allowed file write modes', async () => {

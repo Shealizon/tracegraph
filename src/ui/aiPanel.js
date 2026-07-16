@@ -5,7 +5,7 @@ import { compactConversation as compactModelContext, COMPACTION_SYSTEM_PROMPT, D
 import { contextUsage, estimateContextTokens, formatTokenCount, resolveContextWindow } from '../ai/contextBudget.js';
 import { buildGraphContext } from '../ai/graphContext.js';
 import {
-  aiQuoteAttachment, appendUniqueContext, contextPrompt, graphFileAttachment, graphMemberAttachment, graphNodeAttachment, graphNoteAttachment, graphReferenceAttachment, graphSelectionAttachment, graphTagAttachment, pdfFieldAttachment,
+  aiQuoteAttachment, appendUniqueContext, contextPrompt, fileExcerptAttachment, graphFileAttachment, graphMemberAttachment, graphNodeAttachment, graphNoteAttachment, graphReferenceAttachment, graphSelectionAttachment, graphTagAttachment, pdfFieldAttachment,
   mentionQueryAt, replaceMention, searchMentionCandidates,
 } from '../ai/contextAttachments.js';
 import { appendReasoningBlock, appendTextBlock, mergeToolSources, messageBlocks, serializeMessageDebug, upsertToolBlock } from '../ai/messageBlocks.js';
@@ -155,10 +155,29 @@ export function buildAiPanel(ctx) {
   const accessControl = panel.querySelector('[data-access-control]');
   const workspacePreview = createWorkspacePreviewController({
     markdownOptions: () => markdownRenderOptions({ sources: [] }),
+    onAttachFile: (source) => {
+      const conversation = activeConversation(conversationState);
+      if (source.conversationId !== conversation.id) return false;
+      return addContextAttachment(graphFileAttachment(source));
+    },
+    onAddMarkdownToNotes: (source) => {
+      const conversation = activeConversation(conversationState);
+      if (source.conversationId !== conversation.id || !ctx.persistNotes) return false;
+      const note = noteFromWorkspaceMarkdown(source);
+      if (!note) return false;
+      ctx.persistNotes(upsertNote(ctx.getNotes?.() || [], note, ctx.graph?.getTags?.() || []));
+      ctx.revealSidebarNote?.(note.id);
+      return true;
+    },
     onPdfField: (selection) => {
       const conversation = activeConversation(conversationState);
       if (selection.conversationId !== conversation.id) return false;
       return addContextAttachment(pdfFieldAttachment(selection));
+    },
+    onTextExcerpt: (selection) => {
+      const conversation = activeConversation(conversationState);
+      if (selection.conversationId !== conversation.id) return false;
+      return addContextAttachment(fileExcerptAttachment(selection));
     },
   });
 
@@ -1194,7 +1213,7 @@ export function buildAiPanel(ctx) {
       const chip = document.createElement('span');
       chip.className = `ai-attachment-chip ai-context-chip is-${attachment.kind}`;
       chip.title = contextAttachmentTitle(attachment);
-      chip.innerHTML = `${['file-reference', 'pdf-field'].includes(attachment.kind) ? fileIcon() : attachment.kind === 'ai-quote' ? quoteIcon() : graphContextIcon()}<span>${escapeHtml(attachment.label || attachment.nodeId || attachment.path)}</span><small>${attachment.kind === 'graph-tag-note' ? '笔记' : attachment.kind === 'graph-tag' ? '标签' : attachment.kind === 'graph-selection' ? '片段' : attachment.kind === 'pdf-field' ? 'PDF 字段' : attachment.kind === 'graph-position' ? '位置' : attachment.kind === 'graph-node' ? '节点' : attachment.kind === 'ai-quote' ? '引用' : '文件'}</small>`;
+      chip.innerHTML = `${['file-reference', 'pdf-field', 'file-excerpt'].includes(attachment.kind) ? fileIcon() : attachment.kind === 'ai-quote' ? quoteIcon() : graphContextIcon()}<span>${escapeHtml(attachment.label || attachment.nodeId || attachment.path)}</span><small>${attachment.kind === 'graph-tag-note' ? '笔记' : attachment.kind === 'graph-tag' ? '标签' : ['graph-selection', 'file-excerpt'].includes(attachment.kind) ? '片段' : attachment.kind === 'pdf-field' ? 'PDF 字段' : attachment.kind === 'graph-position' ? '位置' : attachment.kind === 'graph-node' ? '节点' : attachment.kind === 'ai-quote' ? '引用' : '文件'}</small>`;
       const remove = button('ai-attachment-remove', '', `移除 ${attachment.label || '上下文'}`);
       remove.innerHTML = closeIcon();
       remove.addEventListener('click', () => removeContextAttachment(attachment.id));
@@ -1268,6 +1287,7 @@ export function buildAiPanel(ctx) {
     if (attachment.kind === 'graph-tag-note') return `${attachment.label}\n${attachment.content || ''}`;
     if (attachment.kind === 'graph-selection' || attachment.kind === 'graph-tag') return `${attachment.label}\n${attachment.text || ''}`;
     if (attachment.kind === 'pdf-field') return `${attachment.label}\n${attachment.text || ''}`;
+    if (attachment.kind === 'file-excerpt') return `${attachment.label}\n${attachment.text || ''}`;
     if (attachment.kind === 'ai-quote') return `${attachment.label}\n${attachment.text || ''}`;
     return attachment.label || attachment.name || attachment.nodeId || attachment.path || '上下文';
   }
@@ -2328,6 +2348,21 @@ export function noteFromAssistantMessage(message, { id = '', now = '' } = {}) {
   return {
     id: id || `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     title: '',
+    content,
+    tagPointer: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export function noteFromWorkspaceMarkdown(source, { id = '', now = '' } = {}) {
+  const content = String(source?.text || '');
+  if (!content.trim()) return null;
+  const timestamp = now || new Date().toISOString();
+  const name = String(source?.name || source?.path?.split('/').pop() || '').trim();
+  return {
+    id: id || `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    title: name.replace(/\.(?:md|markdown)$/i, ''),
     content,
     tagPointer: null,
     createdAt: timestamp,

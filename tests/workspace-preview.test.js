@@ -39,7 +39,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  document.querySelectorAll('.ai-workspace-preview, .ai-pdf-preview, .ai-pdf-selection-actions').forEach((element) => element.remove());
+  document.querySelectorAll('.ai-workspace-preview, .ai-pdf-preview, .ai-pdf-selection-actions, .ai-file-selection-actions').forEach((element) => element.remove());
   localStorage.clear();
 });
 
@@ -73,7 +73,9 @@ describe('workspace file previews', () => {
   });
 
   it('opens TXT in a read-only note-style window', async () => {
-    const controller = createWorkspacePreviewController();
+    const onAttachFile = vi.fn(() => true);
+    const onTextExcerpt = vi.fn(() => true);
+    const controller = createWorkspacePreviewController({ onAttachFile, onTextExcerpt });
     const file = new File(['line one\nline two'], 'notes.txt', { type: 'text/plain' });
     await controller.open({ file, path: 'uploads/notes.txt', name: 'notes.txt', conversationId: 'chat-1' });
 
@@ -82,12 +84,50 @@ describe('workspace file previews', () => {
     expect(preview?.textContent).toContain('纯文本 · 只读');
     expect(preview?.querySelector('pre')?.textContent).toBe('line one\nline two');
     expect(preview?.querySelector('textarea')).toBeNull();
+    expect(document.querySelector('.ai-file-selection-actions [data-text-reference]')?.textContent).toContain('片段引用');
+    preview.querySelector('[title="附到 AI"]').click();
+    expect(onAttachFile).toHaveBeenCalledWith(expect.objectContaining({
+      path: 'uploads/notes.txt', name: 'notes.txt', conversationId: 'chat-1',
+    }));
+    const textNode = preview.querySelector('pre').firstChild;
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, 8);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    preview.querySelector('.ai-file-preview-body').dispatchEvent(new Event('pointerup', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    document.querySelector('.ai-file-selection-actions [data-text-reference]').click();
+    expect(onTextExcerpt).toHaveBeenCalledWith(expect.objectContaining({
+      path: 'uploads/notes.txt',
+      text: 'line one',
+      after: expect.stringContaining('line two'),
+    }));
     controller.close();
     expect(document.querySelector('.ai-text-file-preview')).toBeNull();
   });
 
+  it('adds Markdown files to AI or floating notes from the title bar', async () => {
+    const onAttachFile = vi.fn(() => true);
+    const onAddMarkdownToNotes = vi.fn(() => true);
+    const controller = createWorkspacePreviewController({ onAttachFile, onAddMarkdownToNotes });
+    const file = new File(['# Result\n\nImportant.'], 'result.md', { type: 'text/markdown' });
+    await controller.open({ file, path: 'notes/result.md', name: 'result.md', conversationId: 'chat-1' });
+
+    const preview = document.querySelector('.ai-text-file-preview');
+    preview.querySelector('[title="附到 AI"]').click();
+    preview.querySelector('[title="添加到笔记"]').click();
+    expect(onAttachFile).toHaveBeenCalledWith(expect.objectContaining({ path: 'notes/result.md' }));
+    expect(onAddMarkdownToNotes).toHaveBeenCalledWith(expect.objectContaining({
+      path: 'notes/result.md',
+      text: '# Result\n\nImportant.',
+    }));
+    controller.close();
+  });
+
   it('opens image files in a read-only image window and releases the object URL', async () => {
-    const controller = createWorkspacePreviewController();
+    const onAttachFile = vi.fn(() => true);
+    const controller = createWorkspacePreviewController({ onAttachFile });
     const file = new File(['image'], 'figure.png', { type: 'image/png' });
     await controller.open({ file, path: 'uploads/figure.png', name: 'figure.png', conversationId: 'chat-1' });
 
@@ -96,6 +136,8 @@ describe('workspace file previews', () => {
     expect(preview?.textContent).toContain('图片 · Ctrl + 滚轮缩放 · 只读');
     expect(preview?.querySelector('img')?.src).toBe('blob:workspace-preview');
     expect(preview?.querySelector('[data-kind="image"]')).toBeTruthy();
+    preview.querySelector('[title="附到 AI"]').click();
+    expect(onAttachFile).toHaveBeenCalledWith(expect.objectContaining({ path: 'uploads/figure.png' }));
     const image = preview.querySelector('img');
     Object.defineProperties(image, {
       naturalWidth: { configurable: true, value: 800 },
@@ -112,7 +154,8 @@ describe('workspace file previews', () => {
   });
 
   it('opens a paged PDF reader with text layer and window controls', async () => {
-    const controller = createWorkspacePreviewController();
+    const onAttachFile = vi.fn(() => true);
+    const controller = createWorkspacePreviewController({ onAttachFile });
     const file = new File(['%PDF'], 'paper.pdf', { type: 'application/pdf' });
     await controller.open({ file, path: 'uploads/paper.pdf', name: 'paper.pdf', conversationId: 'chat-1' });
 
@@ -123,6 +166,8 @@ describe('workspace file previews', () => {
     expect(preview?.querySelector('[data-window-larger]')).toBeNull();
     expect(preview?.querySelector('.ai-pdf-resize-handle')).toBeNull();
     expect(preview?.querySelectorAll('[data-resize-edge]')).toHaveLength(8);
+    preview.querySelector('[title="附到 AI"]').click();
+    expect(onAttachFile).toHaveBeenCalledWith(expect.objectContaining({ path: 'uploads/paper.pdf' }));
 
     Object.defineProperty(preview, 'getBoundingClientRect', {
       configurable: true,

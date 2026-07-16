@@ -38,7 +38,7 @@ describe('tag annotation note menu', () => {
     expect(chip.querySelector('.m-mark-note-count')?.textContent).toBe('2');
   });
 
-  it('shows shared note actions, hover preview, inert row clicks, and keeps delete last', () => {
+  it('shows shared note actions, hover preview, reading-mode row clicks, and keeps delete last', () => {
     vi.useFakeTimers();
     const { manager, tag, member, notes } = managerWith(1);
     const anchor = document.createElement('button'); document.body.appendChild(anchor);
@@ -51,7 +51,8 @@ describe('tag annotation note menu', () => {
     const row = menu.querySelector('.menu-note-row');
     expect(row.querySelectorAll('.note-ui-action')).toHaveLength(3);
     row.click();
-    expect(manager.ctx.openNoteEditor).not.toHaveBeenCalled();
+    expect(manager.ctx.openNoteEditor).toHaveBeenCalledWith(notes[0].id, expect.objectContaining({ anchor: row, mode: 'preview' }));
+    manager.ctx.openNoteEditor.mockClear();
 
     row.dispatchEvent(new Event('pointerenter'));
     const preview = document.querySelector('.tag-note-hover-preview');
