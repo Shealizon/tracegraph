@@ -26,7 +26,7 @@ describe('server Codex adapter', () => {
     expect(args[args.indexOf('--model') + 1]).toBe('gpt-current');
     expect(args.at(-1)).toBe('-');
     expect(args).toContain('--json');
-    expect(args).toContain('read-only');
+    expect(args).toContain('workspace-write');
   });
 
   it('maps the legacy codex placeholder to the CLI default model', () => {
@@ -50,11 +50,15 @@ describe('server Codex adapter', () => {
     const stderr = new PassThrough();
     const stdin = new PassThrough();
     const child = Object.assign(new EventEmitter(), { stdin, stdout, stderr, kill() {} });
+    let threadStart;
     stdin.on('data', (chunk) => {
       for (const line of String(chunk).trim().split('\n')) {
         const request = JSON.parse(line);
         if (request.id === 0) stdout.write(`${JSON.stringify({ id: 0, result: {} })}\n`);
-        if (request.id === 1) stdout.write(`${JSON.stringify({ id: 1, result: { thread: { id: 'thr-1' } } })}\n`);
+        if (request.id === 1) {
+          threadStart = request;
+          stdout.write(`${JSON.stringify({ id: 1, result: { thread: { id: 'thr-1' } } })}\n`);
+        }
         if (request.id === 2) {
           const messages = [
             { method: 'item/started', params: { item: { id: 'note1', type: 'agentMessage', phase: 'commentary', text: '' }, startedAtMs: 0 } },
@@ -74,6 +78,7 @@ describe('server Codex adapter', () => {
     const events = [];
     const result = await executeCodexStream({ prompt: 'test', cwd: '/tmp', spawnImpl: () => child, onEvent: (event) => events.push(event) });
     expect(result).toBe('第一段第二段');
+    expect(threadStart?.params).toMatchObject({ sandbox: 'workspace-write', approvalPolicy: 'never' });
     expect(events.map((event) => event.type)).toEqual(['reasoning_delta', 'reasoning_delta', 'tool', 'tool', 'text_delta', 'text_delta']);
     expect(events.find((event) => event.type === 'tool' && event.status === 'done')?.result).toMatchObject({ output: 'project.json', exitCode: 0 });
   });

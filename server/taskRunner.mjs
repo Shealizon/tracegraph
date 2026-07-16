@@ -118,7 +118,7 @@ export class TaskRunner {
     try {
       const vault = await this.userStore.readVault(session);
       tempDir = await materializeCodexWorkspace(vault, task);
-      const prompt = ['当前目录是该用户此次任务的临时只读工作区快照；项目数据位于 project.paper-graph.json，附件保持原工作区相对路径。', task.input.systemPrompt, ...task.input.history.map((m) => `${m.role}: ${m.content}`), `user: ${task.input.userText}`].filter(Boolean).join('\n\n');
+      const prompt = ['当前目录是该用户此次任务的临时可写工作区快照；项目数据位于 project.paper-graph.json，附件保持原工作区相对路径。读写操作仅限这个临时工作区。', task.input.systemPrompt, ...task.input.history.map((m) => `${m.role}: ${m.content}`), `user: ${task.input.userText}`].filter(Boolean).join('\n\n');
       const output = await executeCodexStream({
         prompt, cwd: tempDir, model: task.model, signal: controller.signal,
         onEvent: (event) => { applyCodexProgress(task, event); scheduleProgress(); },
