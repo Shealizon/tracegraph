@@ -23,7 +23,7 @@ export function loadProviderState(storage, key, legacy = {}) {
     });
     state.providers.push(provider);
     if (legacy.model) {
-      const model = enableModel(state, provider.id, legacy.model, legacy.model);
+      const model = enableModel(state, provider.id, legacy.model);
       state.activeModelId = model.id;
     }
   }
@@ -74,12 +74,17 @@ export function removeProvider(state, id) {
   if (!state.enabledModels.some((item) => item.id === state.activeModelId)) state.activeModelId = state.enabledModels[0]?.id || '';
 }
 
-export function enableModel(state, providerId, modelId, displayName = '') {
+export function formatModelDisplayName(modelId) {
+  return String(modelId || '').trim().split('-').map((part) => part ? `${part[0].toUpperCase()}${part.slice(1)}` : '').join(' ');
+}
+
+export function enableModel(state, providerId, modelId) {
   const existing = state.enabledModels.find((item) => item.providerId === providerId && item.modelId === modelId);
   if (existing) return existing;
+  const normalizedModelId = String(modelId).trim();
   const model = {
-    id: makeId('model'), providerId, modelId: String(modelId).trim(),
-    displayName: String(displayName || modelId).trim(),
+    id: makeId('model'), providerId, modelId: normalizedModelId,
+    displayName: formatModelDisplayName(normalizedModelId), customDisplayName: false,
   };
   state.enabledModels.push(model);
   if (!state.activeModelId) state.activeModelId = model.id;
@@ -96,6 +101,7 @@ export function renameEnabledModel(state, id, displayName) {
   const value = String(displayName || '').trim().replace(/\s+/g, ' ').slice(0, 64);
   if (!model || !value) return false;
   model.displayName = value;
+  model.customDisplayName = true;
   return true;
 }
 
@@ -146,9 +152,18 @@ function normalizeProviderState(value) {
   const state = value && typeof value === 'object' ? value : createProviderState();
   const providers = Array.isArray(state.providers) ? state.providers.map(createProvider) : [];
   const providerIds = new Set(providers.map((item) => item.id));
-  const enabledModels = Array.isArray(state.enabledModels) ? state.enabledModels.filter((item) => providerIds.has(item.providerId) && item.modelId).map((item) => ({
-    id: item.id || makeId('model'), providerId: item.providerId, modelId: String(item.modelId), displayName: String(item.displayName || item.modelId),
-  })) : [];
+  const enabledModels = Array.isArray(state.enabledModels) ? state.enabledModels.filter((item) => providerIds.has(item.providerId) && item.modelId).map((item) => {
+    const modelId = String(item.modelId);
+    const currentName = String(item.displayName || modelId).trim();
+    const provider = providers.find((entry) => entry.id === item.providerId);
+    const providerDefault = provider?.modelDetailsCache?.find((detail) => detail.id === modelId)?.displayName || '';
+    const automatic = !item.customDisplayName && (!currentName || currentName === modelId || currentName === providerDefault);
+    return {
+      id: item.id || makeId('model'), providerId: item.providerId, modelId,
+      displayName: automatic ? formatModelDisplayName(modelId) : currentName,
+      customDisplayName: Boolean(item.customDisplayName),
+    };
+  }) : [];
   return { version: 1, providers, enabledModels, activeModelId: enabledModels.some((item) => item.id === state.activeModelId) ? state.activeModelId : enabledModels[0]?.id || '', updatedAt: state.updatedAt || '' };
 }
 

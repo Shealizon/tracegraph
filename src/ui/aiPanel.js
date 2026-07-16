@@ -19,7 +19,7 @@ import {
   renameConversation, saveConversationState, updateAutomaticTitle,
 } from '../ai/conversationStore.js';
 import {
-  PROVIDER_PROTOCOLS, addProvider, disableModel, discoverProviderModels, enableModel,
+  PROVIDER_PROTOCOLS, addProvider, disableModel, discoverProviderModels, enableModel, formatModelDisplayName,
   loadProviderState, removeProvider, renameEnabledModel, resolveModelConfig, saveProviderState, updateProvider,
 } from '../ai/providerStore.js';
 import { serverApi } from '../cloud/api.js';
@@ -1359,7 +1359,7 @@ export function buildAiPanel(ctx) {
       row.classList.toggle('is-enabled', Boolean(existing));
       row.addEventListener('click', () => {
         if (existing) disableModel(providerState, existing.id);
-        else enableModel(providerState, provider.id, modelId, detail?.displayName || modelId);
+        else enableModel(providerState, provider.id, modelId);
         persistProviders(); renderProviderSettings(); syncModelLabel();
       });
       container.append(row);
@@ -1404,11 +1404,13 @@ export function buildAiPanel(ctx) {
     const legacy = providerState.enabledModels.find((item) => item.providerId === provider.id && item.modelId === 'codex');
     if (legacy) {
       legacy.modelId = defaultModel.id;
-      legacy.displayName = defaultModel.displayName || defaultModel.id;
+      legacy.displayName = formatModelDisplayName(defaultModel.id);
+      legacy.customDisplayName = false;
     }
     for (const detail of details) {
       const enabled = providerState.enabledModels.find((item) => item.providerId === provider.id && item.modelId === detail.id);
-      if (!enabled) enableModel(providerState, provider.id, detail.id, detail.displayName || detail.id);
+      if (!enabled) enableModel(providerState, provider.id, detail.id);
+      else if (!enabled.customDisplayName && (enabled.displayName === detail.id || enabled.displayName === detail.displayName)) enabled.displayName = formatModelDisplayName(detail.id);
     }
     const availableIds = new Set(modelIds);
     const stale = providerState.enabledModels.filter((item) => item.providerId === provider.id && !availableIds.has(item.modelId));

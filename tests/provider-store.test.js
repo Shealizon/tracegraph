@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  addProvider, discoverProviderModels, enableModel, loadProviderState, renameEnabledModel, resolveModelConfig,
+  addProvider, discoverProviderModels, enableModel, formatModelDisplayName, loadProviderState, renameEnabledModel, resolveModelConfig,
 } from '../src/ai/providerStore.js';
 import { streamCompletion, toAnthropicMessages, toGeminiContents } from '../src/ai/modelClient.js';
 
@@ -12,20 +12,43 @@ function memoryStorage(initial = {}) {
 }
 
 describe('provider and protocol adapters', () => {
+  it('formats default model names by capitalizing only each hyphen group first character', () => {
+    expect(formatModelDisplayName('deepseek-v4-flash')).toBe('Deepseek V4 Flash');
+    expect(formatModelDisplayName('gpt-5.6-terra')).toBe('Gpt 5.6 Terra');
+    expect(formatModelDisplayName('gPT-5X-LUNA')).toBe('GPT 5X LUNA');
+  });
+
   it('migrates the legacy OpenAI-compatible model without storing its key', () => {
     const state = loadProviderState(memoryStorage(), 'providers', { baseUrl: 'https://gateway.test/v1', model: 'research-model' });
     expect(state.providers[0]).toMatchObject({ protocol: 'openai-chat', baseUrl: 'https://gateway.test/v1' });
     expect(state.enabledModels[0].modelId).toBe('research-model');
+    expect(state.enabledModels[0].displayName).toBe('Research Model');
   });
 
   it('keeps providers separate from enabled models and resolves a session key', () => {
     const state = loadProviderState(memoryStorage(), 'providers');
     const provider = addProvider(state, { name: 'Claude', protocol: 'anthropic-messages' });
     const model = enableModel(state, provider.id, 'claude-test');
+    expect(model.displayName).toBe('Claude Test');
     const keys = memoryStorage({ [`keys:${provider.id}`]: 'secret' });
     expect(resolveModelConfig(state, model.id, keys, 'keys')).toMatchObject({ protocol: 'anthropic-messages', model: 'claude-test', apiKey: 'secret' });
     expect(renameEnabledModel(state, model.id, '我的 Claude')).toBe(true);
+    expect(model.customDisplayName).toBe(true);
     expect(resolveModelConfig(state, model.id, keys, 'keys').displayName).toBe('我的 Claude');
+  });
+
+  it('migrates prior automatic names while preserving custom names', () => {
+    const storage = memoryStorage({ providers: JSON.stringify({
+      providers: [{ id: 'server-codex', name: 'Codex', protocol: 'server-codex', modelDetailsCache: [{ id: 'gpt-5.6-terra', displayName: 'GPT-5.6-Terra' }] }],
+      enabledModels: [
+        { id: 'automatic', providerId: 'server-codex', modelId: 'gpt-5.6-terra', displayName: 'GPT-5.6-Terra' },
+        { id: 'custom', providerId: 'server-codex', modelId: 'gpt-5.5', displayName: '我的主模型', customDisplayName: true },
+      ],
+      activeModelId: 'automatic',
+    }) });
+    const state = loadProviderState(storage, 'providers');
+    expect(state.enabledModels.find((item) => item.id === 'automatic')?.displayName).toBe('Gpt 5.6 Terra');
+    expect(state.enabledModels.find((item) => item.id === 'custom')?.displayName).toBe('我的主模型');
   });
 
   it('marks cloud providers and forces the unique Codex provider to server runtime', () => {
