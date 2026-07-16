@@ -28,6 +28,7 @@ export class ExtensionRegistry {
     this.spawnCapture = options.spawnCapture || spawnCapture;
     this.python = options.python || null;
     this.registry = { version: REGISTRY_VERSION, packages: {} };
+    this.builtinFailures = [];
     this.lock = Promise.resolve();
   }
 
@@ -53,7 +54,13 @@ export class ExtensionRegistry {
       const current = this.registry.packages?.[manifest.id];
       if (current?.manifest?.version === manifest.version) continue;
       const bundle = await bundleFromDirectory(dir, manifest);
-      await this.install(bundle, { actor: 'system', builtIn: true });
+      try {
+        await this.install(bundle, { actor: 'system', builtIn: true });
+      } catch (error) {
+        const failure = { id: manifest.id, name: manifest.name, error: error?.message || String(error) };
+        this.builtinFailures.push(failure);
+        console.error(`[extensions] 内置扩展 ${manifest.id} 安装失败，主服务将继续启动：${failure.error}`);
+      }
     }
   }
 
@@ -66,6 +73,7 @@ export class ExtensionRegistry {
       packages,
       skills: packages.flatMap((item) => item.skills),
       tools: packages.flatMap((item) => item.tools),
+      failures: [...this.builtinFailures],
     };
   }
 
@@ -463,17 +471,26 @@ function parseToolOutput(stdout) {
 async function resolvePython(run) {
   const candidates = [
     ...(process.env.PAPER_GRAPH_PYTHON ? [{ command: process.env.PAPER_GRAPH_PYTHON, prefix: [] }] : []),
+    { command: 'python3.12', prefix: [] },
+    { command: 'python3.11', prefix: [] },
+    { command: 'python3.10', prefix: [] },
+    { command: 'python3.9', prefix: [] },
     { command: 'python3', prefix: [] },
     { command: 'python', prefix: [] },
     ...(process.platform === 'win32' ? [{ command: 'py', prefix: ['-3'] }] : []),
   ];
+  const seen = new Set();
   for (const candidate of candidates) {
+    const key = `${candidate.command}\0${candidate.prefix.join('\0')}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     try {
-      await run(candidate.command, [...candidate.prefix, '--version'], { timeout: 10_000, maxOutput: 20_000 });
-      return candidate;
+      const result = await run(candidate.command, [...candidate.prefix, '--version'], { timeout: 10_000, maxOutput: 20_000 });
+      const match = /Python\s+(\d+)\.(\d+)/i.exec(`${result.stdout || ''}\n${result.stderr || ''}`);
+      if (match && (Number(match[1]) > 3 || (Number(match[1]) === 3 && Number(match[2]) >= 9))) return candidate;
     } catch { /* try next */ }
   }
-  throw httpError(503, '服务器未找到可用于安装工具依赖的 Python 3');
+  throw httpError(503, '服务器未找到可用于安装工具依赖的 Python 3.9+');
 }
 
 function spawnCapture(command, args, options = {}) {

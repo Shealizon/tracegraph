@@ -10,6 +10,7 @@ const roots = [];
 
 afterEach(async () => {
   delete process.env.PAPER_GRAPH_TEST_SECRET;
+  delete process.env.PAPER_GRAPH_PYTHON;
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
@@ -109,6 +110,39 @@ describe('paper graph extension registry', () => {
     const reserved = exampleBundle();
     reserved.manifest.tools[0].name = 'read_file';
     await expect(registry.install(reserved)).rejects.toThrow('系统工具冲突');
+  });
+
+  it('selects Python 3.9+ and keeps the service available when a built-in install fails', async () => {
+    const root = await temporaryRoot();
+    const builtinsRoot = await temporaryRoot();
+    const builtinDir = path.join(builtinsRoot, 'example-tools');
+    const bundle = exampleBundle();
+    await fs.mkdir(path.join(builtinDir, 'skills'), { recursive: true });
+    await fs.mkdir(path.join(builtinDir, 'tools'), { recursive: true });
+    await fs.writeFile(path.join(builtinDir, 'manifest.json'), JSON.stringify(bundle.manifest));
+    for (const file of bundle.files) {
+      await fs.writeFile(path.join(builtinDir, file.path), file.data);
+    }
+    process.env.PAPER_GRAPH_PYTHON = 'legacy-python';
+    const calls = [];
+    const run = vi.fn(async (command, args) => {
+      calls.push([command, args]);
+      if (args.includes('--version')) {
+        if (command === 'legacy-python') return { stdout: 'Python 3.6.8', stderr: '' };
+        if (command === 'python3.12') throw new Error('not installed');
+        if (command === 'python3.11') return { stdout: 'Python 3.11.13', stderr: '' };
+      }
+      if (args.includes('pip')) throw new Error('package mirror unavailable');
+      return { stdout: '', stderr: '' };
+    });
+    const registry = new ExtensionRegistry(root, { builtinsRoot, spawnCapture: run });
+
+    await expect(registry.init()).resolves.toBeUndefined();
+    expect(calls.some(([command, args]) => command === 'python3.11' && args.includes('venv'))).toBe(true);
+    expect(registry.list()).toMatchObject({
+      packages: [],
+      failures: [{ id: 'example-tools', error: 'package mirror unavailable' }],
+    });
   });
 
   it('adds extension definitions to server model tool loops', async () => {
