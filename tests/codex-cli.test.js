@@ -88,12 +88,16 @@ describe('server Codex adapter', () => {
     const stderr = new PassThrough();
     const stdin = new PassThrough();
     const child = Object.assign(new EventEmitter(), { stdin, stdout, stderr, kill() {} });
+    let initialize;
     let threadStart;
     let toolResponse;
     stdin.on('data', (chunk) => {
       for (const line of String(chunk).trim().split('\n')) {
         const request = JSON.parse(line);
-        if (request.id === 0) stdout.write(`${JSON.stringify({ id: 0, result: {} })}\n`);
+        if (request.id === 0) {
+          initialize = request;
+          stdout.write(`${JSON.stringify({ id: 0, result: {} })}\n`);
+        }
         if (request.id === 1) {
           threadStart = request;
           stdout.write(`${JSON.stringify({ id: 1, result: { thread: { id: 'thr-dynamic' } } })}\n`);
@@ -134,6 +138,7 @@ describe('server Codex adapter', () => {
       onEvent: (event) => events.push(event),
     });
     expect(result).toBe('PDF 共 3 页。');
+    expect(initialize.params.capabilities).toEqual({ experimentalApi: true });
     expect(threadStart.params.dynamicTools[0].name).toBe('pdf_info');
     expect(onDynamicToolCall).toHaveBeenCalledWith('pdf_info', { file: 'paper.pdf' }, expect.objectContaining({ callId: 'call-pdf' }));
     expect(toolResponse.result).toEqual({
