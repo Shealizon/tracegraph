@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -143,6 +144,53 @@ describe('paper graph extension registry', () => {
       packages: [],
       failures: [{ id: 'example-tools', error: 'package mirror unavailable' }],
     });
+  });
+
+  it('encrypts admin-managed extension secrets and never exposes their values', async () => {
+    const root = await temporaryRoot();
+    const secretKey = crypto.randomBytes(32);
+    const run = vi.fn(async (_command, _args, options = {}) => {
+      if (options.env?.PAPER_GRAPH_OUTPUT) {
+        expect(options.env.EXAMPLE_TOKEN).toBe('token-value');
+        return { stdout: JSON.stringify({ ok: true }), stderr: '' };
+      }
+      return { stdout: 'ok', stderr: '' };
+    });
+    const registry = new ExtensionRegistry(root, {
+      secretKey,
+      python: { command: 'python-test', prefix: [] },
+      spawnCapture: run,
+    });
+    await registry.init();
+    const bundle = exampleBundle();
+    bundle.manifest.requiredEnv = ['EXAMPLE_TOKEN'];
+    await registry.install(bundle);
+
+    expect(registry.list().packages[0]).toMatchObject({
+      ready: false,
+      missingEnv: ['EXAMPLE_TOKEN'],
+      environment: [{ key: 'EXAMPLE_TOKEN', configured: false, source: '' }],
+    });
+    await registry.setEnvironmentSecret('EXAMPLE_TOKEN', 'token-value');
+    expect(registry.list().packages[0]).toMatchObject({
+      ready: true,
+      missingEnv: [],
+      environment: [{ key: 'EXAMPLE_TOKEN', configured: true, source: 'admin' }],
+    });
+    expect(JSON.stringify(registry.list())).not.toContain('token-value');
+    expect(await fs.readFile(path.join(root, 'secrets.enc'), 'utf8')).not.toContain('token-value');
+    await expect(registry.execute('example_read', {}, {})).resolves.toMatchObject({ result: { ok: true } });
+
+    const restarted = new ExtensionRegistry(root, {
+      secretKey,
+      python: { command: 'python-test', prefix: [] },
+      spawnCapture: run,
+    });
+    await restarted.init();
+    expect(restarted.list().packages[0]).toMatchObject({ ready: true });
+    await restarted.deleteEnvironmentSecret('EXAMPLE_TOKEN');
+    expect(restarted.list().packages[0]).toMatchObject({ ready: false });
+    await expect(restarted.setEnvironmentSecret('UNDECLARED_TOKEN', 'value')).rejects.toThrow('未声明');
   });
 
   it('adds extension definitions to server model tool loops', async () => {

@@ -2,14 +2,16 @@ import { serverApi } from './api.js';
 import { mountAccountControls } from './accountUi.js';
 import { sessionSnapshot } from './session.js';
 import { toast } from '../ui/feedback.js';
+import { ICON } from '../ui/icons.js';
 
 export async function renderAdminPage() {
+  applyAdminTheme();
   document.getElementById('app').style.display = 'none';
   const user = sessionSnapshot().user;
   if (!user || user.role !== 'admin') { location.href = location.pathname; return; }
   let root = document.getElementById('leading-root');
   if (!root) { root = document.createElement('div'); root.id = 'leading-root'; document.body.append(root); }
-  root.innerHTML = `<main class="admin-page"><header class="admin-topbar"><div><button class="admin-back" data-back>← 项目</button><h1>管理员面板</h1><p>管理账号、服务器 AI、Skills 与工具扩展。用户工作区内容保持加密，不在此展示。</p></div><div data-account></div></header><section class="admin-summary" data-summary></section><section class="admin-codex" id="codex"><div class="admin-section-heading"><div><span class="admin-eyebrow">SERVER AI</span><h2>Codex 登录</h2><p>Codex 只在服务器运行。通过设备码授权，不会向浏览器发送服务器令牌。</p></div><button class="admin-primary" data-codex-login disabled>检查中…</button></div><div class="codex-status-card" data-codex-status><span class="codex-status-dot"></span><div><strong>正在检查服务器 Codex</strong><small>请稍候</small></div></div><div class="codex-device-login" data-codex-device hidden></div></section><section class="admin-extensions" id="extensions"><div class="admin-section-heading"><div><span class="admin-eyebrow">EXTENSIONS</span><h2>Skills 与工具</h2><p>仅管理员可以导入 <code>paper-graph-extension@1</code> JSON 包。Python 依赖会安装到扩展专属虚拟环境。</p></div><button class="admin-primary" data-extension-import>导入扩展包</button><input type="file" accept=".json,application/json" data-extension-file hidden></div><div class="admin-extension-list" data-extension-list><div class="codex-status-card"><div><strong>正在读取扩展</strong><small>请稍候</small></div></div></div></section><div class="admin-section-heading admin-users-heading"><div><span class="admin-eyebrow">ACCESS</span><h2>用户</h2></div></div><section class="admin-table-wrap"><table class="admin-table"><thead><tr><th>用户</th><th>角色</th><th>状态</th><th>最近登录</th><th></th></tr></thead><tbody data-users></tbody></table></section></main>`;
+  root.innerHTML = `<main class="admin-page"><header class="admin-topbar"><div><button class="admin-back" data-back>← 项目</button><h1>管理员面板</h1><p>管理账号、服务器 AI、Skills 与工具扩展。用户工作区内容保持加密，不在此展示。</p></div><div data-account></div></header><section class="admin-summary" data-summary></section><section class="admin-codex" id="codex"><div class="admin-section-heading"><div><span class="admin-eyebrow">SERVER AI</span><h2>Codex 登录</h2><p>Codex 只在服务器运行。通过设备码授权，不会向浏览器发送服务器令牌。</p></div><button class="btn btn--primary admin-primary" data-codex-login disabled>检查中…</button></div><div class="codex-status-card" data-codex-status><span class="codex-status-dot"></span><div><strong>正在检查服务器 Codex</strong><small>请稍候</small></div></div><div class="codex-device-login" data-codex-device hidden></div></section><section class="admin-extensions" id="extensions"><div class="admin-section-heading"><div><span class="admin-eyebrow">EXTENSIONS</span><h2>Skills 与工具</h2><p>扩展统一安装在服务器，并自动提供给所有已登录用户。只有管理员可以导入和管理。</p></div><button class="btn btn--primary admin-primary" data-extension-import>${ICON.upload}<span>导入扩展包</span></button><input type="file" accept=".json,application/json" data-extension-file hidden></div><div class="admin-extension-list" data-extension-list><div class="codex-status-card"><div><strong>正在读取扩展</strong><small>请稍候</small></div></div></div></section><div class="admin-section-heading admin-users-heading"><div><span class="admin-eyebrow">ACCESS</span><h2>用户</h2></div></div><section class="admin-table-wrap"><table class="admin-table"><thead><tr><th>用户</th><th>角色</th><th>状态</th><th>最近登录</th><th></th></tr></thead><tbody data-users></tbody></table></section></main>`;
   root.querySelector('[data-back]').addEventListener('click', () => { location.href = location.pathname; });
   mountAccountControls(root.querySelector('[data-account]'), { onChanged: () => location.reload() });
   const [usersResult] = await Promise.all([
@@ -40,11 +42,16 @@ async function renderExtensionsAdmin(root) {
   const catalog = await serverApi.adminExtensions();
   const list = root.querySelector('[data-extension-list]');
   list.innerHTML = '';
+  for (const failure of catalog.failures || []) {
+    const notice = document.createElement('div');
+    notice.className = 'admin-extension-notice is-error';
+    notice.innerHTML = `<span class="admin-extension-notice-icon">!</span><div><strong>${escapeHtml(failure.name || failure.id)} 安装失败</strong><small>${escapeHtml(failure.error || '请检查服务器日志')}</small></div></div>`;
+    list.append(notice);
+  }
   for (const item of catalog.packages || []) {
     const card = document.createElement('article');
-    const status = item.ready ? '<span class="admin-status is-active">可用</span>' : `<span class="admin-status">缺少 ${escapeHtml(item.missingEnv.join(', '))}</span>`;
-    const dependencies = item.dependencies?.python?.length ? item.dependencies.python.join(' · ') : '无额外 Python 依赖';
-    card.innerHTML = `<div class="admin-extension-title"><div><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.id)} · v${escapeHtml(item.version)}${item.builtIn ? ' · 内置' : ''}</small></div>${status}</div><p>${escapeHtml(item.description)}</p><div class="admin-extension-counts"><span>${item.skills.length} Skills</span><span>${item.tools.length} Tools</span></div><details><summary>依赖与能力</summary><small>${escapeHtml(dependencies)}</small><ul>${item.skills.map((skill) => `<li>Skill · ${escapeHtml(skill.name)}</li>`).join('')}${item.tools.map((tool) => `<li>Tool · <code>${escapeHtml(tool.name)}</code></li>`).join('')}</ul></details>${item.builtIn ? '' : '<button class="admin-action" data-delete>删除</button>'}`;
+    card.className = `admin-extension-card${item.ready ? '' : ' is-unavailable'}`;
+    card.innerHTML = extensionCardHtml(item);
     card.querySelector('[data-delete]')?.addEventListener('click', async () => {
       if (!confirm(`删除扩展「${item.name}」？`)) return;
       try {
@@ -53,9 +60,53 @@ async function renderExtensionsAdmin(root) {
         await renderExtensionsAdmin(root);
       } catch (error) { toast(error.message, { type: 'error' }); }
     });
+    for (const open of card.querySelectorAll('[data-secret-open]')) {
+      open.addEventListener('click', () => {
+        const row = open.closest('[data-environment-row]');
+        const form = row?.querySelector('[data-secret-form]');
+        if (!form) return;
+        form.hidden = false;
+        form.querySelector('input')?.focus();
+      });
+    }
+    for (const cancel of card.querySelectorAll('[data-secret-cancel]')) {
+      cancel.addEventListener('click', () => { cancel.closest('[data-secret-form]').hidden = true; });
+    }
+    for (const form of card.querySelectorAll('[data-secret-form]')) {
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const key = form.dataset.key;
+        const input = form.querySelector('input');
+        const submit = form.querySelector('[type="submit"]');
+        if (!input.value.trim()) { toast(`${key} 不能为空`, { type: 'error' }); return; }
+        submit.disabled = true;
+        submit.textContent = '保存中…';
+        try {
+          await serverApi.saveExtensionEnvironment(key, input.value);
+          input.value = '';
+          toast(`${key} 已安全保存`, { type: 'success' });
+          await renderExtensionsAdmin(root);
+        } catch (error) {
+          toast(error.message, { type: 'error' });
+          submit.disabled = false;
+          submit.textContent = '保存';
+        }
+      });
+    }
+    for (const clear of card.querySelectorAll('[data-secret-clear]')) {
+      clear.addEventListener('click', async () => {
+        const key = clear.dataset.secretClear;
+        if (!confirm(`移除服务器密钥 ${key}？对应工具将立即不可用。`)) return;
+        try {
+          await serverApi.deleteExtensionEnvironment(key);
+          toast(`${key} 已移除`);
+          await renderExtensionsAdmin(root);
+        } catch (error) { toast(error.message, { type: 'error' }); }
+      });
+    }
     list.append(card);
   }
-  if (!catalog.packages?.length) list.innerHTML = '<div class="codex-status-card"><div><strong>尚未安装扩展</strong><small>导入一个 paper-graph-extension@1 JSON 包</small></div></div>';
+  if (!catalog.packages?.length && !catalog.failures?.length) list.innerHTML = '<div class="codex-status-card"><div><strong>尚未安装扩展</strong><small>导入一个 paper-graph-extension@1 JSON 包</small></div></div>';
   const input = root.querySelector('[data-extension-file]');
   const button = root.querySelector('[data-extension-import]');
   button.onclick = () => input.click();
@@ -64,7 +115,7 @@ async function renderExtensionsAdmin(root) {
     input.value = '';
     if (!file) return;
     button.disabled = true;
-    button.textContent = '安装依赖中…';
+    button.innerHTML = '<span class="admin-button-spinner" aria-hidden="true"></span><span>安装依赖中…</span>';
     try {
       const bundle = JSON.parse(await file.text());
       const result = await serverApi.importExtension(bundle);
@@ -74,9 +125,45 @@ async function renderExtensionsAdmin(root) {
       toast(error instanceof SyntaxError ? '扩展包不是有效 JSON' : error.message, { type: 'error' });
     } finally {
       button.disabled = false;
-      button.textContent = '导入扩展包';
+      button.innerHTML = `${ICON.upload}<span>导入扩展包</span>`;
     }
   };
+}
+
+function extensionCardHtml(item) {
+  const missingEnv = Array.isArray(item.missingEnv) ? item.missingEnv : [];
+  const status = item.ready
+    ? '<span class="admin-extension-state is-ready"><i></i>可用</span>'
+    : '<span class="admin-extension-state is-warning"><i></i>需配置</span>';
+  const skills = Array.isArray(item.skills) ? item.skills : [];
+  const tools = Array.isArray(item.tools) ? item.tools : [];
+  const dependencies = Array.isArray(item.dependencies?.python) ? item.dependencies.python : [];
+  const environment = Array.isArray(item.environment)
+    ? item.environment
+    : missingEnv.map((key) => ({ key, configured: false, source: '' }));
+  const typeLabel = item.builtIn ? '内置扩展' : '自定义扩展';
+  const environmentPanel = environment.length ? `<div class="admin-extension-environment${item.ready ? '' : ' is-warning'}"><div class="admin-extension-environment-title"><span>服务器密钥</span><small>值经过加密保存，不会回传浏览器</small></div>${environment.map(environmentRowHtml).join('')}</div>` : '';
+  const deleteButton = item.builtIn ? '' : `<button class="btn btn--sm btn--danger admin-extension-delete" data-delete>${ICON.trash}<span>删除</span></button>`;
+  const dependencyContent = dependencies.length
+    ? `<div class="admin-extension-code-list">${dependencies.map((dependency) => `<code>${escapeHtml(dependency)}</code>`).join('')}</div>`
+    : '<p class="admin-extension-empty">无额外 Python 依赖</p>';
+  const skillContent = skills.length
+    ? `<div class="admin-extension-capability-list">${skills.map((skill) => `<span>${ICON.fileText}<b>${escapeHtml(skill.name)}</b></span>`).join('')}</div>`
+    : '<p class="admin-extension-empty">未包含 Skill</p>';
+  const toolContent = tools.length
+    ? `<div class="admin-extension-code-list is-tools">${tools.map((tool) => `<code>${escapeHtml(tool.name)}</code>`).join('')}</div>`
+    : '<p class="admin-extension-empty">未包含工具</p>';
+  return `<header class="admin-extension-card-head"><div class="admin-extension-mark">${ICON.settings}</div><div class="admin-extension-identity"><div class="admin-extension-name"><strong>${escapeHtml(item.name)}</strong>${status}</div><span>${escapeHtml(item.id)} <i>·</i> v${escapeHtml(item.version)} <i>·</i> ${typeLabel}</span></div>${deleteButton}</header><p class="admin-extension-description">${escapeHtml(item.description)}</p><div class="admin-extension-metrics"><span><b>${skills.length}</b> Skill${skills.length === 1 ? '' : 's'}</span><span><b>${tools.length}</b> 工具</span></div>${environmentPanel}<details class="admin-extension-details"><summary><span>查看依赖与能力</span>${ICON.chevronDown}</summary><div class="admin-extension-detail-body"><section><h4>Python 依赖</h4>${dependencyContent}</section><section><h4>Skills</h4>${skillContent}</section><section><h4>工具</h4>${toolContent}</section></div></details>`;
+}
+
+function environmentRowHtml(environment) {
+  const key = escapeHtml(environment.key);
+  const sourceText = environment.source === 'server' ? '由服务器环境提供' : environment.configured ? '已安全保存' : '尚未配置';
+  const stateClass = environment.configured ? 'is-configured' : 'is-missing';
+  const actions = environment.source === 'server'
+    ? ''
+    : `<button type="button" class="btn btn--sm" data-secret-open>${environment.configured ? '更新' : '配置'}</button>${environment.source === 'admin' ? `<button type="button" class="btn btn--sm btn--danger" data-secret-clear="${escapeAttr(environment.key)}">移除</button>` : ''}`;
+  return `<div class="admin-extension-environment-row ${stateClass}" data-environment-row><div class="admin-extension-environment-key"><i></i><code>${key}</code><span>${sourceText}</span></div><div class="admin-extension-environment-actions">${actions}</div><form class="admin-extension-secret-form" data-secret-form data-key="${escapeAttr(environment.key)}" hidden><label><span>${environment.configured ? `输入新的 ${key}` : `填写 ${key}`}</span><input type="password" autocomplete="new-password" spellcheck="false" placeholder="仅在服务端加密保存"></label><div><button type="button" class="btn btn--sm" data-secret-cancel>取消</button><button type="submit" class="btn btn--sm btn--primary">保存</button></div></form></div>`;
 }
 
 function renderExtensionsError(root, error) {
@@ -129,7 +216,7 @@ function renderDeviceLogin(root, login) {
   const panel = root.querySelector('[data-codex-device]');
   panel.hidden = false;
   const waiting = login.status === 'waiting';
-  panel.innerHTML = `<div class="codex-device-copy"><span>${waiting ? '等待授权' : login.status === 'completed' ? '授权完成' : '授权未完成'}</span><strong>${escapeHtml(login.userCode || '正在获取设备码…')}</strong><small>在 OpenAI 登录页面输入此一次性代码。完成后本页会自动更新。</small></div>${login.verificationUrl ? `<a class="admin-primary" href="${escapeAttr(login.verificationUrl)}" target="_blank" rel="noopener noreferrer">打开登录页面 ↗</a>` : ''}`;
+  panel.innerHTML = `<div class="codex-device-copy"><span>${waiting ? '等待授权' : login.status === 'completed' ? '授权完成' : '授权未完成'}</span><strong>${escapeHtml(login.userCode || '正在获取设备码…')}</strong><small>在 OpenAI 登录页面输入此一次性代码。完成后本页会自动更新。</small></div>${login.verificationUrl ? `<a class="btn btn--primary admin-primary" href="${escapeAttr(login.verificationUrl)}" target="_blank" rel="noopener noreferrer">打开登录页面 ↗</a>` : ''}`;
 }
 
 function renderCodexError(root, error) {
@@ -141,6 +228,14 @@ function renderCodexError(root, error) {
   }
   const button = root.querySelector('[data-codex-login]');
   if (button) { button.disabled = false; button.textContent = '重试'; button.onclick = () => renderCodexAdmin(root).catch((nextError) => renderCodexError(root, nextError)); }
+}
+
+function applyAdminTheme() {
+  const mode = localStorage.getItem('hg-theme-mode') || localStorage.getItem('hg-theme') || 'system';
+  const theme = mode === 'system'
+    ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+    : mode;
+  document.documentElement.setAttribute('data-theme', theme);
 }
 
 function formatDate(value) { if (!value) return '—'; const date = new Date(value); return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }); }

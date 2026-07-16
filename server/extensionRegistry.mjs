@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { randomId } from './security.mjs';
+import { decryptJson, encryptJson, randomId } from './security.mjs';
 import { httpError } from './userStore.mjs';
 
 const FORMAT = 'paper-graph-extension@1';
@@ -24,9 +24,12 @@ export class ExtensionRegistry {
     this.packagesRoot = path.join(this.root, 'packages');
     this.dataRoot = path.join(this.root, 'data');
     this.registryPath = path.join(this.root, 'registry.json');
+    this.secretsPath = path.join(this.root, 'secrets.enc');
     this.builtinsRoot = options.builtinsRoot ? path.resolve(options.builtinsRoot) : '';
     this.spawnCapture = options.spawnCapture || spawnCapture;
     this.python = options.python || null;
+    this.secretKey = options.secretKey || null;
+    this.secrets = {};
     this.registry = { version: REGISTRY_VERSION, packages: {} };
     this.builtinFailures = [];
     this.lock = Promise.resolve();
@@ -41,6 +44,7 @@ export class ExtensionRegistry {
       if (error?.code !== 'ENOENT') throw error;
       await this.save();
     }
+    await this.loadSecrets();
     if (this.builtinsRoot) await this.installBuiltins();
   }
 
@@ -67,7 +71,7 @@ export class ExtensionRegistry {
   list({ includeInstructions = false } = {}) {
     const packages = Object.values(this.registry.packages || {})
       .sort((a, b) => a.manifest.name.localeCompare(b.manifest.name))
-      .map((record) => publicPackage(record, includeInstructions));
+      .map((record) => this.publicPackage(record, includeInstructions));
     return {
       format: FORMAT,
       packages,
@@ -87,7 +91,7 @@ export class ExtensionRegistry {
 
   definitions() {
     return Object.values(this.registry.packages || {}).flatMap((record) => {
-      const ready = record.manifest.requiredEnv.every((key) => process.env[key]);
+      const ready = record.manifest.requiredEnv.every((key) => this.environmentValue(key));
       return ready ? record.manifest.tools.map((tool) => toolDefinition(tool.name, tool.description, tool.inputSchema)) : [];
     });
   }
@@ -161,7 +165,7 @@ export class ExtensionRegistry {
           python: pythonInfo,
         };
         await this.save();
-        return publicPackage(this.registry.packages[manifest.id], true);
+        return this.publicPackage(this.registry.packages[manifest.id], true);
       } catch (error) {
         await fs.rm(stage, { recursive: true, force: true }).catch(() => {});
         if (movedOld) {
@@ -215,7 +219,7 @@ export class ExtensionRegistry {
     const found = this.findTool(name);
     if (!found) throw httpError(404, `工具不存在：${name}`);
     validateInput(args, found.tool.inputSchema);
-    const missingEnv = found.record.manifest.requiredEnv.filter((key) => !process.env[key]);
+    const missingEnv = found.record.manifest.requiredEnv.filter((key) => !this.environmentValue(key));
     if (missingEnv.length) throw httpError(503, `工具缺少服务器环境变量：${missingEnv.join(', ')}`);
     const packageDir = safeJoin(this.packagesRoot, found.record.manifest.id);
     const extensionDataDir = safeJoin(this.dataRoot, found.record.manifest.id);
@@ -247,7 +251,10 @@ export class ExtensionRegistry {
         maxOutput: MAX_TOOL_OUTPUT,
         signal: context.signal,
         env: {
-          ...safeProcessEnvironment(found.record.manifest.requiredEnv),
+          ...safeProcessEnvironment(
+            found.record.manifest.requiredEnv,
+            Object.fromEntries(found.record.manifest.requiredEnv.map((key) => [key, this.environmentValue(key)])),
+          ),
           PAPER_GRAPH_WORKSPACE: workspaceDir,
           PAPER_GRAPH_OUTPUT: outputDir,
           PAPER_GRAPH_TOOL: found.tool.name,
@@ -276,6 +283,69 @@ export class ExtensionRegistry {
       if (tool) return { record, tool };
     }
     return null;
+  }
+
+  publicPackage(record, includeInstructions = false) {
+    return publicPackage(record, includeInstructions, (key) => this.environmentStatus(key));
+  }
+
+  environmentValue(key) {
+    return process.env[key] || this.secrets[key] || '';
+  }
+
+  environmentStatus(key) {
+    if (process.env[key]) return { key, configured: true, source: 'server' };
+    if (this.secrets[key]) return { key, configured: true, source: 'admin' };
+    return { key, configured: false, source: '' };
+  }
+
+  requiredEnvironmentKeys() {
+    return [...new Set(Object.values(this.registry.packages || {})
+      .flatMap((record) => record.manifest.requiredEnv || []))].sort();
+  }
+
+  async setEnvironmentSecret(rawKey, rawValue) {
+    return this.withLock(async () => {
+      const key = environmentName(rawKey);
+      if (!this.requiredEnvironmentKeys().includes(key)) throw httpError(404, '扩展未声明该服务器环境变量');
+      if (process.env[key]) throw httpError(409, '该变量由服务器环境提供，请在服务器配置中修改');
+      if (!this.secretKey) throw httpError(503, '服务器未启用扩展密钥存储');
+      const value = String(rawValue || '').trim();
+      if (!value) throw httpError(400, '密钥不能为空');
+      if (Buffer.byteLength(value) > 16 * 1024) throw httpError(400, '密钥不能超过 16 KB');
+      this.secrets[key] = value;
+      await this.saveSecrets();
+      return this.environmentStatus(key);
+    });
+  }
+
+  async deleteEnvironmentSecret(rawKey) {
+    return this.withLock(async () => {
+      const key = environmentName(rawKey);
+      if (!this.requiredEnvironmentKeys().includes(key)) throw httpError(404, '扩展未声明该服务器环境变量');
+      if (process.env[key]) throw httpError(409, '该变量由服务器环境提供，不能在面板中删除');
+      delete this.secrets[key];
+      await this.saveSecrets();
+    });
+  }
+
+  async loadSecrets() {
+    if (!this.secretKey) return;
+    try {
+      const value = decryptJson(await fs.readFile(this.secretsPath, 'utf8'), this.secretKey);
+      this.secrets = value?.secrets && typeof value.secrets === 'object' && !Array.isArray(value.secrets)
+        ? Object.fromEntries(Object.entries(value.secrets).filter(([key, value]) => /^[A-Z][A-Z0-9_]{1,80}$/.test(key) && typeof value === 'string'))
+        : {};
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+  }
+
+  async saveSecrets() {
+    if (!this.secretKey) throw httpError(503, '服务器未启用扩展密钥存储');
+    const temp = `${this.secretsPath}.${randomId('tmp_')}`;
+    await fs.writeFile(temp, encryptJson({ version: 1, secrets: this.secrets }, this.secretKey), { mode: 0o600 });
+    await replaceFile(temp, this.secretsPath);
   }
 
   async save() {
@@ -396,8 +466,9 @@ async function bundleFromDirectory(dir, manifest) {
   return { format: FORMAT, manifest, files };
 }
 
-function publicPackage(record, includeInstructions) {
-  const missingEnv = record.manifest.requiredEnv.filter((key) => !process.env[key]);
+function publicPackage(record, includeInstructions, environmentStatus) {
+  const environment = record.manifest.requiredEnv.map((key) => environmentStatus(key));
+  const missingEnv = environment.filter((item) => !item.configured).map((item) => item.key);
   return {
     id: record.manifest.id,
     name: record.manifest.name,
@@ -407,6 +478,7 @@ function publicPackage(record, includeInstructions) {
     builtIn: !!record.builtIn,
     ready: missingEnv.length === 0,
     missingEnv,
+    environment,
     dependencies: record.manifest.dependencies,
     skills: record.manifest.skills.map((skill) => ({
       id: skill.id,
@@ -654,7 +726,7 @@ function mimeFor(file) {
   return 'application/octet-stream';
 }
 
-function safeProcessEnvironment(required = []) {
+function safeProcessEnvironment(required = [], overrides = {}) {
   const allowed = [
     'PATH', 'Path', 'PATHEXT', 'SystemRoot', 'WINDIR', 'COMSPEC',
     'HOME', 'USERPROFILE', 'TEMP', 'TMP', 'TMPDIR',
@@ -663,7 +735,8 @@ function safeProcessEnvironment(required = []) {
   ];
   const env = {};
   for (const key of [...allowed, ...required]) {
-    if (process.env[key] != null) env[key] = process.env[key];
+    if (overrides[key] != null) env[key] = overrides[key];
+    else if (process.env[key] != null) env[key] = process.env[key];
   }
   return env;
 }

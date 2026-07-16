@@ -15,6 +15,7 @@ const store = new UserStore(process.env.PAPER_GRAPH_DATA || path.join(root, 'ser
 await store.init();
 const extensions = new ExtensionRegistry(path.join(store.dataRoot, 'extensions'), {
   builtinsRoot: path.join(root, 'extensions', 'builtin'),
+  secretKey: store.sessionKey,
 });
 await extensions.init();
 const tasks = new TaskRunner(store, extensions);
@@ -231,6 +232,14 @@ app.get('/api/admin/extensions', requireAuth, requireAdmin, (_req, res) => res.j
 app.post('/api/admin/extensions/import', requireAuth, requireAdmin, asyncRoute(async (req, res) => {
   const extension = await extensions.install(req.body || {}, { actor: req.auth.user.id });
   res.status(201).json({ extension });
+}));
+app.put('/api/admin/extensions/environment/:key', requireAuth, requireAdmin, asyncRoute(async (req, res) => {
+  const environment = await extensions.setEnvironmentSecret(req.params.key, req.body?.value);
+  res.json({ environment });
+}));
+app.delete('/api/admin/extensions/environment/:key', requireAuth, requireAdmin, asyncRoute(async (req, res) => {
+  await extensions.deleteEnvironmentSecret(req.params.key);
+  res.status(204).end();
 }));
 app.delete('/api/admin/extensions/:id', requireAuth, requireAdmin, asyncRoute(async (req, res) => {
   await extensions.uninstall(req.params.id);
