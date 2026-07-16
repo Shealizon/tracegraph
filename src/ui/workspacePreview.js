@@ -5,9 +5,40 @@ import { toast } from './feedback.js';
 const PDF_RECT_KEY = 'paper-graph:pdf-preview-rect';
 const TEXT_RECT_KEY = 'paper-graph:text-preview-rect';
 
-export function isPreviewableWorkspaceFile(file) {
+export function workspaceFileKind(file) {
   const path = String(file?.path || file?.name || '').toLowerCase();
-  return file?.type === 'application/pdf' || /\.(pdf|md|txt)$/i.test(path);
+  const type = String(file?.type || '').toLowerCase();
+  if (type === 'application/pdf' || /\.pdf$/i.test(path)) return 'pdf';
+  if (type === 'text/markdown' || /\.(md|markdown)$/i.test(path)) return 'markdown';
+  if (type.startsWith('image/') || /\.(avif|bmp|gif|ico|jpe?g|png|svg|webp)$/i.test(path)) return 'image';
+  if (type.startsWith('text/') || /\.(txt|log)$/i.test(path)) return 'text';
+  if (/\.(csv|ods|xls|xlsx)$/i.test(path)) return 'spreadsheet';
+  if (/\.(doc|docx|odt|rtf)$/i.test(path)) return 'document';
+  if (/\.(odp|ppt|pptx)$/i.test(path)) return 'presentation';
+  if (/\.(7z|bz2|gz|rar|tar|tgz|zip)$/i.test(path)) return 'archive';
+  if (/\.(c|cc|cpp|css|go|h|hpp|html|java|js|json|jsx|mjs|py|rs|sh|ts|tsx|xml|yaml|yml)$/i.test(path)) return 'code';
+  return 'file';
+}
+
+export function workspaceFileIcon(file) {
+  const kind = typeof file === 'string' ? file : workspaceFileKind(file);
+  const icons = {
+    pdf: fileGlyph('<path d="M8 11.5h2.2a1.7 1.7 0 010 3.4H8v-5.8M13 14.9V9.1h1.6a2.9 2.9 0 010 5.8H13M18 14.9V9.1h3"/>'),
+    markdown: fileGlyph('<path d="M7.5 15v-5l2.1 2.6 2.1-2.6v5M14 11.5l2 2 2-2M16 9v5"/>'),
+    image: fileGlyph('<circle cx="10" cy="10" r="1.2"/><path d="m7.5 16 3.1-3.1 2.1 2.1 1.5-1.5 2.3 2.5"/>'),
+    text: fileGlyph('<path d="M8 10h8M8 13h8M8 16h5"/>'),
+    spreadsheet: fileGlyph('<path d="M8 10h8v6H8zM8 13h8M12 10v6"/>'),
+    document: fileGlyph('<path d="M8 10h8M8 13h8M8 16h6"/>'),
+    presentation: fileGlyph('<path d="M8 10h8v5H8zM12 15v2M10 17h4"/>'),
+    archive: fileGlyph('<path d="M11 8h2M11 10.5h2M11 13h2M10.5 15.5h3v2h-3z"/>'),
+    code: fileGlyph('<path d="m11 10-2.5 2.5L11 15M14 10l2.5 2.5L14 15"/>'),
+    file: fileGlyph(''),
+  };
+  return icons[kind] || icons.file;
+}
+
+export function isPreviewableWorkspaceFile(file) {
+  return ['pdf', 'markdown', 'text', 'image'].includes(workspaceFileKind(file));
 }
 
 export async function downloadWorkspaceFile(file, name = file?.name || 'download') {
@@ -43,9 +74,11 @@ export function createWorkspacePreviewController({ markdownOptions = () => ({}),
       conversationId,
     };
     let next;
-    if (file?.type === 'application/pdf' || /\.pdf$/i.test(path)) next = await openPdfPreview(source, onPdfField);
-    else if (/\.(md|txt)$/i.test(path)) next = await openTextPreview(source, markdownOptions);
-    else throw new Error('当前只支持预览 PDF、Markdown 和 TXT 文件');
+    const kind = workspaceFileKind({ path, name: source.name, type: file?.type });
+    if (kind === 'pdf') next = await openPdfPreview(source, onPdfField);
+    else if (kind === 'markdown' || kind === 'text') next = await openTextPreview(source, markdownOptions, kind);
+    else if (kind === 'image') next = await openImagePreview(source);
+    else throw new Error('当前只支持预览 PDF、Markdown、TXT 和图片文件');
     if (version !== requestVersion) {
       next?.close?.();
       return null;
@@ -62,18 +95,18 @@ export function createWorkspacePreviewController({ markdownOptions = () => ({}),
   };
 }
 
-async function openTextPreview(source, markdownOptions) {
+async function openTextPreview(source, markdownOptions, kind = workspaceFileKind(source)) {
   const text = await source.file.text();
   const shell = document.createElement('aside');
   shell.className = 'tag-note-hover-preview note-window ai-workspace-preview ai-text-file-preview';
   shell.setAttribute('role', 'dialog');
   shell.setAttribute('aria-label', `文件预览：${source.name}`);
-  shell.innerHTML = `<header class="ai-file-preview-head" data-drag-handle><span>${ICON.fileText}</span><div><strong></strong><small>${/\.md$/i.test(source.path) ? 'Markdown · 只读' : '纯文本 · 只读'}</small></div><button type="button" title="下载">${ICON.download}</button><button type="button" title="关闭">${ICON.close}</button></header><div class="tag-note-hover-body ai-file-preview-body"></div>`;
+  shell.innerHTML = `<header class="ai-file-preview-head" data-drag-handle><span data-kind="${kind}">${workspaceFileIcon(kind)}</span><div><strong></strong><small>${kind === 'markdown' ? 'Markdown · 只读' : '纯文本 · 只读'}</small></div><button type="button" title="下载">${ICON.download}</button><button type="button" title="关闭">${ICON.close}</button></header><div class="tag-note-hover-body ai-file-preview-body"></div>`;
   shell.querySelector('strong').textContent = source.name;
   const [download, dismiss] = shell.querySelectorAll('header > button');
   download.addEventListener('click', () => downloadWorkspaceFile(source.file, source.name));
   const body = shell.querySelector('.ai-file-preview-body');
-  if (/\.md$/i.test(source.path)) {
+  if (kind === 'markdown') {
     body.classList.add('ai-markdown', 'tag-note-preview-content');
     renderMarkdownInto(body, text || '*空文件*', markdownOptions());
   } else {
@@ -95,13 +128,47 @@ async function openTextPreview(source, markdownOptions) {
   return { element: shell, path: source.path, close };
 }
 
+async function openImagePreview(source) {
+  const shell = document.createElement('aside');
+  shell.className = 'tag-note-hover-preview note-window ai-workspace-preview ai-image-file-preview';
+  shell.setAttribute('role', 'dialog');
+  shell.setAttribute('aria-label', `图片预览：${source.name}`);
+  shell.innerHTML = `<header class="ai-file-preview-head" data-drag-handle><span data-kind="image">${workspaceFileIcon('image')}</span><div><strong></strong><small>图片 · 只读</small></div><button type="button" title="下载">${ICON.download}</button><button type="button" title="关闭">${ICON.close}</button></header><div class="ai-file-preview-body ai-image-preview-body"><img alt=""></div>`;
+  shell.querySelector('strong').textContent = source.name;
+  const [download, dismiss] = shell.querySelectorAll('header > button');
+  const image = shell.querySelector('img');
+  const detail = shell.querySelector('small');
+  const objectUrl = URL.createObjectURL(source.file);
+  image.alt = source.name;
+  image.src = objectUrl;
+  image.addEventListener('load', () => {
+    if (image.naturalWidth && image.naturalHeight) detail.textContent = `图片 · ${image.naturalWidth} × ${image.naturalHeight} · 只读`;
+  });
+  download.addEventListener('click', () => downloadWorkspaceFile(source.file, source.name));
+  document.body.append(shell);
+  applySavedRect(shell, TEXT_RECT_KEY, defaultTextRect());
+  const disconnectDrag = bindDrag(shell, shell.querySelector('[data-drag-handle]'), () => saveRect(shell, TEXT_RECT_KEY));
+  const observer = observeRect(shell, TEXT_RECT_KEY);
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    disconnectDrag();
+    observer?.disconnect();
+    URL.revokeObjectURL(objectUrl);
+    shell.remove();
+  };
+  dismiss.addEventListener('click', close);
+  return { element: shell, path: source.path, close };
+}
+
 async function openPdfPreview(source, onPdfField) {
   const { createPdfTextLayer, openPdfDocument } = await import('../ai/pdf.js');
   const shell = document.createElement('aside');
   shell.className = 'ai-pdf-preview';
   shell.setAttribute('role', 'dialog');
   shell.setAttribute('aria-label', `PDF 阅读器：${source.name}`);
-  shell.innerHTML = `<header class="ai-pdf-preview-head" data-drag-handle><span class="ai-pdf-preview-mark">${ICON.fileText}</span><div><strong></strong><small>PDF 阅读器</small></div><div class="ai-pdf-window-controls"><button type="button" data-window-smaller title="等比缩小窗口">${minusIcon()}</button><button type="button" data-window-larger title="等比放大窗口">${ICON.plus}</button><button type="button" data-download title="下载">${ICON.download}</button><button type="button" data-close title="关闭">${ICON.close}</button></div></header><div class="ai-pdf-toolbar"><button type="button" data-prev title="上一页">${leftIcon()}</button><form data-page-form><label>第 <input type="number" min="1" value="1" inputmode="numeric"> 页</label><span>/ <b data-page-count>—</b></span></form><button type="button" data-next title="下一页">${rightIcon()}</button><small data-page-status>正在加载…</small></div><div class="ai-pdf-stage"><div class="ai-pdf-loading">正在打开 PDF…</div><div class="ai-pdf-page" hidden><canvas></canvas><div class="textLayer"></div></div></div><span class="ai-pdf-resize-handle" aria-hidden="true"></span>`;
+  shell.innerHTML = `<header class="ai-pdf-preview-head" data-drag-handle><span class="ai-pdf-preview-mark" data-kind="pdf">${workspaceFileIcon('pdf')}</span><div><strong></strong><small>PDF 阅读器</small></div><div class="ai-pdf-window-controls"><button type="button" data-window-smaller title="等比缩小窗口">${minusIcon()}</button><button type="button" data-window-larger title="等比放大窗口">${ICON.plus}</button><button type="button" data-download title="下载">${ICON.download}</button><button type="button" data-close title="关闭">${ICON.close}</button></div></header><div class="ai-pdf-toolbar"><button type="button" data-prev title="上一页">${leftIcon()}</button><form data-page-form><label>第 <input type="number" min="1" value="1" inputmode="numeric"> 页</label><span>/ <b data-page-count>—</b></span></form><button type="button" data-next title="下一页">${rightIcon()}</button><small data-page-status>正在加载…</small></div><div class="ai-pdf-stage"><div class="ai-pdf-loading">正在打开 PDF…</div><div class="ai-pdf-page" hidden><canvas></canvas><div class="textLayer"></div></div></div><span class="ai-pdf-resize-handle" aria-hidden="true"></span>`;
   shell.querySelector('strong').textContent = source.name;
   document.body.append(shell);
   applySavedRect(shell, PDF_RECT_KEY, defaultPdfRect());
@@ -424,6 +491,10 @@ async function writePlainText(text) {
 function clamp(value, min, max) {
   const number = Number(value);
   return Math.max(min, Math.min(Math.max(min, max), Number.isFinite(number) ? number : min));
+}
+
+function fileGlyph(content) {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 2.8h7l4 4v14.4h-11zM13.5 2.8v4h4"/>${content}</svg>`;
 }
 
 function minusIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>'; }

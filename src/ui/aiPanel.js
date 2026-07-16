@@ -27,7 +27,13 @@ import { serverApi } from '../cloud/api.js';
 import { sessionSnapshot } from '../cloud/session.js';
 import { saveCloudConversations, saveCloudProviders } from '../cloud/aiState.js';
 import { FILE_ACCESS_MODES, fileAccessLabel, normalizeFileAccessMode } from '../ai/fileAccess.js';
-import { createWorkspacePreviewController, downloadWorkspaceFile, isPreviewableWorkspaceFile } from './workspacePreview.js';
+import {
+  createWorkspacePreviewController,
+  downloadWorkspaceFile,
+  isPreviewableWorkspaceFile,
+  workspaceFileIcon,
+  workspaceFileKind,
+} from './workspacePreview.js';
 
 const SETTINGS_KEY = 'paper-graph-ai-settings';
 const KEY_SESSION = 'paper-graph-ai-api-key';
@@ -129,7 +135,7 @@ export function buildAiPanel(ctx) {
           <button class="ai-send" data-send title="发送">${sendIcon()}</button>
         </div>
       </div>
-      <input data-file type="file" multiple hidden accept=".pdf,.txt,.md,.tex,.json,.csv,.js,.ts,.html,.css,application/pdf,text/*,application/json">
+      <input data-file type="file" multiple hidden accept=".pdf,.txt,.md,.tex,.json,.csv,.js,.ts,.html,.css,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.avif,application/pdf,text/*,image/*,application/json">
       <small class="ai-disclaimer">文件仅属于当前对话并保存在本机浏览器中。</small>
     </footer>`;
 
@@ -1649,8 +1655,9 @@ export function buildAiPanel(ctx) {
       for (const file of files) {
         const row = document.createElement('div');
         const folder = file.path.includes('/') ? file.path.slice(0, file.path.lastIndexOf('/')) : '工作区根目录';
+        const fileKind = workspaceFileKind(file);
         row.title = file.path;
-        row.innerHTML = `<span class="ai-workspace-file-icon">${fileIcon()}</span><button type="button" class="ai-workspace-file-meta"><strong>${escapeHtml(file.name || file.path.split('/').pop())}</strong><small>${escapeHtml(folder)} · ${formatBytes(file.size)}</small></button><span class="ai-workspace-file-actions"></span>`;
+        row.innerHTML = `<span class="ai-workspace-file-icon" data-kind="${fileKind}">${workspaceFileIcon(fileKind)}</span><button type="button" class="ai-workspace-file-meta"><strong>${escapeHtml(file.name || file.path.split('/').pop())}</strong><small>${escapeHtml(folder)} · ${formatBytes(file.size)}</small></button><span class="ai-workspace-file-actions"></span>`;
         const actions = row.querySelector('.ai-workspace-file-actions');
         const open = () => openConversationFile(file);
         const meta = row.querySelector('.ai-workspace-file-meta');

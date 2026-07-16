@@ -113,6 +113,13 @@ function guessType(name) {
   const lower = String(name).toLowerCase();
   if (lower.endsWith('.pdf')) return 'application/pdf';
   if (lower.endsWith('.json')) return 'application/json';
+  if (lower.endsWith('.svg')) return 'image/svg+xml';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (/\.jpe?g$/i.test(lower)) return 'image/jpeg';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  if (lower.endsWith('.avif')) return 'image/avif';
+  if (lower.endsWith('.bmp')) return 'image/bmp';
   if (/\.(md|txt|tex|csv|js|ts|css|html)$/i.test(lower)) return 'text/plain';
   return 'application/octet-stream';
 }

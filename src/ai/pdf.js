@@ -1,7 +1,7 @@
 import * as pdfjs from 'pdfjs-dist/build/pdf.mjs';
-import workerSrc from 'pdfjs-dist/build/pdf.worker.mjs?url';
+import PdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?worker';
 
-pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
+pdfjs.GlobalWorkerOptions.workerPort = new PdfWorker();
 
 export async function openPdfDocument(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());

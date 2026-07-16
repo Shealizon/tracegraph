@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createWorkspacePreviewController, isPreviewableWorkspaceFile } from '../src/ui/workspacePreview.js';
+import {
+  createWorkspacePreviewController,
+  isPreviewableWorkspaceFile,
+  workspaceFileIcon,
+  workspaceFileKind,
+} from '../src/ui/workspacePreview.js';
 
 const pdf = vi.hoisted(() => ({
   destroy: vi.fn(),
@@ -29,6 +34,8 @@ vi.mock('../src/ai/pdf.js', () => ({
 
 beforeEach(() => {
   HTMLCanvasElement.prototype.getContext = vi.fn(() => ({}));
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, writable: true, value: vi.fn(() => 'blob:workspace-preview') });
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: vi.fn() });
 });
 
 afterEach(() => {
@@ -41,7 +48,19 @@ describe('workspace file previews', () => {
     expect(isPreviewableWorkspaceFile({ path: 'paper.pdf' })).toBe(true);
     expect(isPreviewableWorkspaceFile({ path: 'notes/readme.md' })).toBe(true);
     expect(isPreviewableWorkspaceFile({ path: 'notes/plain.txt' })).toBe(true);
+    expect(isPreviewableWorkspaceFile({ path: 'figures/result.webp' })).toBe(true);
+    expect(isPreviewableWorkspaceFile({ name: 'scan', type: 'image/png' })).toBe(true);
     expect(isPreviewableWorkspaceFile({ path: 'data.json' })).toBe(false);
+  });
+
+  it('assigns distinct icons to common file types', () => {
+    expect(workspaceFileKind({ path: 'paper.pdf' })).toBe('pdf');
+    expect(workspaceFileKind({ path: 'README.md' })).toBe('markdown');
+    expect(workspaceFileKind({ path: 'figure.png' })).toBe('image');
+    expect(workspaceFileKind({ path: 'table.xlsx' })).toBe('spreadsheet');
+    expect(workspaceFileKind({ path: 'source.ts' })).toBe('code');
+    expect(workspaceFileIcon('pdf')).not.toBe(workspaceFileIcon('image'));
+    expect(workspaceFileIcon('markdown')).toContain('<svg');
   });
 
   it('opens TXT in a read-only note-style window', async () => {
@@ -56,6 +75,21 @@ describe('workspace file previews', () => {
     expect(preview?.querySelector('textarea')).toBeNull();
     controller.close();
     expect(document.querySelector('.ai-text-file-preview')).toBeNull();
+  });
+
+  it('opens image files in a read-only image window and releases the object URL', async () => {
+    const controller = createWorkspacePreviewController();
+    const file = new File(['image'], 'figure.png', { type: 'image/png' });
+    await controller.open({ file, path: 'uploads/figure.png', name: 'figure.png', conversationId: 'chat-1' });
+
+    const preview = document.querySelector('.ai-image-file-preview');
+    expect(preview?.getAttribute('role')).toBe('dialog');
+    expect(preview?.textContent).toContain('图片 · 只读');
+    expect(preview?.querySelector('img')?.src).toBe('blob:workspace-preview');
+    expect(preview?.querySelector('[data-kind="image"]')).toBeTruthy();
+    controller.close();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:workspace-preview');
+    expect(document.querySelector('.ai-image-file-preview')).toBeNull();
   });
 
   it('opens a paged PDF reader with text layer and window controls', async () => {
