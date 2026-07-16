@@ -2,6 +2,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { formatUnresolvedFileReference, renderMarkdownInto, workspacePathFromHref } from '../src/render/markdown.js';
+import { fileFragmentReference, fileFragmentReferenceMarkdown } from '../src/data/fileReference.js';
 
 describe('AI Markdown references', () => {
   it('keeps confirmed graph labels clickable', () => {
@@ -60,5 +61,24 @@ describe('AI Markdown references', () => {
     expect(onWorkspaceFile).toHaveBeenCalledTimes(2);
     expect(workspacePathFromHref('https://example.com/file.md')).toBe('');
     expect(workspacePathFromHref('../outside.md')).toBe('');
+  });
+
+  it('opens stable file-fragment links through the workspace reference callback', () => {
+    const root = document.createElement('div');
+    const onFileFragmentReference = vi.fn();
+    const reference = fileFragmentReference({
+      path: 'uploads/paper.pdf',
+      name: 'paper.pdf',
+      format: 'pdf',
+      page: 4,
+      text: 'Sharp estimate',
+      rects: [{ x: 0.1, y: 0.2, width: 0.3, height: 0.04 }],
+    });
+    renderMarkdownInto(root, fileFragmentReferenceMarkdown(reference), { onFileFragmentReference });
+    const anchor = root.querySelector('.file-fragment-reference');
+    anchor.click();
+    expect(onFileFragmentReference).toHaveBeenCalledWith(expect.objectContaining({
+      path: 'uploads/paper.pdf', format: 'pdf', page: 4, text: 'Sharp estimate',
+    }), anchor);
   });
 });

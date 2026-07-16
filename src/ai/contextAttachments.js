@@ -1,4 +1,10 @@
 import { graphReferenceHref, graphReferenceMarkdown, graphReferenceToMember, noteReferenceFromNote, resolveTagNoteReference, tagReferenceFromInstance } from '../data/graphReference.js';
+import {
+  fileFragmentReference,
+  fileFragmentReferenceHref,
+  fileFragmentReferenceMarkdown,
+  isFileFragmentReference,
+} from '../data/fileReference.js';
 import { notePointerFromMember, resolveNotePointer } from '../data/notes.js';
 import { memberInstanceId, memberNode, memberReferenceId, memberType } from '../data/schema.js';
 
@@ -132,41 +138,29 @@ export function graphFileAttachment(file) {
 }
 
 export function pdfFieldAttachment({ path, name, page, text, rects = [], conversationId = '' } = {}) {
-  const selected = String(text || '').trim().slice(0, 6000);
-  const pageNumber = Math.max(1, Math.round(Number(page) || 1));
-  if (!path || !selected) return null;
-  const position = (rects || []).slice(0, 20).map((rect) => ({
-    x: roundUnit(rect.x),
-    y: roundUnit(rect.y),
-    width: roundUnit(rect.width),
-    height: roundUnit(rect.height),
-  }));
-  return {
-    id: `pdf-field:${path}:${pageNumber}:${shortHash(`${selected}:${JSON.stringify(position)}`)}`,
-    kind: 'pdf-field',
-    path,
-    fileName: name || String(path).split('/').pop(),
-    page: pageNumber,
-    text: selected,
-    rects: position,
-    conversationId,
-    label: `${name || String(path).split('/').pop()} · p. ${pageNumber}`,
-  };
+  const reference = fileFragmentReference({ path, name, format: 'pdf', page, text, rects, conversationId });
+  return fileFragmentAttachment(reference, conversationId);
 }
 
-export function fileExcerptAttachment({ path, name, text, before = '', after = '', conversationId = '' } = {}) {
-  const selected = String(text || '').trim().slice(0, 6000);
-  if (!path || !selected) return null;
+export function fileExcerptAttachment({
+  path, name, format = '', text, start = null, end = null, before = '', after = '', conversationId = '',
+} = {}) {
+  const reference = fileFragmentReference({ path, name, format, text, start, end, before, after, conversationId });
+  return fileFragmentAttachment(reference, conversationId);
+}
+
+export function fileFragmentAttachment(reference, conversationId = '') {
+  if (!isFileFragmentReference(reference)) return null;
+  const scopedReference = { ...reference, conversationId: conversationId || reference.conversationId || '' };
   return {
-    id: `file-excerpt:${path}:${shortHash(`${selected}:${before}:${after}`)}`,
-    kind: 'file-excerpt',
-    path,
-    fileName: name || String(path).split('/').pop(),
-    text: selected,
-    before: String(before || '').slice(-320),
-    after: String(after || '').slice(0, 480),
-    conversationId,
-    label: `${name || String(path).split('/').pop()} · 选中片段`,
+    id: `file-fragment:${reference.path}:${shortHash(fileFragmentReferenceHref(scopedReference))}`,
+    ...scopedReference,
+    kind: 'file-fragment',
+    label: scopedReference.format === 'pdf'
+      ? `${scopedReference.fileName || scopedReference.path} · p. ${scopedReference.page}`
+      : `${scopedReference.fileName || scopedReference.path} · 选中片段`,
+    referenceHref: fileFragmentReferenceHref(scopedReference),
+    referenceMarkdown: fileFragmentReferenceMarkdown(scopedReference),
   };
 }
 
@@ -200,8 +194,8 @@ export function contextPrompt(text, attachments, model) {
   if (!blocks.length) return String(text || '');
   const graphSelectionScoped = (attachments || []).some((item) => item.kind === 'graph-selection' || (item.kind === 'graph-tag' && item.memberType === 'span'))
     && !(attachments || []).some((item) => item.kind === 'graph-node');
-  const pdfFieldScoped = (attachments || []).some((item) => item.kind === 'pdf-field');
-  const fileExcerptScoped = (attachments || []).some((item) => item.kind === 'file-excerpt');
+  const pdfFieldScoped = (attachments || []).some((item) => item.kind === 'pdf-field' || (item.kind === 'file-fragment' && item.format === 'pdf'));
+  const fileExcerptScoped = (attachments || []).some((item) => item.kind === 'file-excerpt' || (item.kind === 'file-fragment' && item.format !== 'pdf'));
   const quoteScoped = (attachments || []).some((item) => item.kind === 'ai-quote');
   const scopeRules = `${graphSelectionScoped ? `
 <selection_scope priority="high">
@@ -265,6 +259,14 @@ function describeContext(item, model) {
   if (item.kind === 'file-excerpt') {
     return `[文件片段引用]\n文件：${item.fileName || item.path}\n路径：${item.path}\n<selected_text>\n${item.text}\n</selected_text>\n<disambiguation_context>\n前文：${item.before || ''}\n后文：${item.after || ''}\n</disambiguation_context>`;
   }
+  if (item.kind === 'file-fragment') {
+    const reference = item.referenceMarkdown || fileFragmentReferenceMarkdown(item);
+    if (item.format === 'pdf') {
+      const positions = (item.rects || []).map((rect) => `(${rect.x}, ${rect.y}, ${rect.width}, ${rect.height})`).join('；');
+      return `[文件片段引用]\n文件：${item.fileName || item.path}\n路径：${item.path}\n页码：${item.page}\n引用链接：${reference}\n页面归一化位置 (x, y, width, height)：${positions || '未记录'}\n<selected_text>\n${item.text}\n</selected_text>`;
+    }
+    return `[文件片段引用]\n文件：${item.fileName || item.path}\n路径：${item.path}\n引用链接：${reference}\n字符范围：${item.start ?? '未记录'}-${item.end ?? '未记录'}\n<selected_text>\n${item.text}\n</selected_text>\n<disambiguation_context>\n前文：${item.before || ''}\n后文：${item.after || ''}\n</disambiguation_context>`;
+  }
   if (item.kind === 'ai-quote') {
     return `[AI 对话引用片段]\n<quoted_text>\n${item.text}\n</quoted_text>\n来源：${item.conversationTitle || '当前对话'}第 ${Number(item.messageIndex) + 1} 条消息\n<disambiguation_context>\n前文：${item.before || ''}\n后文：${item.after || ''}\n</disambiguation_context>`;
   }
@@ -302,7 +304,6 @@ function describeContext(item, model) {
 function nodeNumber(node) { return String(node.number || node.tag || node.id); }
 function clamp(value, min, max) { const n = Number(value); return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : min; }
 function round(value) { return Number.isFinite(value) ? Math.round(value * 10) / 10 : '未知'; }
-function roundUnit(value) { const number = Number(value); return Number.isFinite(number) ? Math.max(0, Math.min(1, Math.round(number * 10000) / 10000)) : 0; }
 function shortHash(value) {
   let hash = 2166136261;
   for (const char of String(value)) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);

@@ -563,8 +563,8 @@ body {
 .tag-note-preview { overflow: auto; font-family: var(--font); }
 .tag-note-preview-title { padding: 15px 20px 12px; border-bottom: 1px solid var(--line-soft); color: var(--text); font: 650 17px/1.4 var(--font); }
 .tag-note-preview-content { padding: 17px 20px 24px; }
-.graph-content-reference { color: var(--accent); text-decoration: none; border-bottom: 1px dashed currentColor; cursor: pointer; }
-.graph-content-reference:hover { background: var(--accent-bg); }
+.graph-content-reference, .file-fragment-reference { color: var(--accent); text-decoration: none; border-bottom: 1px dashed currentColor; cursor: pointer; }
+.graph-content-reference:hover, .file-fragment-reference:hover { background: var(--accent-bg); }
 
 @media (max-width: 760px) {
   .tag-note-editor { max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); }

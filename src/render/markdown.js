@@ -2,12 +2,14 @@ import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import renderMathInElement from 'katex/contrib/auto-render';
 import { parseGraphReferenceHref } from '../data/graphReference.js';
+import { parseFileFragmentReferenceHref } from '../data/fileReference.js';
 
 marked.setOptions({ gfm: true, breaks: true });
 
 export function renderMarkdownInto(element, markdown, {
   macros = {}, sources = [], graphLabels = null, onGraphNavigate = null,
-  onGraphHover = null, onGraphLeave = null, onGraphReference = null, onWorkspaceFile = null,
+  onGraphHover = null, onGraphLeave = null, onGraphReference = null,
+  onFileFragmentReference = null, onWorkspaceFile = null,
 } = {}) {
   // CommonMark treats backslashes before punctuation as escapes.  Passing the
   // model output straight through marked would therefore turn `\[...\]` into
@@ -20,8 +22,17 @@ export function renderMarkdownInto(element, markdown, {
   restoreMarkdownMath(element, protectedMath.expressions);
 
   for (const anchor of element.querySelectorAll('a[href]')) {
+    const fileReference = parseFileFragmentReferenceHref(anchor.getAttribute('href'));
     const reference = parseGraphReferenceHref(anchor.getAttribute('href'));
-    if (reference) {
+    if (fileReference) {
+      anchor.removeAttribute('target');
+      anchor.removeAttribute('rel');
+      anchor.classList.add('file-fragment-reference');
+      anchor.addEventListener('click', (event) => {
+        event.preventDefault();
+        onFileFragmentReference?.(fileReference, anchor);
+      });
+    } else if (reference) {
       anchor.removeAttribute('target');
       anchor.removeAttribute('rel');
       anchor.classList.add('graph-content-reference');

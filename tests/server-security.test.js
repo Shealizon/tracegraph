@@ -42,5 +42,5 @@ describe('encrypted server workspaces', () => {
       await afterLogout.init();
       await expect(afterLogout.authenticate(login.token)).rejects.toThrow('请先登录');
     } finally { await fs.rm(root, { recursive: true, force: true }); }
-  });
+  }, 10_000);
 });

@@ -12,6 +12,17 @@ const pdf = vi.hoisted(() => ({
   render: vi.fn(() => ({ promise: Promise.resolve(), cancel: vi.fn() })),
 }));
 
+function touchPointer(type, pointerId, clientX, clientY) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperties(event, {
+    pointerType: { value: 'touch' },
+    pointerId: { value: pointerId },
+    clientX: { value: clientX },
+    clientY: { value: clientY },
+  });
+  return event;
+}
+
 vi.mock('../src/ai/pdf.js', () => ({
   openPdfDocument: vi.fn(async () => ({
     numPages: 3,
@@ -84,7 +95,7 @@ describe('workspace file previews', () => {
     expect(preview?.textContent).toContain('纯文本 · 只读');
     expect(preview?.querySelector('pre')?.textContent).toBe('line one\nline two');
     expect(preview?.querySelector('textarea')).toBeNull();
-    expect(document.querySelector('.ai-file-selection-actions [data-text-reference]')?.textContent).toContain('片段引用');
+    expect(document.querySelector('.ai-file-selection-actions [data-copy-reference]')?.textContent).toContain('复制引用');
     preview.querySelector('[title="附到 AI"]').click();
     expect(onAttachFile).toHaveBeenCalledWith(expect.objectContaining({
       path: 'uploads/notes.txt', name: 'notes.txt', conversationId: 'chat-1',
@@ -97,7 +108,7 @@ describe('workspace file previews', () => {
     window.getSelection().addRange(range);
     preview.querySelector('.ai-file-preview-body').dispatchEvent(new Event('pointerup', { bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
-    document.querySelector('.ai-file-selection-actions [data-text-reference]').click();
+    document.querySelector('.ai-file-selection-actions [data-attach-fragment]').click();
     expect(onTextExcerpt).toHaveBeenCalledWith(expect.objectContaining({
       path: 'uploads/notes.txt',
       text: 'line one',
@@ -122,6 +133,28 @@ describe('workspace file previews', () => {
       path: 'notes/result.md',
       text: '# Result\n\nImportant.',
     }));
+    controller.close();
+  });
+
+  it('reopens a TXT fragment and scrolls its highlighted quote into view', async () => {
+    const controller = createWorkspacePreviewController();
+    const file = new File(['before target phrase after'], 'notes.txt', { type: 'text/plain' });
+    await controller.open({
+      file,
+      path: 'uploads/notes.txt',
+      name: 'notes.txt',
+      conversationId: 'chat-1',
+      fragment: {
+        kind: 'file-fragment-reference',
+        type: 'file-fragment',
+        path: 'uploads/notes.txt',
+        format: 'text',
+        text: 'target phrase',
+        start: 7,
+        end: 20,
+      },
+    });
+    expect(document.querySelector('.file-fragment-highlight')?.textContent).toBe('target phrase');
     controller.close();
   });
 
@@ -162,6 +195,8 @@ describe('workspace file previews', () => {
     const preview = document.querySelector('.ai-pdf-preview');
     expect(preview?.querySelector('[data-page-count]')?.textContent).toBe('3');
     expect(preview?.querySelector('.textLayer')?.textContent).toContain('Selectable PDF text');
+    expect(preview?.querySelectorAll('.ai-pdf-page')).toHaveLength(3);
+    expect(preview?.querySelector('.ai-pdf-pages')).toBeTruthy();
     expect(preview?.querySelector('[data-window-smaller]')).toBeNull();
     expect(preview?.querySelector('[data-window-larger]')).toBeNull();
     expect(preview?.querySelector('.ai-pdf-resize-handle')).toBeNull();
@@ -179,13 +214,50 @@ describe('workspace file previews', () => {
     expect(preview.style.width).toBe('550px');
 
     const wheel = new WheelEvent('wheel', { ctrlKey: true, deltaY: -120, clientX: 40, clientY: 40, bubbles: true, cancelable: true });
-    preview.querySelector('.ai-pdf-stage').dispatchEvent(wheel);
+    const pdfStage = preview.querySelector('.ai-pdf-stage');
+    pdfStage.dispatchEvent(wheel);
     expect(wheel.defaultPrevented).toBe(true);
     expect(preview.querySelector('[data-page-status]').textContent).toMatch(/1[2-9]\d%/);
+
+    pdfStage.dispatchEvent(touchPointer('pointerdown', 1, 30, 80));
+    pdfStage.dispatchEvent(touchPointer('pointerdown', 2, 130, 80));
+    const pinchMove = touchPointer('pointermove', 2, 180, 80);
+    pdfStage.dispatchEvent(pinchMove);
+    expect(pinchMove.defaultPrevented).toBe(true);
+    expect(preview.querySelector('.ai-pdf-pages').style.transform).toContain('scale(1.5)');
+    pdfStage.dispatchEvent(touchPointer('pointerup', 2, 180, 80));
+    await vi.waitFor(() => expect(preview.querySelector('.ai-pdf-pages').style.transform).toBe(''));
 
     preview.querySelector('[data-next]').click();
     await vi.waitFor(() => expect(preview.querySelector('[data-page-status]').textContent).toContain('第 2 页'));
     controller.close();
     expect(pdf.destroy).toHaveBeenCalled();
+  });
+
+  it('opens a PDF fragment on its page and paints the saved highlight rectangles', async () => {
+    const controller = createWorkspacePreviewController();
+    const file = new File(['%PDF'], 'paper.pdf', { type: 'application/pdf' });
+    await controller.open({
+      file,
+      path: 'uploads/paper.pdf',
+      name: 'paper.pdf',
+      conversationId: 'chat-1',
+      fragment: {
+        kind: 'file-fragment-reference',
+        type: 'file-fragment',
+        path: 'uploads/paper.pdf',
+        format: 'pdf',
+        page: 2,
+        text: 'Selected theorem',
+        rects: [{ x: 0.1, y: 0.2, width: 0.4, height: 0.05 }],
+      },
+    });
+    const preview = document.querySelector('.ai-pdf-preview');
+    expect(preview.querySelector('[data-page-form] input').value).toBe('2');
+    const page = preview.querySelector('.ai-pdf-page[data-page="2"]');
+    const highlight = page.querySelector('.ai-pdf-fragment-highlight');
+    expect(highlight?.style.left).toBe('10%');
+    expect(highlight?.style.top).toBe('20%');
+    controller.close();
   });
 });

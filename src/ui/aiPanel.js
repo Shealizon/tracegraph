@@ -5,9 +5,10 @@ import { compactConversation as compactModelContext, COMPACTION_SYSTEM_PROMPT, D
 import { contextUsage, estimateContextTokens, formatTokenCount, resolveContextWindow } from '../ai/contextBudget.js';
 import { buildGraphContext } from '../ai/graphContext.js';
 import {
-  aiQuoteAttachment, appendUniqueContext, contextPrompt, fileExcerptAttachment, graphFileAttachment, graphMemberAttachment, graphNodeAttachment, graphNoteAttachment, graphReferenceAttachment, graphSelectionAttachment, graphTagAttachment, pdfFieldAttachment,
+  aiQuoteAttachment, appendUniqueContext, contextPrompt, fileExcerptAttachment, fileFragmentAttachment, graphFileAttachment, graphMemberAttachment, graphNodeAttachment, graphNoteAttachment, graphReferenceAttachment, graphSelectionAttachment, graphTagAttachment, pdfFieldAttachment,
   mentionQueryAt, replaceMention, searchMentionCandidates,
 } from '../ai/contextAttachments.js';
+import { isFileFragmentReference } from '../data/fileReference.js';
 import { appendReasoningBlock, appendTextBlock, mergeToolSources, messageBlocks, serializeMessageDebug, upsertToolBlock } from '../ai/messageBlocks.js';
 import { renderMarkdownInto } from '../render/markdown.js';
 import { confirmDialog, toast } from './feedback.js';
@@ -247,7 +248,9 @@ export function buildAiPanel(ctx) {
   });
   bindGraphReferencePaste(input, {
     insertMarkdown: false,
-    onReference: (reference) => addContextAttachment(graphReferenceAttachment(ctx.model, reference, ctx.graph?.getTags?.() || [], ctx.getNotes?.() || [])),
+    onReference: (reference) => addContextAttachment(isFileFragmentReference(reference)
+      ? fileFragmentAttachment(reference, activeConversation(conversationState).id)
+      : graphReferenceAttachment(ctx.model, reference, ctx.graph?.getTags?.() || [], ctx.getNotes?.() || [])),
   });
   input.addEventListener('click', updateMentionMenu);
   input.addEventListener('blur', () => setTimeout(() => closeMentionMenu(), 140));
@@ -1213,7 +1216,7 @@ export function buildAiPanel(ctx) {
       const chip = document.createElement('span');
       chip.className = `ai-attachment-chip ai-context-chip is-${attachment.kind}`;
       chip.title = contextAttachmentTitle(attachment);
-      chip.innerHTML = `${['file-reference', 'pdf-field', 'file-excerpt'].includes(attachment.kind) ? fileIcon() : attachment.kind === 'ai-quote' ? quoteIcon() : graphContextIcon()}<span>${escapeHtml(attachment.label || attachment.nodeId || attachment.path)}</span><small>${attachment.kind === 'graph-tag-note' ? '笔记' : attachment.kind === 'graph-tag' ? '标签' : ['graph-selection', 'file-excerpt'].includes(attachment.kind) ? '片段' : attachment.kind === 'pdf-field' ? 'PDF 字段' : attachment.kind === 'graph-position' ? '位置' : attachment.kind === 'graph-node' ? '节点' : attachment.kind === 'ai-quote' ? '引用' : '文件'}</small>`;
+      chip.innerHTML = `${['file-reference', 'pdf-field', 'file-excerpt', 'file-fragment'].includes(attachment.kind) ? fileIcon() : attachment.kind === 'ai-quote' ? quoteIcon() : graphContextIcon()}<span>${escapeHtml(attachment.label || attachment.nodeId || attachment.path)}</span><small>${attachment.kind === 'graph-tag-note' ? '笔记' : attachment.kind === 'graph-tag' ? '标签' : ['graph-selection', 'file-excerpt', 'file-fragment'].includes(attachment.kind) ? '片段' : attachment.kind === 'pdf-field' ? 'PDF 字段' : attachment.kind === 'graph-position' ? '位置' : attachment.kind === 'graph-node' ? '节点' : attachment.kind === 'ai-quote' ? '引用' : '文件'}</small>`;
       const remove = button('ai-attachment-remove', '', `移除 ${attachment.label || '上下文'}`);
       remove.innerHTML = closeIcon();
       remove.addEventListener('click', () => removeContextAttachment(attachment.id));
@@ -1288,6 +1291,7 @@ export function buildAiPanel(ctx) {
     if (attachment.kind === 'graph-selection' || attachment.kind === 'graph-tag') return `${attachment.label}\n${attachment.text || ''}`;
     if (attachment.kind === 'pdf-field') return `${attachment.label}\n${attachment.text || ''}`;
     if (attachment.kind === 'file-excerpt') return `${attachment.label}\n${attachment.text || ''}`;
+    if (attachment.kind === 'file-fragment') return `${attachment.label}\n${attachment.text || ''}`;
     if (attachment.kind === 'ai-quote') return `${attachment.label}\n${attachment.text || ''}`;
     return attachment.label || attachment.name || attachment.nodeId || attachment.path || '上下文';
   }
@@ -1786,15 +1790,27 @@ export function buildAiPanel(ctx) {
     }
   }
 
-  async function openConversationFile(metadata) {
+  async function openConversationFile(metadata, { fragment = null } = {}) {
     try {
       const conversation = activeConversation(conversationState);
-      const file = await workspace.readFile(metadata.path);
+      const conversationId = fragment?.conversationId || metadata.conversationId || conversation.id;
+      const scope = `${projectId}--${conversationId}`;
+      const targetWorkspace = conversationId === conversation.id ? workspace : createBrowserWorkspace(scope);
+      let file;
+      try {
+        file = await targetWorkspace.readFile(metadata.path);
+      } catch (localError) {
+        if (!sessionSnapshot().user) throw localError;
+        const remote = (await serverApi.getFile(scope, metadata.path)).file;
+        await targetWorkspace.writeFile(metadata.path, cloudFileBlob(remote));
+        file = await targetWorkspace.readFile(metadata.path);
+      }
       await workspacePreview.open({
         file,
         path: metadata.path,
         name: metadata.name || metadata.path.split('/').pop(),
-        conversationId: conversation.id,
+        conversationId,
+        fragment,
       });
       closeSubpanel();
     } catch (error) {
@@ -1963,6 +1979,7 @@ export function buildAiPanel(ctx) {
         const member = graphReferenceToMember(reference, tags, notes);
         if (member) ctx.jumpToMember?.(member);
       },
+      onFileFragmentReference: (reference) => openFileFragment(reference),
       onWorkspaceFile: (filePath) => openConversationFile({
         path: filePath,
         name: filePath.split('/').at(-1),
@@ -2165,6 +2182,15 @@ export function buildAiPanel(ctx) {
       }
     }
   }
+
+  function openFileFragment(reference) {
+    if (!isFileFragmentReference(reference)) return false;
+    openConversationFile({
+      path: reference.path,
+      name: reference.fileName || reference.path.split('/').pop(),
+    }, { fragment: reference });
+    return true;
+  }
   async function refreshCompletedCloudWorkspace(conversation, task) {
     try {
       const scope = `${projectId}--${conversation.id}`;
@@ -2196,6 +2222,7 @@ export function buildAiPanel(ctx) {
     attachTag(tag, member) { return addContextAttachment(graphTagAttachment(ctx.model, tag, member)); },
     attachNote(note) { return addContextAttachment(graphNoteAttachment(ctx.model, note, ctx.graph?.getTags?.() || [])); },
     attachTagNote(tag, member, note) { return addContextAttachment(graphNoteAttachment(ctx.model, note, ctx.graph?.getTags?.() || [tag])); },
+    openFileReference(reference) { return openFileFragment(reference); },
   };
   panel._aiPanelApi = api;
   syncActiveWorkspaceFiles();
@@ -2287,16 +2314,20 @@ export async function reconcileCloudWorkspaceChanges(workspace, scope, changes, 
     .map(normalizeCloudWorkspacePath).filter(Boolean))];
   for (const filePath of pullPaths) {
     const full = (await api.getFile(scope, filePath)).file;
-    const binary = atob(full.data || '');
-    const bytes = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-    await workspace.writeFile(filePath, new Blob([bytes], { type: full.type || 'application/octet-stream' }));
+    await workspace.writeFile(filePath, cloudFileBlob(full));
   }
   return { pulled: pullPaths, deleted: [...new Set((changes?.deleted || []).map(normalizeCloudWorkspacePath).filter(Boolean))] };
 }
 
 function normalizeCloudWorkspacePath(filePath) {
   return String(filePath || '').replaceAll('\\', '/').replace(/^\/+/, '');
+}
+
+function cloudFileBlob(file) {
+  const binary = atob(file?.data || '');
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return new Blob([bytes], { type: file?.type || 'application/octet-stream' });
 }
 
 async function uploadCloudFiles(workspace, attachments, scope) {

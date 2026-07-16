@@ -157,6 +157,7 @@ export function createNoteWindowController(ctx) {
         const member = graphReferenceToMember(reference, ctx.graph?.getTags?.() || [], ctx.getNotes?.() || []);
         if (member) ctx.jumpToMember?.(member);
       },
+      onFileFragmentReference: (reference) => ctx.aiPanel?.openFileReference?.(reference),
     });
     preview = panel;
     return panel;

@@ -111,9 +111,10 @@ describe('AI runtime helpers', () => {
       conversationId: 'chat-1',
     });
     const prompt = contextPrompt('解释这个字段', [attachment], null);
-    expect(attachment).toMatchObject({ kind: 'pdf-field', page: 7, conversationId: 'chat-1' });
-    expect(prompt).toContain('[PDF 字段引用]');
+    expect(attachment).toMatchObject({ kind: 'file-fragment', format: 'pdf', page: 7, conversationId: 'chat-1' });
+    expect(prompt).toContain('[文件片段引用]');
     expect(prompt).toContain('页码：7');
+    expect(prompt).toContain('引用链接：[');
     expect(prompt).toContain('<selected_text>\nSelected theorem statement\n</selected_text>');
     expect(prompt).toContain('PDF 字段引用中的 selected_text 是本次问题的主要解释对象');
   });
@@ -128,10 +129,11 @@ describe('AI runtime helpers', () => {
       conversationId: 'chat-1',
     });
     const prompt = contextPrompt('解释这个片段', [attachment], null);
-    expect(attachment).toMatchObject({ kind: 'file-excerpt', path: 'notes/readme.md', conversationId: 'chat-1' });
+    expect(attachment).toMatchObject({ kind: 'file-fragment', format: 'markdown', path: 'notes/readme.md', conversationId: 'chat-1' });
     expect(prompt).toContain('[文件片段引用]');
     expect(prompt).toContain('<selected_text>\nSelected paragraph\n</selected_text>');
     expect(prompt).toContain('前文：Earlier context.');
+    expect(prompt).toContain('引用链接：[');
     expect(prompt).toContain('不要再次读取完整文件');
   });
 

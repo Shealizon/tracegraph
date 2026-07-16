@@ -1,6 +1,8 @@
 import { renderMarkdownInto } from '../render/markdown.js';
+import { fileFragmentReference } from '../data/fileReference.js';
 import { ICON } from './icons.js';
 import { toast } from './feedback.js';
+import { writeGraphReference } from './graphClipboard.js';
 
 const PDF_RECT_KEY = 'paper-graph:pdf-preview-rect';
 const TEXT_RECT_KEY = 'paper-graph:text-preview-rect';
@@ -70,7 +72,7 @@ export function createWorkspacePreviewController({
     active = null;
   }
 
-  async function open({ file, path, name, conversationId }) {
+  async function open({ file, path, name, conversationId, fragment = null }) {
     close();
     const version = requestVersion;
     const source = {
@@ -78,10 +80,11 @@ export function createWorkspacePreviewController({
       path,
       name: name || file?.name || String(path).split('/').pop(),
       conversationId,
+      fragment,
     };
     let next;
     const kind = workspaceFileKind({ path, name: source.name, type: file?.type });
-    if (kind === 'pdf') next = await openPdfPreview(source, { onAttachFile, onPdfField });
+    if (kind === 'pdf') next = await openContinuousPdfPreview(source, { onAttachFile, onPdfField });
     else if (kind === 'markdown' || kind === 'text') {
       next = await openTextPreview(source, {
         markdownOptions, kind, onAttachFile, onAddMarkdownToNotes, onTextExcerpt,
@@ -135,6 +138,7 @@ async function openTextPreview(source, {
     body.append(pre);
   }
   document.body.append(shell);
+  if (source.fragment) highlightTextFragment(body, source.fragment);
   const selection = bindTextSelectionActions({ shell, body, source, onTextExcerpt });
   applySavedRect(shell, TEXT_RECT_KEY, defaultTextRect());
   const disconnectDrag = bindDrag(shell, shell.querySelector('[data-drag-handle]'), () => saveRect(shell, TEXT_RECT_KEY));
@@ -225,6 +229,350 @@ async function openImagePreview(source, onAttachFile) {
     shell.remove();
   };
   shell.querySelector('[data-close]').addEventListener('click', close);
+  return { element: shell, path: source.path, close };
+}
+
+async function openContinuousPdfPreview(source, { onAttachFile, onPdfField }) {
+  const { createPdfTextLayer, openPdfDocument } = await import('../ai/pdf.js');
+  const shell = document.createElement('aside');
+  shell.className = 'ai-pdf-preview';
+  shell.setAttribute('role', 'dialog');
+  shell.setAttribute('aria-label', `PDF 阅读器：${source.name}`);
+  shell.innerHTML = `<header class="ai-pdf-preview-head" data-drag-handle><span class="ai-pdf-preview-mark" data-kind="pdf">${workspaceFileIcon('pdf')}</span><div><strong></strong><small>连续 PDF 阅读器 · 滚动翻页 · 双指缩放</small></div><div class="ai-pdf-window-controls"><button type="button" data-attach-ai title="附到 AI">${ICON.aiAdd}</button><button type="button" data-download title="下载">${ICON.download}</button><button type="button" data-close title="关闭">${ICON.close}</button></div></header><div class="ai-pdf-toolbar"><button type="button" data-prev title="上一页">${leftIcon()}</button><form data-page-form><label>第 <input type="number" min="1" value="1" inputmode="numeric"> 页</label><span>/ <b data-page-count>—</b></span></form><button type="button" data-next title="下一页">${rightIcon()}</button><small data-page-status>正在加载…</small></div><div class="ai-pdf-stage" title="滚动连续阅读；Ctrl + 滚轮或双指缩放"><div class="ai-pdf-loading">正在打开 PDF…</div><div class="ai-pdf-pages"></div></div>${edgeResizeHandles()}`;
+  shell.querySelector('strong').textContent = source.name;
+  document.body.append(shell);
+  applySavedRect(shell, PDF_RECT_KEY, defaultPdfRect());
+
+  const selectionBar = document.createElement('div');
+  selectionBar.className = 'ai-pdf-selection-actions';
+  selectionBar.hidden = true;
+  selectionBar.innerHTML = `<button type="button" data-copy-reference>${quoteIcon()}<span>复制引用</span></button><button type="button" data-attach-fragment>${ICON.aiAdd}<span>附到 AI</span></button><button type="button" data-copy-text>${copyIcon()}<span>复制文本</span></button>`;
+  document.body.append(selectionBar);
+
+  let documentHandle = null;
+  let pageNumber = 1;
+  let contentZoom = 1;
+  let closed = false;
+  let zoomTimer = 0;
+  let scrollFrame = 0;
+  let pageObserver = null;
+  let selectionSnapshot = null;
+  let pinch = null;
+  const pointers = new Map();
+  const pageStates = new Map();
+  const stage = shell.querySelector('.ai-pdf-stage');
+  const pagesElement = shell.querySelector('.ai-pdf-pages');
+  const status = shell.querySelector('[data-page-status]');
+  const pageInput = shell.querySelector('[data-page-form] input');
+  const previous = shell.querySelector('[data-prev]');
+  const next = shell.querySelector('[data-next]');
+
+  const updateControls = () => {
+    pageInput.value = String(pageNumber);
+    previous.disabled = pageNumber <= 1;
+    next.disabled = pageNumber >= (documentHandle?.numPages || 1);
+    status.textContent = `第 ${pageNumber} 页 · ${Math.round(contentZoom * 100)}%`;
+  };
+  const hideSelection = ({ clear = false } = {}) => {
+    selectionBar.hidden = true;
+    selectionSnapshot = null;
+    if (clear) window.getSelection()?.removeAllRanges();
+  };
+  const createPageState = (number) => {
+    const element = document.createElement('section');
+    element.className = 'ai-pdf-page';
+    element.dataset.page = String(number);
+    element.setAttribute('aria-label', `第 ${number} 页`);
+    element.innerHTML = `<canvas></canvas><div class="textLayer"></div><div class="ai-pdf-fragment-layer"></div><small class="ai-pdf-page-number">${number}</small><div class="ai-pdf-page-loading">正在加载第 ${number} 页…</div>`;
+    pagesElement.append(element);
+    const state = {
+      number, element,
+      canvas: element.querySelector('canvas'),
+      textLayerElement: element.querySelector('.textLayer'),
+      highlightLayer: element.querySelector('.ai-pdf-fragment-layer'),
+      page: null, pagePromise: null, renderTask: null, textLayer: null, renderId: 0, rendered: false,
+    };
+    pageStates.set(number, state);
+    return state;
+  };
+  const renderFragmentHighlight = (state) => {
+    state.highlightLayer.replaceChildren();
+    const fragment = source.fragment;
+    if (!fragment || fragment.format !== 'pdf' || Number(fragment.page) !== state.number) return;
+    for (const rect of fragment.rects || []) {
+      const mark = document.createElement('span');
+      mark.className = 'ai-pdf-fragment-highlight';
+      mark.style.left = `${rect.x * 100}%`;
+      mark.style.top = `${rect.y * 100}%`;
+      mark.style.width = `${rect.width * 100}%`;
+      mark.style.height = `${rect.height * 100}%`;
+      state.highlightLayer.append(mark);
+    }
+  };
+  const renderPage = async (number, { force = false } = {}) => {
+    const state = pageStates.get(number);
+    if (!state || closed || (state.rendered && !force)) return state;
+    const renderId = ++state.renderId;
+    state.renderTask?.cancel?.();
+    state.textLayer?.cancel?.();
+    state.page ||= await (state.pagePromise ||= documentHandle.getPage(number));
+    if (closed || renderId !== state.renderId) return state;
+    const base = state.page.getViewport({ scale: 1 });
+    const availableWidth = Math.max(220, stage.clientWidth - 30);
+    const viewport = state.page.getViewport({ scale: (availableWidth / base.width) * contentZoom });
+    const ratio = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+    state.canvas.width = Math.floor(viewport.width * ratio);
+    state.canvas.height = Math.floor(viewport.height * ratio);
+    state.canvas.style.width = `${Math.floor(viewport.width)}px`;
+    state.canvas.style.height = `${Math.floor(viewport.height)}px`;
+    state.element.style.width = `${Math.floor(viewport.width)}px`;
+    state.element.style.height = `${Math.floor(viewport.height)}px`;
+    state.element.style.minHeight = '0px';
+    state.element.style.setProperty('--scale-factor', String(viewport.scale));
+    state.textLayerElement.replaceChildren();
+    state.textLayerElement.style.width = `${Math.floor(viewport.width)}px`;
+    state.textLayerElement.style.height = `${Math.floor(viewport.height)}px`;
+    state.renderTask = state.page.render({
+      canvas: state.canvas,
+      canvasContext: state.canvas.getContext('2d', { alpha: false }),
+      viewport,
+      transform: ratio === 1 ? null : [ratio, 0, 0, ratio, 0, 0],
+    });
+    state.textLayer = createPdfTextLayer({
+      textContentSource: state.page.streamTextContent({ includeMarkedContent: true, disableNormalization: true }),
+      container: state.textLayerElement,
+      viewport,
+    });
+    try {
+      await Promise.all([state.renderTask.promise, state.textLayer.render()]);
+      if (closed || renderId !== state.renderId) return state;
+      state.rendered = true;
+      state.element.querySelector('.ai-pdf-page-loading').hidden = true;
+      renderFragmentHighlight(state);
+    } catch (error) {
+      if (error?.name !== 'RenderingCancelledException' && !closed) throw error;
+    }
+    return state;
+  };
+  const goToPage = async (value, { behavior = 'smooth' } = {}) => {
+    if (!documentHandle) return;
+    pageNumber = clamp(Math.round(Number(value) || 1), 1, documentHandle.numPages);
+    updateControls();
+    const state = await renderPage(pageNumber);
+    state?.element?.scrollIntoView?.({ behavior, block: 'start' });
+  };
+  const updateSelection = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.rangeCount) { hideSelection(); return; }
+    const anchor = (selection.anchorNode?.parentElement || selection.anchorNode)?.closest?.('.ai-pdf-page');
+    const focus = (selection.focusNode?.parentElement || selection.focusNode)?.closest?.('.ai-pdf-page');
+    if (!anchor || anchor !== focus) { hideSelection(); return; }
+    const text = selection.toString().replace(/\s+/g, ' ').trim();
+    if (!text) { hideSelection(); return; }
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    const pageRect = anchor.getBoundingClientRect();
+    const rects = [...range.getClientRects()].filter((item) => item.width > 0 && item.height > 0).map((item) => ({
+      x: (item.left - pageRect.left) / pageRect.width,
+      y: (item.top - pageRect.top) / pageRect.height,
+      width: item.width / pageRect.width,
+      height: item.height / pageRect.height,
+    }));
+    selectionSnapshot = { page: Number(anchor.dataset.page) || 1, text, rects };
+    selectionBar.style.left = `${Math.round(clamp(rect.left, 8, innerWidth - 330))}px`;
+    selectionBar.style.top = `${Math.round(rect.top > 54 ? rect.top - 42 : rect.bottom + 8)}px`;
+    selectionBar.hidden = false;
+  };
+  const rerenderLoadedPages = async (focus = null) => {
+    hideSelection({ clear: true });
+    const oldWidth = Math.max(1, stage.scrollWidth);
+    const oldHeight = Math.max(1, stage.scrollHeight);
+    const ratioX = focus ? (stage.scrollLeft + focus.x) / oldWidth : 0;
+    const ratioY = focus ? (stage.scrollTop + focus.y) / oldHeight : 0;
+    await Promise.all([...pageStates.values()].filter((state) => state.rendered || state.number === pageNumber)
+      .map((state) => renderPage(state.number, { force: true })));
+    if (focus) {
+      stage.scrollLeft = Math.max(0, ratioX * stage.scrollWidth - focus.x);
+      stage.scrollTop = Math.max(0, ratioY * stage.scrollHeight - focus.y);
+    }
+    updateControls();
+  };
+  const scheduleZoomRender = (focus) => {
+    updateControls();
+    clearTimeout(zoomTimer);
+    zoomTimer = setTimeout(() => rerenderLoadedPages(focus).catch((error) => {
+      status.textContent = error?.message || '页面渲染失败';
+    }), 70);
+  };
+  const onWheelZoom = (event) => {
+    if (!event.ctrlKey) return;
+    event.preventDefault();
+    const rect = stage.getBoundingClientRect();
+    const focus = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    contentZoom = clamp(contentZoom * Math.exp(-event.deltaY * 0.002), 0.5, 4);
+    scheduleZoomRender(focus);
+  };
+  const syncCurrentPage = () => {
+    scrollFrame = 0;
+    const stageRect = stage.getBoundingClientRect();
+    const center = stageRect.top + stage.clientHeight / 2;
+    let best = pageNumber;
+    let distance = Infinity;
+    for (const state of pageStates.values()) {
+      const rect = state.element.getBoundingClientRect();
+      const candidate = Math.abs(rect.top + rect.height / 2 - center);
+      if (candidate < distance) { distance = candidate; best = state.number; }
+    }
+    if (best !== pageNumber) { pageNumber = best; updateControls(); }
+  };
+  const onStageScroll = () => {
+    if (!scrollFrame) scrollFrame = requestAnimationFrame(syncCurrentPage);
+    if (!selectionBar.hidden) updateSelection();
+  };
+  const pointerDistance = () => {
+    const [a, b] = [...pointers.values()];
+    return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+  };
+  const pointerCenter = () => {
+    const [a, b] = [...pointers.values()];
+    return a && b ? { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } : { x: 0, y: 0 };
+  };
+  const onPointerDown = (event) => {
+    if (event.pointerType !== 'touch') return;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    stage.setPointerCapture?.(event.pointerId);
+    if (pointers.size === 2) {
+      const center = pointerCenter();
+      const rect = stage.getBoundingClientRect();
+      pinch = {
+        distance: pointerDistance(), zoom: contentZoom, scale: 1,
+        focus: { x: center.x - rect.left, y: center.y - rect.top },
+      };
+      hideSelection({ clear: true });
+    }
+  };
+  const onPointerMove = (event) => {
+    if (!pointers.has(event.pointerId)) return;
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (!pinch || pointers.size < 2) return;
+    event.preventDefault();
+    pinch.scale = clamp(pointerDistance() / Math.max(1, pinch.distance), 0.5, 4);
+    const center = pointerCenter();
+    const rect = stage.getBoundingClientRect();
+    pagesElement.style.transformOrigin = `${center.x - rect.left + stage.scrollLeft}px ${center.y - rect.top + stage.scrollTop}px`;
+    pagesElement.style.transform = `scale(${pinch.scale})`;
+    status.textContent = `第 ${pageNumber} 页 · ${Math.round(clamp(pinch.zoom * pinch.scale, 0.5, 4) * 100)}%`;
+  };
+  const finishPointer = async (event) => {
+    pointers.delete(event.pointerId);
+    if (!pinch || pointers.size >= 2) return;
+    const finished = pinch;
+    pinch = null;
+    pagesElement.style.removeProperty('transform');
+    pagesElement.style.removeProperty('transform-origin');
+    contentZoom = clamp(finished.zoom * finished.scale, 0.5, 4);
+    await rerenderLoadedPages(finished.focus);
+  };
+
+  previous.addEventListener('click', () => goToPage(pageNumber - 1));
+  next.addEventListener('click', () => goToPage(pageNumber + 1));
+  shell.querySelector('[data-page-form]').addEventListener('submit', (event) => { event.preventDefault(); goToPage(pageInput.value); });
+  shell.querySelector('[data-attach-ai]').addEventListener('click', () => attachPreviewFile(source, onAttachFile));
+  shell.querySelector('[data-download]').addEventListener('click', () => downloadWorkspaceFile(source.file, source.name));
+  shell.querySelector('[data-close]').addEventListener('click', () => close());
+  stage.addEventListener('wheel', onWheelZoom, { passive: false });
+  stage.addEventListener('scroll', onStageScroll, { passive: true });
+  stage.addEventListener('pointerup', () => setTimeout(updateSelection, 0));
+  stage.addEventListener('keyup', () => setTimeout(updateSelection, 0));
+  stage.addEventListener('pointerdown', onPointerDown);
+  stage.addEventListener('pointermove', onPointerMove);
+  stage.addEventListener('pointerup', finishPointer);
+  stage.addEventListener('pointercancel', finishPointer);
+  shell.addEventListener('copy', (event) => {
+    const text = window.getSelection()?.toString();
+    if (!text) return;
+    event.preventDefault();
+    event.clipboardData?.setData('text/plain', text);
+  });
+  for (const button of selectionBar.querySelectorAll('button')) button.addEventListener('pointerdown', (event) => event.preventDefault());
+  selectionBar.querySelector('[data-copy-text]').addEventListener('click', async () => {
+    if (!selectionSnapshot?.text) return;
+    await writePlainText(selectionSnapshot.text);
+    toast('已复制纯文本');
+  });
+  const selectedReference = () => fileFragmentReference({ ...source, ...selectionSnapshot, format: 'pdf' });
+  selectionBar.querySelector('[data-copy-reference]').addEventListener('click', async () => {
+    if (!selectionSnapshot?.text) return;
+    const copied = await writeGraphReference(selectedReference());
+    toast(copied ? '已复制片段引用' : '复制失败', { type: copied ? 'success' : 'error' });
+  });
+  selectionBar.querySelector('[data-attach-fragment]').addEventListener('click', () => {
+    if (!selectionSnapshot?.text) return;
+    const attached = onPdfField({ ...source, ...selectionSnapshot });
+    toast(attached ? '已添加片段引用' : '该 PDF 不属于当前对话', { type: attached ? 'success' : 'error' });
+    if (attached) hideSelection({ clear: true });
+  });
+
+  const disconnectDrag = bindDrag(shell, shell.querySelector('[data-drag-handle]'), () => {
+    hideSelection();
+    saveRect(shell, PDF_RECT_KEY);
+  });
+  const disconnectEdgeResize = bindEdgeResize(shell, () => {
+    saveRect(shell, PDF_RECT_KEY);
+    rerenderLoadedPages().catch(() => {});
+  });
+  const onWindowResize = () => { clampWindow(shell); rerenderLoadedPages().catch(() => {}); };
+  window.addEventListener('resize', onWindowResize);
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    clearTimeout(zoomTimer);
+    cancelAnimationFrame(scrollFrame);
+    pageObserver?.disconnect?.();
+    for (const state of pageStates.values()) {
+      state.renderTask?.cancel?.();
+      state.textLayer?.cancel?.();
+    }
+    documentHandle?.destroy?.();
+    disconnectDrag();
+    disconnectEdgeResize();
+    stage.removeEventListener('wheel', onWheelZoom);
+    stage.removeEventListener('scroll', onStageScroll);
+    stage.removeEventListener('pointerdown', onPointerDown);
+    stage.removeEventListener('pointermove', onPointerMove);
+    stage.removeEventListener('pointerup', finishPointer);
+    stage.removeEventListener('pointercancel', finishPointer);
+    window.removeEventListener('resize', onWindowResize);
+    selectionBar.remove();
+    shell.remove();
+  };
+
+  try {
+    documentHandle = await openPdfDocument(source.file);
+    if (closed) return { element: shell, path: source.path, close };
+    shell.querySelector('[data-page-count]').textContent = String(documentHandle.numPages);
+    pageInput.max = String(documentHandle.numPages);
+    for (let number = 1; number <= documentHandle.numPages; number += 1) createPageState(number);
+    shell.querySelector('.ai-pdf-loading').hidden = true;
+    const targetPage = clamp(Math.round(Number(source.fragment?.page) || 1), 1, documentHandle.numPages);
+    pageNumber = targetPage;
+    updateControls();
+    if (window.IntersectionObserver) {
+      pageObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) renderPage(Number(entry.target.dataset.page)).catch(() => {});
+        }
+      }, { root: stage, rootMargin: '120% 0px' });
+      for (const state of pageStates.values()) pageObserver.observe(state.element);
+      await renderPage(targetPage);
+    } else {
+      await Promise.all([...pageStates.keys()].map((number) => renderPage(number)));
+    }
+    if (source.fragment) await goToPage(targetPage, { behavior: 'auto' });
+  } catch (error) {
+    close();
+    throw error;
+  }
   return { element: shell, path: source.path, close };
 }
 
@@ -461,7 +809,7 @@ function bindTextSelectionActions({ shell, body, source, onTextExcerpt }) {
   const selectionBar = document.createElement('div');
   selectionBar.className = 'ai-file-selection-actions';
   selectionBar.hidden = true;
-  selectionBar.innerHTML = `<button type="button" data-text-reference>${quoteIcon()}<span>片段引用</span></button><button type="button" data-copy-text>${copyIcon()}<span>复制文本</span></button>`;
+  selectionBar.innerHTML = `<button type="button" data-copy-reference>${quoteIcon()}<span>复制引用</span></button><button type="button" data-attach-fragment>${ICON.aiAdd}<span>附到 AI</span></button><button type="button" data-copy-text>${copyIcon()}<span>复制文本</span></button>`;
   document.body.append(selectionBar);
   let snapshot = null;
   const hide = ({ clear = false } = {}) => {
@@ -483,6 +831,8 @@ function bindTextSelectionActions({ shell, body, source, onTextExcerpt }) {
     const rect = range.getBoundingClientRect?.() || { left: 8, top: 8, bottom: 38 };
     snapshot = {
       text: selected,
+      start: found >= 0 ? found : null,
+      end: found >= 0 ? found + selected.length : null,
       before: found >= 0 ? visibleText.slice(Math.max(0, found - 320), found) : '',
       after: found >= 0 ? visibleText.slice(found + selected.length, found + selected.length + 480) : '',
     };
@@ -500,9 +850,19 @@ function bindTextSelectionActions({ shell, body, source, onTextExcerpt }) {
     await writePlainText(snapshot.text);
     toast('已复制纯文本');
   });
-  selectionBar.querySelector('[data-text-reference]').addEventListener('click', () => {
+  const reference = () => fileFragmentReference({
+    ...source,
+    ...snapshot,
+    format: workspaceFileKind(source),
+  });
+  selectionBar.querySelector('[data-copy-reference]').addEventListener('click', async () => {
     if (!snapshot?.text) return;
-    const attached = onTextExcerpt({ ...source, ...snapshot });
+    const copied = await writeGraphReference(reference());
+    toast(copied ? '已复制片段引用' : '复制失败', { type: copied ? 'success' : 'error' });
+  });
+  selectionBar.querySelector('[data-attach-fragment]').addEventListener('click', () => {
+    if (!snapshot?.text) return;
+    const attached = onTextExcerpt({ ...source, ...snapshot, format: workspaceFileKind(source) });
     toast(attached ? '已添加片段引用' : '该文件不属于当前对话', { type: attached ? 'success' : 'error' });
     if (attached) hide({ clear: true });
   });
@@ -514,6 +874,42 @@ function bindTextSelectionActions({ shell, body, source, onTextExcerpt }) {
       selectionBar.remove();
     },
   };
+}
+
+export function highlightTextFragment(root, fragment) {
+  if (!root || !fragment?.text) return null;
+  const nodes = [];
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => node.parentElement?.closest('script, style, .file-fragment-highlight')
+      ? NodeFilter.FILTER_REJECT
+      : NodeFilter.FILTER_ACCEPT,
+  });
+  let fullText = '';
+  while (walker.nextNode()) {
+    nodes.push({ node: walker.currentNode, start: fullText.length, end: fullText.length + walker.currentNode.data.length });
+    fullText += walker.currentNode.data;
+  }
+  let start = Number.isFinite(fragment.start) ? fragment.start : fullText.indexOf(String(fragment.text));
+  if (start < 0 || fullText.slice(start, start + String(fragment.text).length) !== String(fragment.text)) {
+    start = fullText.indexOf(String(fragment.text));
+  }
+  if (start < 0) return null;
+  const end = Math.min(fullText.length, start + String(fragment.text).length);
+  const pieces = [];
+  for (const item of nodes.filter((item) => item.end > start && item.start < end).reverse()) {
+    const localStart = Math.max(0, start - item.start);
+    const localEnd = Math.min(item.node.data.length, end - item.start);
+    const range = document.createRange();
+    range.setStart(item.node, localStart);
+    range.setEnd(item.node, localEnd);
+    const mark = document.createElement('mark');
+    mark.className = 'file-fragment-highlight';
+    range.surroundContents(mark);
+    pieces.unshift(mark);
+  }
+  const target = pieces[0] || null;
+  requestAnimationFrame(() => target?.scrollIntoView?.({ behavior: 'smooth', block: 'center' }));
+  return target;
 }
 
 function bindDrag(element, handle, onEnd = () => {}) {

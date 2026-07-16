@@ -1,4 +1,9 @@
 import { graphReferenceHref, graphReferenceMarkdown } from '../data/graphReference.js';
+import {
+  fileFragmentReferenceHref,
+  fileFragmentReferenceMarkdown,
+  isFileFragmentReference,
+} from '../data/fileReference.js';
 
 export const GRAPH_REFERENCE_MIME = 'application/x-paper-graph-reference';
 const GRAPH_REFERENCE_WEB_MIME = `web ${GRAPH_REFERENCE_MIME}`;
@@ -6,7 +11,7 @@ const GRAPH_REFERENCE_WEB_MIME = `web ${GRAPH_REFERENCE_MIME}`;
 export function setGraphReferenceClipboardData(data, reference) {
   if (!data || !reference) return false;
   const json = JSON.stringify(reference);
-  data.setData('text/plain', reference.text || reference.label || reference.nodeId || '');
+  data.setData('text/plain', reference.text || reference.label || reference.nodeId || reference.path || '');
   data.setData(GRAPH_REFERENCE_MIME, json);
   data.setData('text/html', graphReferenceHtml(reference));
   return true;
@@ -14,7 +19,7 @@ export function setGraphReferenceClipboardData(data, reference) {
 
 export async function writeGraphReference(reference) {
   if (!reference) return false;
-  const plain = reference.text || reference.label || reference.nodeId || '';
+  const plain = reference.text || reference.label || reference.nodeId || reference.path || '';
   // 在用户点击产生的同步 copy 事件中写入多格式数据，避免
   // navigator.clipboard.write(ClipboardItem) 触发浏览器的网站剪贴板授权框。
   if (writeGraphReferenceWithCopyEvent(reference)) return true;
@@ -91,7 +96,7 @@ export function bindGraphReferencePaste(target, { onReference, insertMarkdown = 
     if (!reference) return;
     event.preventDefault();
     if (insertMarkdown) {
-      const markdown = graphReferenceMarkdown(reference);
+      const markdown = contentReferenceMarkdown(reference);
       const start = target.selectionStart ?? target.value.length;
       const end = target.selectionEnd ?? start;
       target.setRangeText(markdown, start, end, 'end');
@@ -112,11 +117,19 @@ export function bindGraphReferencePaste(target, { onReference, insertMarkdown = 
 
 function graphReferenceHtml(reference) {
   const json = encodeURIComponent(JSON.stringify(reference));
+  if (isFileFragmentReference(reference)) {
+    const display = `${reference.fileName || reference.path}${reference.format === 'pdf' ? ` · p. ${reference.page}` : ''} · ${reference.text || ''}`;
+    return `<a href="${escapeHtml(fileFragmentReferenceHref(reference))}" data-paper-graph-reference="${json}">${escapeHtml(display)}</a>`;
+  }
   const isTag = reference.kind === 'tag-reference' || reference.type === 'tag'
     || reference.kind === 'tag-note-reference' || reference.type === 'tag-note';
   const display = isTag ? (reference.label || reference.tagLabel || reference.tagId || '') : reference.type === 'span' ? (reference.text || reference.label || reference.nodeId || '') : (reference.label || reference.nodeId || '');
   const text = escapeHtml(display);
   return `<a href="${escapeHtml(graphReferenceHref(reference))}" data-paper-graph-reference="${json}">${text}</a>`;
+}
+
+export function contentReferenceMarkdown(reference) {
+  return isFileFragmentReference(reference) ? fileFragmentReferenceMarkdown(reference) : graphReferenceMarkdown(reference);
 }
 
 function escapeHtml(value) {

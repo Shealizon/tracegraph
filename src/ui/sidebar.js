@@ -860,6 +860,7 @@ export function openNoteEditor(ctx, noteId = '', { tagPointer = undefined, ancho
         const referencedMember = graphReferenceToMember(reference, ctx.graph?.getTags?.() || [], ctx.getNotes?.() || []);
         if (referencedMember) ctx.jumpToMember?.(referencedMember);
       },
+      onFileFragmentReference: (reference) => ctx.aiPanel?.openFileReference?.(reference),
     });
   };
   const setMode = (mode, { persist = true } = {}) => {

@@ -6,6 +6,9 @@ import {
 } from '../src/data/graphReference.js';
 import { normalizeTag, normalizeTags } from '../src/data/schema.js';
 import { notePointerFromMember } from '../src/data/notes.js';
+import {
+  fileFragmentReference, fileFragmentReferenceHref, fileFragmentReferenceMarkdown, parseFileFragmentReferenceHref,
+} from '../src/data/fileReference.js';
 import { bindGraphReferencePaste, GRAPH_REFERENCE_MIME, setGraphReferenceClipboardData, writeGraphReference } from '../src/ui/graphClipboard.js';
 import { contextPrompt, graphReferenceAttachment } from '../src/ai/contextAttachments.js';
 
@@ -15,6 +18,57 @@ const model = {
 };
 
 describe('graph references and tag notes', () => {
+  it('round-trips a self-contained file fragment reference for notes and AI output', () => {
+    const reference = fileFragmentReference({
+      path: 'notes/derivation.md',
+      name: 'derivation.md',
+      format: 'markdown',
+      text: 'local estimate',
+      start: 12,
+      end: 26,
+      before: 'Before ',
+      after: ' after',
+      conversationId: 'chat-source',
+    });
+    const href = fileFragmentReferenceHref(reference);
+    expect(parseFileFragmentReferenceHref(href)).toMatchObject({
+      path: 'notes/derivation.md',
+      format: 'markdown',
+      text: 'local estimate',
+      start: 12,
+      end: 26,
+      conversationId: 'chat-source',
+    });
+    expect(fileFragmentReferenceMarkdown(reference)).toContain('file-fragment=');
+  });
+
+  it('pastes a rich file fragment as reusable Markdown into a note textarea', () => {
+    const reference = fileFragmentReference({
+      path: 'uploads/paper.pdf', format: 'pdf', page: 3, text: 'main bound',
+      rects: [{ x: 0.2, y: 0.3, width: 0.4, height: 0.05 }],
+    });
+    const handlers = {};
+    const target = {
+      value: '', selectionStart: 0, selectionEnd: 0,
+      addEventListener: vi.fn((type, handler) => { handlers[type] = handler; }),
+      removeEventListener: vi.fn(),
+      setRangeText: vi.fn(),
+      dispatchEvent: vi.fn(),
+    };
+    const values = {};
+    const clipboardData = {
+      setData: (type, value) => { values[type] = value; },
+      getData: (type) => values[type] || '',
+    };
+    setGraphReferenceClipboardData(clipboardData, reference);
+    bindGraphReferencePaste(target);
+    handlers.paste({ clipboardData, preventDefault: vi.fn() });
+    expect(target.setRangeText).toHaveBeenCalledWith(
+      expect.stringContaining('#file-fragment=uploads%2Fpaper.pdf'),
+      0, 0, 'end',
+    );
+  });
+
   it('round-trips a text annotation through a Markdown graph link', () => {
     const member = { node: 'n1', type: 'span', section: 'proof', start: 12, end: 28, text: 'selected formula', offsetMode: 'visible' };
     const reference = graphReferenceFromMember(model, member);
