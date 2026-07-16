@@ -41,8 +41,8 @@ const PROVIDERS_KEY = 'paper-graph-ai-providers';
 const PROVIDER_KEY_SESSION = 'paper-graph-ai-provider-key';
 const WIDTH_KEY = 'paper-graph-ai-width';
 const OPEN_KEY = 'paper-graph-ai-open';
-const LAYOUT_KEY = 'paper-graph-ai-layout';
 const COLLAPSED_KEY = 'paper-graph-ai-collapsed';
+const COLLAPSED_POSITION_KEY = 'paper-graph-ai-collapsed-position';
 const STARTER_PROMPTS = [
   '概括当前图谱的核心结构',
   '解释当前图谱中最重要的几个概念及它们之间的关系',
@@ -104,10 +104,9 @@ export function buildAiPanel(ctx) {
   panel.setAttribute('aria-label', 'AI Assistant');
   panel.innerHTML = `
     <div class="ai-resize" data-resize aria-hidden="true"></div>
+    <button class="ai-collapse-rail" data-collapse title="折叠面板" aria-label="折叠面板">${panelCollapseIcon()}</button>
     <header class="ai-head">
       <div class="ai-head-primary">
-        <button class="icon-btn" data-collapse title="折叠面板">${panelCollapseIcon()}</button>
-        <button class="icon-btn" data-layout title="面板形态">${panelLayoutIcon()}</button>
         <button class="ai-brand" data-conversations title="切换或重命名对话">${sparkIcon()}<strong data-conversation-title>新对话</strong>${chevronIcon()}</button>
         <button class="icon-btn ai-new-chat" data-new title="新建对话">${newChatIcon()}</button>
       </div>
@@ -161,9 +160,8 @@ export function buildAiPanel(ctx) {
   });
 
   applyWidth(panel, Number(localStorage.getItem(WIDTH_KEY)) || Math.round(innerWidth / 3));
-  const initialLayout = localStorage.getItem(LAYOUT_KEY) || 'floating';
-  setLayout(initialLayout, { persist: false });
-  setCollapsed(initialLayout === 'docked' ? false : localStorage.getItem(COLLAPSED_KEY) === '1', { persist: false });
+  panel.dataset.layout = 'docked';
+  setCollapsed(localStorage.getItem(COLLAPSED_KEY) === '1', { persist: false });
   setOpen(localStorage.getItem(OPEN_KEY) === '1');
   syncModelLabel();
   syncConversationUi();
@@ -172,13 +170,7 @@ export function buildAiPanel(ctx) {
   launcher.addEventListener('click', () => setOpen(true));
   panel.querySelector('[data-close]').addEventListener('click', () => setOpen(false));
   panel.querySelector('[data-collapse]').addEventListener('click', () => {
-    const collapse = !panel.classList.contains('is-collapsed');
-    if (collapse && panel.dataset.layout === 'docked') setLayout('floating');
-    setCollapsed(collapse);
-  });
-  panel.querySelector('[data-layout]').addEventListener('click', () => {
-    if (panel.classList.contains('is-collapsed')) return;
-    showLayoutPicker();
+    setCollapsed(!panel.classList.contains('is-collapsed'));
   });
   panel.querySelector('[data-settings]').addEventListener('click', () => showSettings(true));
   panel.querySelector('[data-model-label]').addEventListener('click', showModelPicker);
@@ -186,7 +178,7 @@ export function buildAiPanel(ctx) {
   contextToggle.addEventListener('click', showContextPanel);
   panel.querySelector('[data-workspace]').addEventListener('click', () => showWorkspace(true));
   panel.querySelector('[data-conversations]').addEventListener('click', () => {
-    if (panel.classList.contains('is-collapsed')) { setCollapsed(false, { persist: false }); return; }
+    if (panel.classList.contains('is-collapsed')) { setCollapsed(false); return; }
     showConversations();
   });
   panel.querySelector('[data-new]').addEventListener('click', () => {
@@ -238,6 +230,7 @@ export function buildAiPanel(ctx) {
   input.addEventListener('click', updateMentionMenu);
   input.addEventListener('blur', () => setTimeout(() => closeMentionMenu(), 140));
   initResize(panel);
+  initCollapsedDrag(panel);
 
   messagesEl.addEventListener('scroll', () => {
     hideQuoteSelection();
@@ -1773,20 +1766,6 @@ export function buildAiPanel(ctx) {
       subpanel.style.bottom = 'auto';
     }
   }
-  function showLayoutPicker() {
-    if (!openSubpanel('layout', 'is-popover is-layout-popover', true)) return;
-    positionSubpanel(panel.querySelector('[data-layout]'), 'below');
-    const modes = [
-      ['floating', '悬浮', '覆盖在工作区上，可手动折叠'],
-      ['docked', '占位', '将图谱或详情区域向左收窄'],
-    ];
-    subpanel.innerHTML = `<div class="ai-layout-picker">${modes.map(([id, title, detail]) => `<button data-layout-mode="${id}"${panel.dataset.layout === id ? ' class="is-active"' : ''}><span>${layoutModeIcon(id)}</span><div><strong>${title}</strong><small>${detail}</small></div>${panel.dataset.layout === id ? checkIcon() : ''}</button>`).join('')}</div>`;
-    subpanel.querySelectorAll('[data-layout-mode]').forEach((item) => item.addEventListener('click', () => {
-      setLayout(item.dataset.layoutMode);
-      closeSubpanel();
-    }));
-  }
-
   async function updateMentionMenu() {
     const mention = mentionQueryAt(input.value, input.selectionStart);
     state.mention = mention;
@@ -1970,24 +1949,25 @@ export function buildAiPanel(ctx) {
     send.title = compacting ? '正在压缩上下文' : busy ? '停止当前对话生成' : '发送';
     syncPanelStatus();
   }
-  function setLayout(layout, { persist = true } = {}) {
-    const next = ['floating', 'docked'].includes(layout) ? layout : 'floating';
-    panel.dataset.layout = next;
-    if (next === 'docked') setCollapsed(false, { persist: false });
-    if (persist) localStorage.setItem(LAYOUT_KEY, next);
-    syncLayoutClass();
-  }
   function setCollapsed(collapsed, { persist = true } = {}) {
     const next = !!collapsed;
     panel.classList.toggle('is-collapsed', next);
-    panel.querySelector('[data-collapse]').title = next ? '展开面板' : '折叠面板';
-    panel.querySelector('[data-collapse]').innerHTML = next ? panelExpandIcon() : panelCollapseIcon();
+    const collapseButton = panel.querySelector('[data-collapse]');
+    collapseButton.title = next ? '展开面板' : '折叠面板';
+    collapseButton.setAttribute('aria-label', collapseButton.title);
+    collapseButton.innerHTML = next ? panelExpandIcon() : panelCollapseIcon();
     if (persist) localStorage.setItem(COLLAPSED_KEY, next ? '1' : '0');
-    if (next) closeSubpanel();
+    if (next) {
+      closeSubpanel();
+      applyCollapsedPosition(panel, loadJson(COLLAPSED_POSITION_KEY, null));
+    } else {
+      clearCollapsedPosition(panel);
+    }
+    syncLayoutClass();
     syncPanelStatus();
   }
   function syncLayoutClass() {
-    const docked = panel.classList.contains('is-open') && panel.dataset.layout === 'docked';
+    const docked = panel.classList.contains('is-open') && !panel.classList.contains('is-collapsed');
     document.body.classList.toggle('ai-layout-docked', docked);
     clearTimeout(state.layoutResizeTimer);
     state.layoutResizeTimer = setTimeout(() => window.dispatchEvent(new Event('resize')), 240);
@@ -2256,6 +2236,83 @@ function initResize(panel) {
   });
 }
 
+function initCollapsedDrag(panel) {
+  const handle = panel.querySelector('.ai-head');
+  let suppressClick = false;
+
+  panel.addEventListener('click', (event) => {
+    if (!suppressClick) return;
+    suppressClick = false;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
+
+  handle.addEventListener('pointerdown', (event) => {
+    if (!panel.classList.contains('is-collapsed') || event.button !== 0) return;
+    if (event.target.closest('[data-collapse], [data-close]')) return;
+
+    const rect = panel.getBoundingClientRect();
+    const start = { x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
+    let dragged = false;
+    event.preventDefault();
+    handle.setPointerCapture?.(event.pointerId);
+
+    const move = (moveEvent) => {
+      const dx = moveEvent.clientX - start.x;
+      const dy = moveEvent.clientY - start.y;
+      if (!dragged && Math.hypot(dx, dy) < 4) return;
+      dragged = true;
+      panel.classList.add('is-dragging');
+      applyCollapsedPosition(panel, { left: start.left + dx, top: start.top + dy });
+    };
+    const up = () => {
+      panel.classList.remove('is-dragging');
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('pointercancel', up);
+      if (!dragged) return;
+      const finalRect = panel.getBoundingClientRect();
+      localStorage.setItem(COLLAPSED_POSITION_KEY, JSON.stringify({
+        left: Math.round(finalRect.left),
+        top: Math.round(finalRect.top),
+      }));
+      suppressClick = true;
+      setTimeout(() => { suppressClick = false; }, 0);
+    };
+
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointercancel', up);
+  });
+
+  window.addEventListener('resize', () => {
+    if (!panel.classList.contains('is-collapsed')) return;
+    const rect = panel.getBoundingClientRect();
+    applyCollapsedPosition(panel, { left: rect.left, top: rect.top });
+  });
+}
+
+function applyCollapsedPosition(panel, position) {
+  const rect = panel.getBoundingClientRect();
+  const mobile = matchMedia('(max-width: 720px)').matches;
+  const minLeft = mobile ? 8 : 30;
+  const margin = mobile ? 8 : 10;
+  const fallbackLeft = innerWidth - rect.width - margin;
+  const left = Math.max(minLeft, Math.min(innerWidth - rect.width - margin, Number(position?.left) || fallbackLeft));
+  const top = Math.max(margin, Math.min(innerHeight - rect.height - margin, Number(position?.top) || margin));
+  panel.style.left = `${Math.round(left)}px`;
+  panel.style.top = `${Math.round(top)}px`;
+  panel.style.right = 'auto';
+  panel.style.bottom = 'auto';
+}
+
+function clearCollapsedPosition(panel) {
+  panel.style.removeProperty('left');
+  panel.style.removeProperty('top');
+  panel.style.removeProperty('right');
+  panel.style.removeProperty('bottom');
+}
+
 function applyWidth(panel, width) {
   const value = Math.max(340, Math.min(innerWidth * 0.6, Number(width) || innerWidth / 3));
   panel.style.setProperty('--ai-panel-width', `${Math.round(value)}px`);
@@ -2369,14 +2426,9 @@ function activityIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><p
 function spinnerIcon() { return '<svg class="ai-spinner" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-opacity=".2" stroke-width="2"/><path d="M10 3a7 7 0 014.95 2.05" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'; }
 function graphContextIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="6" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="14" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="14" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M7.7 7.1l1.5 4.7M12.3 7.1l-1.5 4.7M8 6h4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>'; }
 function quoteIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.2 5.2h4.6v4.2a4.4 4.4 0 01-4.1 4.5M11.2 5.2h4.6v4.2a4.4 4.4 0 01-4.1 4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
-function panelCollapseIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 8h10M7 12h6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>'; }
-function panelExpandIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 12h10M7 8h6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>'; }
-function panelLayoutIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 4v12" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>'; }
+function panelCollapseIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.5 4.5l5 5.5-5 5.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
+function panelExpandIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M12.5 4.5l-5 5.5 5 5.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
 function plusIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>'; }
-function layoutModeIcon(mode) {
-  if (mode === 'docked') return '<svg viewBox="0 0 20 20"><rect x="2.5" y="4" width="15" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M12 4v12" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>';
-  return '<svg viewBox="0 0 20 20"><rect x="4" y="3" width="13" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 7v8.5a2 2 0 002 2H13" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>';
-}
 function checkIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 10.2l3.2 3.2 7.8-7.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
 function alertIcon() { return '<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10 6.2v4.7M10 14h.01" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>'; }
 function toolIconFor(name) {
