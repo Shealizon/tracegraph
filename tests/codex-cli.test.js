@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { PassThrough } from 'node:stream';
 import { EventEmitter } from 'node:events';
 import { buildCodexExecArgs, executeCodexStream, formatCodexFailure, normalizeCodexItemEvent, normalizeCodexModels } from '../server/codexCli.mjs';
-import { parseDeviceLoginOutput } from '../server/codexAuth.mjs';
+import { CodexAuthManager } from '../server/codexAuth.mjs';
 import { applyCodexProgress } from '../server/taskRunner.mjs';
 
 describe('server Codex adapter', () => {
@@ -38,11 +38,52 @@ describe('server Codex adapter', () => {
     expect(formatCodexFailure('unsupported_country_region_territory')).toContain('HTTPS_PROXY');
   });
 
-  it('extracts the verification URL and one-time code from device login output', () => {
-    expect(parseDeviceLoginOutput('Open https://auth.openai.com/codex/device and enter ABCD-EFGH')).toEqual({
+  it('uses the structured app-server device login flow', async () => {
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    const stdin = new PassThrough();
+    const child = Object.assign(new EventEmitter(), { stdin, stdout, stderr, kill: vi.fn() });
+    const requests = [];
+    stdin.on('data', (chunk) => {
+      for (const line of String(chunk).trim().split('\n')) {
+        const request = JSON.parse(line);
+        requests.push(request);
+        if (request.id === 0) stdout.write(`${JSON.stringify({ id: 0, result: {} })}\n`);
+        if (request.id === 1) stdout.write(`${JSON.stringify({
+          id: 1,
+          result: {
+            type: 'chatgptDeviceCode',
+            loginId: 'login-1',
+            verificationUrl: 'https://auth.openai.com/codex/device',
+            userCode: 'ABCD-EFGH',
+          },
+        })}\n`);
+      }
+    });
+    const spawnImpl = vi.fn(() => child);
+    const manager = new CodexAuthManager({ spawnImpl });
+    const initial = await manager.startDeviceLogin();
+    const waiting = manager.getLogin(initial.id);
+
+    expect(spawnImpl).toHaveBeenCalledTimes(1);
+    expect(spawnImpl.mock.calls[0][1].at(-1)).toBe('app-server');
+    expect(spawnImpl.mock.calls[0][2].stdio).toEqual(['pipe', 'pipe', 'pipe']);
+    expect(requests.find((request) => request.id === 0)?.params.capabilities).toEqual({ experimentalApi: true });
+    expect(requests.find((request) => request.id === 1)).toMatchObject({
+      method: 'account/login/start',
+      params: { type: 'chatgptDeviceCode' },
+    });
+    expect(waiting).toMatchObject({
+      status: 'waiting',
       verificationUrl: 'https://auth.openai.com/codex/device',
       userCode: 'ABCD-EFGH',
     });
+
+    stdout.write(`${JSON.stringify({
+      method: 'account/login/completed',
+      params: { loginId: 'login-1', success: true, error: null },
+    })}\n`);
+    expect(manager.getLogin(initial.id).status).toBe('completed');
   });
 
   it('streams app-server answer deltas, reasoning summaries, and tool lifecycle events', async () => {
