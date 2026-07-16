@@ -8,6 +8,7 @@ import { mountAccountControls } from '../cloud/accountUi.js';
 import { onSyncChange } from '../cloud/sync.js';
 import { serverApi } from '../cloud/api.js';
 import { sessionSnapshot } from '../cloud/session.js';
+import { downloadApplicationData } from '../debug/exportData.js';
 
 let releaseSyncListener = null;
 
@@ -34,7 +35,7 @@ export function renderLeadingPage({ db, projects, currentProjectId }) {
           <h1>Entail</h1>
           <span>${projects.length} 个项目</span>
         </div>
-        <div class="leading-account-actions"><div data-leading-theme></div><div data-account></div></div>
+        <div class="leading-account-actions"><button class="btn" data-export-all>${ICON.download}<span>导出全部数据</span></button><div data-leading-theme></div><div data-account></div></div>
       </header>
       <button class="codex-auth-banner" data-codex-banner hidden>
         <span class="codex-auth-banner-dot"></span>
@@ -54,6 +55,15 @@ export function renderLeadingPage({ db, projects, currentProjectId }) {
   root.querySelector('[data-leading-theme]').appendChild(buildLeadingThemeSwitch());
   mountAccountControls(root.querySelector('[data-account]'), { onChanged: () => location.reload() });
   mountCodexLoginBanner(root);
+  root.querySelector('[data-export-all]').addEventListener('click', async () => {
+    try {
+      toast('正在整理全部项目、对话和工作区文件…');
+      await downloadApplicationData(db);
+      toast('全部数据已导出');
+    } catch (error) {
+      toast(`导出失败：${error?.message || error}`, { type: 'error' });
+    }
+  });
 
   // 整卡可点击打开（操作按钮内部已 stopPropagation）
   root.querySelectorAll('[data-card]').forEach((card) => card.addEventListener('click', () => {
@@ -197,7 +207,7 @@ function projectCard(project, active) {
           ${docs.length ? `<button class="icon-btn" title="文档信息" data-docinfo="${escapeAttr(project.id)}">${ICON.info}</button>` : ''}
           <button class="icon-btn" title="打开" data-open="${escapeAttr(project.id)}">${ICON.play}</button>
           <button class="icon-btn" title="配置" data-config="${escapeAttr(project.id)}">${ICON.settings}</button>
-          <button class="icon-btn" title="导出" data-export="${escapeAttr(project.id)}">${ICON.download}</button>
+          <button class="icon-btn" title="导出项目结构" data-export="${escapeAttr(project.id)}">${ICON.download}</button>
           <button class="icon-btn icon-btn--danger" title="删除" data-delete="${escapeAttr(project.id)}">${ICON.trash}</button>
         </div>
       </div>

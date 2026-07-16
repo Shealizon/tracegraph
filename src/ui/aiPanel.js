@@ -1,7 +1,7 @@
 import { createBrowserWorkspace } from '../ai/workspace.js';
 import { createClientTools } from '../ai/tools.js';
 import { createExtensionTools } from '../ai/extensionTools.js';
-import { compactConversation as compactModelContext, DEFAULT_SYSTEM_PROMPT, runAgentTurn } from '../ai/modelClient.js';
+import { compactConversation as compactModelContext, COMPACTION_SYSTEM_PROMPT, DEFAULT_SYSTEM_PROMPT, runAgentTurn } from '../ai/modelClient.js';
 import { contextUsage, estimateContextTokens, formatTokenCount, resolveContextWindow } from '../ai/contextBudget.js';
 import { buildGraphContext } from '../ai/graphContext.js';
 import {
@@ -34,6 +34,8 @@ import {
   workspaceFileIcon,
   workspaceFileKind,
 } from './workspacePreview.js';
+import { downloadConversationData } from '../debug/exportData.js';
+import { debugCheckpoint, debugError } from '../debug/diagnostics.js';
 
 const SETTINGS_KEY = 'paper-graph-ai-settings';
 const KEY_SESSION = 'paper-graph-ai-api-key';
@@ -56,6 +58,7 @@ export function buildAiPanel(ctx) {
   const existing = document.querySelector('.ai-panel');
   if (existing) return existing._aiPanelApi;
   const projectId = ctx.project?.id || 'default';
+  debugCheckpoint('src/ui/aiPanel.js', 'panel-build', { projectId });
   const historyKey = `paper-graph-ai-history:${projectId}`;
   const conversationsKey = `paper-graph-ai-conversations:${projectId}`;
   const conversationState = loadConversationState(localStorage, conversationsKey, loadJson(historyKey, []));
@@ -317,16 +320,46 @@ export function buildAiPanel(ctx) {
     syncContextUsage();
     renderMessages({ follow: true, immediate: true });
     try {
-      const summary = await compactModelContext({
-        config: { ...modelConfig, contextPrompt: buildGraphContext(ctx.model, selectedNodeId) },
-        transcript: buildCompactionTranscript(messages),
-        signal: state.compactAborter.signal,
-        onDelta: (delta) => {
-          compactedMessage.content += delta;
-          appendTextBlock(compactedMessage, delta);
+      const transcript = buildCompactionTranscript(messages);
+      let summary;
+      if (modelConfig.runtime === 'server') {
+        if (!sessionSnapshot().user) throw new Error('云端模型需要先登录');
+        const created = await serverApi.createTask({
+          kind: 'compaction',
+          providerId: modelConfig.providerId,
+          model: modelConfig.model,
+          projectId,
+          conversationId: conversation.id,
+          workspaceScope: `${projectId}--${conversation.id}`,
+          fileAccessMode: 'read-only',
+          history: [],
+          userText: transcript,
+          systemPrompt: COMPACTION_SYSTEM_PROMPT,
+        });
+        compactedMessage.cloudTaskId = created.task.id;
+        compactedMessage.cloud = true;
+        persistConversation(conversation);
+        const cloudTask = await waitForCloudTask(created.task.id, state.compactAborter.signal, (progress) => {
+          compactedMessage.content = String(progress.output || '');
+          compactedMessage.blocks = compactedMessage.content ? [{ type: 'text', content: compactedMessage.content }] : [];
           updateAssistantDom(conversation, compactedMessage);
-        },
-      });
+        });
+        if (cloudTask.status === 'failed') throw new Error(cloudTask.error || '云端上下文压缩失败');
+        if (cloudTask.status === 'cancelled') throw new DOMException('Aborted', 'AbortError');
+        summary = String(cloudTask.output || '');
+        compactedMessage.cloudTaskStatus = cloudTask.status;
+      } else {
+        summary = await compactModelContext({
+          config: { ...modelConfig, contextPrompt: buildGraphContext(ctx.model, selectedNodeId) },
+          transcript,
+          signal: state.compactAborter.signal,
+          onDelta: (delta) => {
+            compactedMessage.content += delta;
+            appendTextBlock(compactedMessage, delta);
+            updateAssistantDom(conversation, compactedMessage);
+          },
+        });
+      }
       if (!summary.trim()) throw new Error('模型没有返回压缩摘要');
       if (compactedMessage.content.trim() !== summary.trim()) {
         compactedMessage.content = summary.trim();
@@ -398,6 +431,13 @@ export function buildAiPanel(ctx) {
   async function startTurn(text, { regenerateIndex = -1, editUserIndex = -1 } = {}) {
     const conversation = activeConversation(conversationState);
     if (tasks.has(conversation.id) || !text.trim()) return;
+    debugCheckpoint('src/ui/aiPanel.js', 'turn-start', {
+      projectId,
+      conversationId: conversation.id,
+      regenerateIndex,
+      editUserIndex,
+      inputLength: text.length,
+    }, { level: 'info' });
     closeSubpanel();
     closeMentionMenu();
     const shouldFollow = isNearBottom();
@@ -511,7 +551,12 @@ export function buildAiPanel(ctx) {
         await saveCloudConversations(projectId, conversationState);
         const cloudTask = await waitForCloudTask(created.task.id, aborter.signal, (task) => {
           const activeTask = tasks.get(conversation.id);
-          if (activeTask) activeTask.status = task.status === 'queued' ? 'queued' : 'running';
+          if (activeTask) {
+            activeTask.status = task.streamStatus === 'reconnecting'
+              ? 'reconnecting'
+              : task.status === 'queued' ? 'queued' : 'running';
+            activeTask.retryAttempt = task.retryAttempt || 0;
+          }
           applyCloudTaskSnapshot(assistantMessage, task);
           updateAssistantDom(conversation, assistantMessage);
           syncBusy();
@@ -525,6 +570,19 @@ export function buildAiPanel(ctx) {
           appendTextBlock(assistantMessage, assistantMessage.content);
         }
         updateAssistantDom(conversation, assistantMessage);
+        if (shouldSyncWorkspaceAfterTask(cloudTask)) {
+          try {
+            for (const deletedPath of deletedWorkspacePaths(cloudTask)) await turnWorkspace.deleteFile(deletedPath);
+            await syncWorkspaceFiles(turnWorkspace, workspaceScope);
+            if (activeConversation(conversationState).id === conversation.id
+              && !subpanel.hidden && subpanel.dataset.mode === 'files') {
+              await showWorkspace(false);
+            }
+          } catch (error) {
+            console.warn('failed to refresh AI workspace after cloud task', error);
+            toast(`工作区文件同步失败：${error?.message || error}`, { type: 'error' });
+          }
+        }
       } else {
         if (extensionTools.definitions.length && sessionSnapshot().user) {
           await uploadCloudFiles(turnWorkspace, turnFiles, workspaceScope);
@@ -565,10 +623,21 @@ export function buildAiPanel(ctx) {
         appendTextBlock(assistantMessage, assistantMessage.content);
       }
     } catch (error) {
+      debugError('src/ui/aiPanel.js', 'turn-failed', error, {
+        projectId,
+        conversationId: conversation.id,
+        model: assistantMessage.model,
+      });
       const errorText = error?.name === 'AbortError' ? '\n\n（已停止）' : `\n\n请求失败：${error?.message || error}`;
       assistantMessage.content += errorText;
       appendTextBlock(assistantMessage, errorText);
     } finally {
+      debugCheckpoint('src/ui/aiPanel.js', 'turn-finished', {
+        projectId,
+        conversationId: conversation.id,
+        outputLength: assistantMessage.content.length,
+        blockCount: assistantMessage.blocks.length,
+      }, { level: 'info' });
       tasks.delete(conversation.id);
       syncBusy();
       persistConversation(conversation);
@@ -577,6 +646,12 @@ export function buildAiPanel(ctx) {
   }
 
   function updateToolEvent(conversation, message, event, status) {
+    debugCheckpoint('src/ui/aiPanel.js', 'tool-status', {
+      conversationId: conversation.id,
+      name: event.name,
+      callId: event.id,
+      status,
+    });
     upsertToolBlock(message, event, status);
     if (status === 'done') mergeToolSources(message, event);
     updateAssistantDom(conversation, message);
@@ -1093,6 +1168,7 @@ export function buildAiPanel(ctx) {
     const current = activeConversation(conversationState);
     if (current.id !== id && isConversationEmpty(current)) removeConversation(conversationState, current.id);
     conversationState.activeId = id;
+    debugCheckpoint('src/ui/aiPanel.js', 'conversation-switched', { projectId, conversationId: id });
     workspacePreview.close();
     workspace = createBrowserWorkspace(`${projectId}--${id}`);
     syncActiveWorkspaceFiles();
@@ -1209,6 +1285,16 @@ export function buildAiPanel(ctx) {
       const select = button('ai-conversation-select', '', conversation.title);
       select.innerHTML = `<strong>${escapeHtml(conversation.title)}</strong><small>${conversation.messages.filter((message) => message.role === 'user').length} 轮 · ${formatConversationTime(conversation.updatedAt)}</small>`;
       select.addEventListener('click', () => switchConversation(conversation.id));
+      const exportConversation = button('ai-conversation-action', '', '导出完整对话');
+      exportConversation.innerHTML = downloadIcon();
+      exportConversation.addEventListener('click', () => {
+        try {
+          downloadConversationData(conversation, { projectId, projectName: ctx.project?.name || '' });
+          toast('已导出完整对话');
+        } catch (error) {
+          toast(`导出对话失败：${error?.message || error}`, { type: 'error' });
+        }
+      });
       const rename = button('ai-conversation-action', '', '重命名');
       rename.innerHTML = editIcon();
       rename.addEventListener('click', () => beginConversationRename(row, conversation));
@@ -1227,7 +1313,7 @@ export function buildAiPanel(ctx) {
         showConversations(true);
         renderMessages({ follow: true, immediate: true });
       });
-      row.append(select, rename, remove);
+      row.append(select, exportConversation, rename, remove);
       list.append(row);
     }
   }
@@ -2002,6 +2088,7 @@ export function buildAiPanel(ctx) {
           applyCloudTaskSnapshot(message, cloudTask);
           if (!message.content) { message.content = '操作已完成。'; appendTextBlock(message, message.content); }
           message.cloudTaskStatus = cloudTask.status;
+          if (message.compaction) message.compactionStatus = 'done';
           persistConversation(conversation);
           updateAssistantDom(conversation, message);
         } else if (['failed', 'cancelled'].includes(cloudTask.status)) {
@@ -2010,6 +2097,7 @@ export function buildAiPanel(ctx) {
           message.content += suffix;
           appendTextBlock(message, suffix);
           message.cloudTaskStatus = cloudTask.status;
+          if (message.compaction) message.compactionStatus = 'failed';
           persistConversation(conversation);
           updateAssistantDom(conversation, message);
         } else if (!tasks.has(conversation.id)) {
@@ -2018,7 +2106,10 @@ export function buildAiPanel(ctx) {
           syncBusy();
           waitForCloudTask(message.cloudTaskId, aborter.signal, (progress) => {
             const activeTask = tasks.get(conversation.id);
-            if (activeTask) activeTask.status = progress.status;
+            if (activeTask) {
+              activeTask.status = progress.streamStatus === 'reconnecting' ? 'reconnecting' : progress.status;
+              activeTask.retryAttempt = progress.retryAttempt || 0;
+            }
             applyCloudTaskSnapshot(message, progress);
             updateAssistantDom(conversation, message);
             syncBusy();
@@ -2033,6 +2124,7 @@ export function buildAiPanel(ctx) {
               message.content += suffix;
               appendTextBlock(message, suffix);
             }
+            if (message.compaction) message.compactionStatus = finished.status === 'completed' ? 'done' : 'failed';
           }).catch((error) => {
             message.content = `请求失败：${error?.message || error}`;
             message.blocks = [];
@@ -2098,16 +2190,30 @@ export function isScrollNearBottom(element, threshold = 120) {
 }
 
 async function waitForCloudTask(taskId, signal, onStatus) {
+  try {
+    return await serverApi.streamTask(taskId, { signal, onTask: onStatus });
+  } catch (error) {
+    if (signal?.aborted || error?.name === 'AbortError') throw error;
+    console.warn('cloud task event stream unavailable; falling back to polling', error);
+  }
+  let lastProgressVersion = -1;
+  let lastStatus = '';
   while (true) {
     if (signal?.aborted) {
       try { await serverApi.cancelTask(taskId); } catch { /* task may already be terminal */ }
       throw signal.reason || new DOMException('Aborted', 'AbortError');
     }
     const { task } = await serverApi.getTask(taskId);
-    onStatus?.(task);
+    const progressVersion = Number(task.progressVersion || 0);
+    const statusKey = `${task.status}:${task.streamStatus || ''}:${task.retryAttempt || 0}`;
+    if (progressVersion !== lastProgressVersion || statusKey !== lastStatus) {
+      lastProgressVersion = progressVersion;
+      lastStatus = statusKey;
+      onStatus?.(task);
+    }
     if (['completed', 'failed', 'cancelled'].includes(task.status)) return task;
     await new Promise((resolve) => {
-      const timer = setTimeout(resolve, 400);
+      const timer = setTimeout(resolve, 140);
       signal?.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
     });
   }
@@ -2122,6 +2228,16 @@ export function applyCloudTaskSnapshot(message, task) {
     if (message.content) appendTextBlock(message, message.content);
   }
   return message;
+}
+
+export function shouldSyncWorkspaceAfterTask(task) {
+  return task?.status === 'completed';
+}
+
+export function deletedWorkspacePaths(task) {
+  return [...new Set((task?.workspaceChanges?.deleted || [])
+    .map((filePath) => String(filePath || '').replaceAll('\\', '/').replace(/^\/+/, ''))
+    .filter(Boolean))];
 }
 
 async function uploadCloudFiles(workspace, attachments, scope) {

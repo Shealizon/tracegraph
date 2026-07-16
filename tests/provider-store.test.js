@@ -90,6 +90,23 @@ describe('provider and protocol adapters', () => {
     expect(converted[1].parts[0].functionResponse.name).toBe('lookup');
   });
 
+  it('falls back to a non-streaming OpenAI-compatible JSON response', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: '兼容完成', reasoning_content: '兼容推理' } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } })));
+    const text = [];
+    const reasoning = [];
+    const result = await streamCompletion({
+      protocol: 'openai-chat',
+      baseUrl: 'https://openai-compatible.test/v1',
+      apiKey: 'key',
+      model: 'model',
+    }, [{ role: 'user', content: 'test' }], [], (delta) => text.push(delta), (delta) => reasoning.push(delta));
+    expect(result).toEqual({ content: '兼容完成', toolCalls: [] });
+    expect(text).toEqual(['兼容完成']);
+    expect(reasoning).toEqual(['兼容推理']);
+  });
+
   it('parses Anthropic text and streamed tool arguments', async () => {
     const events = [
       { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '你好' } },

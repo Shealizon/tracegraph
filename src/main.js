@@ -32,17 +32,30 @@ import { initSession, sessionSnapshot } from './cloud/session.js';
 import { configureProjectSync, syncNow } from './cloud/sync.js';
 import { renderAdminPage } from './cloud/adminPage.js';
 import { hydrateCloudAiState } from './cloud/aiState.js';
+import { downloadProjectData } from './debug/exportData.js';
+import { debugCheckpoint, debugError, installDiagnostics } from './debug/diagnostics.js';
 
+const runtimeDebugContext = { phase: 'boot', screen: '', projectId: '', projectCount: 0 };
+installDiagnostics({ getContext: () => runtimeDebugContext });
+debugCheckpoint('src/main.js', 'module-ready', { location: location.href }, { level: 'info' });
 initTooltips();
 
 init().catch((err) => {
+  debugError('src/main.js', 'init-failed', err);
   console.error(err);
   document.body.innerHTML = `<pre style="padding:24px;color:#d66">启动失败：${escapeHtml(err?.message || err)}</pre>`;
 });
 
 async function init() {
+  runtimeDebugContext.phase = 'initializing';
+  debugCheckpoint('src/main.js', 'init-start');
   await initSession();
   let store = await initProjectStore();
+  runtimeDebugContext.projectCount = store.projects.length;
+  debugCheckpoint('src/main.js', 'project-store-ready', {
+    projectCount: store.projects.length,
+    currentProjectId: store.currentProjectId,
+  });
   configureProjectSync(store.db);
   if (sessionSnapshot().user) {
     try {
@@ -53,9 +66,12 @@ async function init() {
   const query = new URLSearchParams(location.search);
   const screen = query.get('screen') || 'leading';
   const projectId = query.get('project') || store.currentProjectId;
+  Object.assign(runtimeDebugContext, { phase: 'routing', screen, projectId: projectId || '' });
+  debugCheckpoint('src/main.js', 'route-selected', { screen, projectId });
 
   if (screen === 'admin') {
     await renderAdminPage();
+    runtimeDebugContext.phase = 'ready';
     return;
   }
 
@@ -70,17 +86,30 @@ async function init() {
       startMain(store.db, project);
     } else {
       renderLeadingPage(store);
+      runtimeDebugContext.phase = 'ready';
     }
   } else {
     renderLeadingPage(store);
+    runtimeDebugContext.phase = 'ready';
   }
 }
 
 function startMain(db, project) {
+  Object.assign(runtimeDebugContext, {
+    phase: 'main-starting',
+    projectId: project.id,
+    projectName: project.name || '',
+    documentCount: project.documents?.length || 0,
+  });
+  debugCheckpoint('src/main.js', 'main-start', {
+    projectId: project.id,
+    documentCount: project.documents?.length || 0,
+  }, { level: 'info' });
   document.getElementById('leading-root')?.remove();
   document.getElementById('app').style.display = 'block';
 
   const model = buildModel(compileProject(project));
+  runtimeDebugContext.nodeCount = model.nodes.length;
   const initialState = readHash();
 
   // 渲染器：label -> 编号 / 类型 / 归属节点
@@ -147,6 +176,15 @@ function startMain(db, project) {
     goLeading,
     openProjectConfig: () => openProjectConfigDialog({ db, project, onSaved: () => location.reload() }),
     exportProject: () => downloadProject(project),
+    exportProjectData: async () => {
+      try {
+        toast('正在整理项目全部数据…');
+        await downloadProjectData(project);
+        toast('项目全部数据已导出');
+      } catch (error) {
+        toast(`导出失败：${error?.message || error}`, { type: 'error' });
+      }
+    },
     importFile: async () => {
       // 直接弹文件选择器，按扩展名分发（.json → 结构化；.tex/.txt → 通用自动识别）
       const file = await pickImportFile();
@@ -160,6 +198,7 @@ function startMain(db, project) {
       } catch (e) { toast('导入失败：' + (e?.message || e), { type: 'error' }); }
     },
   };
+  runtimeDebugContext.phase = 'ready';
 
   for (const id of ctx.hidden) {
     const n = model.nodeById.get(id);

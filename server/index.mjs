@@ -214,6 +214,42 @@ app.get('/api/codex/models', requireAuth, asyncRoute(async (req, res) => {
 app.post('/api/ai/tasks', requireAuth, asyncRoute(async (req, res) => res.status(202).json({ task: await tasks.create(req.auth.session, req.body || {}) })));
 app.get('/api/ai/tasks', requireAuth, asyncRoute(async (req, res) => res.json({ tasks: await tasks.list(req.auth.session, req.query) })));
 app.get('/api/ai/tasks/:id', requireAuth, asyncRoute(async (req, res) => res.json({ task: await tasks.get(req.auth.session, req.params.id) })));
+app.get('/api/ai/tasks/:id/events', requireAuth, (req, res, next) => {
+  res.status(200);
+  res.set({
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  let closed = false;
+  let unsubscribe = () => {};
+  const keepAlive = setInterval(() => {
+    if (!closed) res.write(': keep-alive\n\n');
+  }, 15_000);
+  keepAlive.unref?.();
+  const cleanup = () => {
+    if (closed) return;
+    closed = true;
+    clearInterval(keepAlive);
+    unsubscribe();
+    if (!res.writableEnded) res.end();
+  };
+  req.on('close', cleanup);
+  tasks.subscribe(req.auth.session, req.params.id, (task) => {
+    if (closed) return;
+    res.write(`data: ${JSON.stringify({ task })}\n\n`);
+    if (['completed', 'failed', 'cancelled'].includes(task.status)) setTimeout(cleanup, 0);
+  }).then((stop) => {
+    unsubscribe = stop;
+    if (closed) stop();
+  }).catch((error) => {
+    closed = true;
+    clearInterval(keepAlive);
+    unsubscribe();
+    next(error);
+  });
+});
 app.delete('/api/ai/tasks/:id', requireAuth, asyncRoute(async (req, res) => res.json({ task: await tasks.cancel(req.auth.session, req.params.id) })));
 
 app.post('/api/tools/extract-tex', requireAuth, asyncRoute(async (req, res) => {

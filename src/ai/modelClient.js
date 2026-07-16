@@ -150,6 +150,21 @@ async function streamOpenAi(config, messages, tools, onDelta, onReasoningDelta, 
     const detail = await response.text();
     throw new Error(`模型请求失败（${response.status}）：${detail.slice(0, 500)}`);
   }
+  if (/application\/json/i.test(response.headers?.get?.('content-type') || '')) {
+    const message = (await response.json()).choices?.[0]?.message || {};
+    const content = modelMessageText(message.content);
+    if (content) onDelta?.(content);
+    const reasoning = readReasoningDelta(message);
+    if (reasoning) onReasoningDelta?.(reasoning);
+    return {
+      content,
+      toolCalls: (message.tool_calls || []).map((call) => ({
+        id: call.id || '',
+        name: call.function?.name || '',
+        arguments: call.function?.arguments || '{}',
+      })).filter((call) => call.name),
+    };
+  }
   if (!response.body) throw new Error('模型响应不支持流式读取');
 
   const decoder = new SseDecoder();
@@ -200,6 +215,17 @@ async function streamAnthropic(config, messages, tools, onDelta, onReasoningDelt
     body: JSON.stringify({ model: config.model, max_tokens: 8192, system, messages: toAnthropicMessages(messages), tools: toAnthropicTools(tools), stream: true }),
   });
   await ensureResponse(response);
+  if (/application\/json/i.test(response.headers?.get?.('content-type') || '')) {
+    const data = await response.json();
+    let content = '';
+    const toolCalls = [];
+    for (const block of data.content || []) {
+      if (block.type === 'text' && block.text) { content += block.text; onDelta?.(block.text); }
+      if (block.type === 'thinking' && block.thinking) onReasoningDelta?.(block.thinking);
+      if (block.type === 'tool_use') toolCalls.push({ id: block.id || '', name: block.name || '', arguments: JSON.stringify(block.input || {}) });
+    }
+    return { content, toolCalls };
+  }
   const content = { text: '' };
   const toolCalls = new Map();
   await consumeSse(response, (event) => {
@@ -231,6 +257,19 @@ async function streamGemini(config, messages, tools, onDelta, onReasoningDelta, 
     }),
   });
   await ensureResponse(response);
+  if (/application\/json/i.test(response.headers?.get?.('content-type') || '')) {
+    const data = await response.json();
+    let content = '';
+    const toolCalls = [];
+    for (const part of data.candidates?.[0]?.content?.parts || []) {
+      if (part.text) {
+        if (part.thought) onReasoningDelta?.(part.text);
+        else { content += part.text; onDelta?.(part.text); }
+      }
+      if (part.functionCall) toolCalls.push({ id: `gemini-${Date.now()}-${toolCalls.length}`, name: part.functionCall.name, arguments: JSON.stringify(part.functionCall.args || {}) });
+    }
+    return { content, toolCalls };
+  }
   let content = '';
   const toolCalls = [];
   await consumeSse(response, (event) => {
@@ -308,6 +347,12 @@ export function readReasoningDelta(delta) {
     if (typeof value === 'string' && value) return value;
   }
   return '';
+}
+
+function modelMessageText(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content.filter((part) => part?.type === 'text' && part.text).map((part) => part.text).join('');
 }
 
 export class SseDecoder {

@@ -62,4 +62,21 @@ describe('AI conversation store', () => {
     expect(saved.conversations).toHaveLength(1);
     expect(saved.conversations[0].messages[0].content).toBe('real');
   });
+
+  it('persists every turn so a complete conversation can be exported later', () => {
+    const values = new Map();
+    const storage = { getItem: (key) => values.get(key) || null, setItem: (key, value) => values.set(key, value) };
+    const state = loadConversationState(storage, 'key');
+    activeConversation(state).messages = Array.from({ length: 180 }, (_, index) => ({
+      role: index % 2 ? 'assistant' : 'user',
+      content: `message-${index}`,
+    }));
+
+    saveConversationState(storage, 'key', state);
+
+    const saved = JSON.parse(values.get('key'));
+    expect(saved.conversations[0].messages).toHaveLength(180);
+    expect(saved.conversations[0].messages[0].content).toBe('message-0');
+    expect(saved.conversations[0].messages.at(-1).content).toBe('message-179');
+  });
 });

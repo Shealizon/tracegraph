@@ -498,7 +498,7 @@ details[open] > summary > .ai-chevron { transform: rotate(180deg); }
 .ai-pdf-selection-actions button:hover { color: var(--accent); background: var(--accent-bg); }
 .ai-pdf-selection-actions svg { width: 13px; height: 13px; }
 .ai-conversation-list { display: grid; gap: 4px; }
-.ai-conversation-item { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 30px 30px; align-items: center; gap: 2px; padding: 4px; border: 1px solid transparent; border-radius: 9px; }
+.ai-conversation-item { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) 30px 30px 30px; align-items: center; gap: 2px; padding: 4px; border: 1px solid transparent; border-radius: 9px; }
 .ai-conversation-item:hover, .ai-conversation-item.is-active { background: var(--bg-soft); }
 .ai-conversation-item.is-active { border-color: var(--accent-line); }
 .ai-conversation-select { min-width: 0; display: grid; gap: 2px; padding: 6px; color: var(--text); background: transparent; border: 0; text-align: left; cursor: pointer; }

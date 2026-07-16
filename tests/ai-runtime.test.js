@@ -7,7 +7,7 @@ import {
   aiQuoteAttachment, contextPrompt, graphNodeAttachment, graphSelectionAttachment, mentionQueryAt, pdfFieldAttachment, replaceMention, searchMentionCandidates,
 } from '../src/ai/contextAttachments.js';
 import { formatGraphReferenceDisplay, normalizeCjkStrong, protectMarkdownMath, stripBlockquoteMathMarkers } from '../src/render/markdown.js';
-import { activityTimelineEntries, applyCloudTaskSnapshot, isActivityGroupActive, isScrollNearBottom, navigateGraphReference, normalizeAiText, noteFromAssistantMessage, replaceUserMessageBranch, shouldJoinActivityBlock } from '../src/ui/aiPanel.js';
+import { activityTimelineEntries, applyCloudTaskSnapshot, deletedWorkspacePaths, isActivityGroupActive, isScrollNearBottom, navigateGraphReference, normalizeAiText, noteFromAssistantMessage, replaceUserMessageBranch, shouldJoinActivityBlock, shouldSyncWorkspaceAfterTask } from '../src/ui/aiPanel.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -25,6 +25,16 @@ describe('AI runtime helpers', () => {
     });
     expect(message.content).toBe('逐步回答');
     expect(message.blocks).toEqual([{ type: 'reasoning', content: '推理摘要' }, { type: 'text', content: '逐步回答' }]);
+  });
+
+  it('refreshes the local workspace after completed cloud tasks and applies committed deletions', () => {
+    const task = {
+      status: 'completed',
+      workspaceChanges: { deleted: ['notes\\old.md', '/uploads/removed.pdf', 'notes/old.md'] },
+    };
+    expect(shouldSyncWorkspaceAfterTask(task)).toBe(true);
+    expect(shouldSyncWorkspaceAfterTask({ status: 'running' })).toBe(false);
+    expect(deletedWorkspacePaths(task)).toEqual(['notes/old.md', 'uploads/removed.pdf']);
   });
 
   it('builds structured graph selection context with node location and surrounding text', () => {

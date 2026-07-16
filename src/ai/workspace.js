@@ -1,4 +1,10 @@
+import { debugCheckpoint } from '../debug/diagnostics.js';
+
 const ROOT_DIR = 'paper-graph-ai';
+
+export function browserWorkspaceScope(value) {
+  return safeSegment(value || 'default');
+}
 
 export function normalizeWorkspacePath(value) {
   const path = String(value || '').replace(/\\/g, '/').replace(/^\/+/, '');
@@ -10,7 +16,7 @@ export function normalizeWorkspacePath(value) {
 }
 
 export function createBrowserWorkspace(projectId) {
-  const scope = safeSegment(projectId || 'default');
+  const scope = browserWorkspaceScope(projectId);
 
   async function clear() {
     if (!navigator.storage?.getDirectory) return;
@@ -18,6 +24,7 @@ export function createBrowserWorkspace(projectId) {
     const appRoot = await opfs.getDirectoryHandle(ROOT_DIR, { create: true });
     try { await appRoot.removeEntry(scope, { recursive: true }); }
     catch (error) { if (error?.name !== 'NotFoundError') throw error; }
+    debugCheckpoint('src/ai/workspace.js', 'workspace-cleared', { scope });
   }
 
   async function root() {
@@ -45,12 +52,19 @@ export function createBrowserWorkspace(projectId) {
     } finally {
       await writable.close();
     }
+    debugCheckpoint('src/ai/workspace.js', 'file-written', {
+      scope,
+      path: normalizeWorkspacePath(path),
+      size: data?.size ?? data?.byteLength ?? String(data || '').length,
+    });
     return normalizeWorkspacePath(path);
   }
 
   async function readFile(path) {
     const handle = await resolveFile(path);
-    return handle.getFile();
+    const file = await handle.getFile();
+    debugCheckpoint('src/ai/workspace.js', 'file-read', { scope, path: normalizeWorkspacePath(path), size: file.size });
+    return file;
   }
 
   async function deleteFile(path) {
@@ -60,12 +74,14 @@ export function createBrowserWorkspace(projectId) {
     for (const part of parts) dir = await dir.getDirectoryHandle(part);
     try { await dir.removeEntry(fileName); }
     catch (error) { if (error?.name !== 'NotFoundError') throw error; }
+    debugCheckpoint('src/ai/workspace.js', 'file-deleted', { scope, path: normalizeWorkspacePath(path) });
     return normalizeWorkspacePath(path);
   }
 
   async function listFiles() {
     const items = [];
     await walk(await root(), '', items);
+    debugCheckpoint('src/ai/workspace.js', 'files-listed', { scope, count: items.length });
     return items.sort((a, b) => a.path.localeCompare(b.path));
   }
 
@@ -90,6 +106,32 @@ export function createBrowserWorkspace(projectId) {
   return { clear, deleteFile, importFile, listFiles, readFile, writeFile };
 }
 
+export async function exportBrowserWorkspaces({ scopePrefix = '' } = {}) {
+  if (!navigator.storage?.getDirectory) return [];
+  const opfs = await navigator.storage.getDirectory();
+  let appRoot;
+  try { appRoot = await opfs.getDirectoryHandle(ROOT_DIR); }
+  catch (error) {
+    if (error?.name === 'NotFoundError') return [];
+    throw error;
+  }
+  const workspaces = [];
+  debugCheckpoint('src/ai/workspace.js', 'workspace-export-start', { scopePrefix });
+  for await (const [scope, handle] of appRoot.entries()) {
+    if (handle.kind !== 'directory' || (scopePrefix && !scope.startsWith(scopePrefix))) continue;
+    const files = [];
+    await walkExportFiles(handle, '', files);
+    workspaces.push({ scope, files: files.sort((a, b) => a.path.localeCompare(b.path)) });
+  }
+  const sorted = workspaces.sort((a, b) => a.scope.localeCompare(b.scope));
+  debugCheckpoint('src/ai/workspace.js', 'workspace-export-complete', {
+    scopePrefix,
+    workspaceCount: sorted.length,
+    fileCount: sorted.reduce((count, workspace) => count + workspace.files.length, 0),
+  }, { level: 'info' });
+  return sorted;
+}
+
 async function walk(dir, prefix, out) {
   for await (const [name, handle] of dir.entries()) {
     const path = prefix ? `${prefix}/${name}` : name;
@@ -99,6 +141,36 @@ async function walk(dir, prefix, out) {
       out.push({ path, name, size: file.size, type: file.type || guessType(name), updatedAt: file.lastModified });
     }
   }
+}
+
+async function walkExportFiles(dir, prefix, out) {
+  for await (const [name, handle] of dir.entries()) {
+    const path = prefix ? `${prefix}/${name}` : name;
+    if (handle.kind === 'directory') {
+      await walkExportFiles(handle, path, out);
+      continue;
+    }
+    const file = await handle.getFile();
+    out.push({
+      path,
+      name,
+      size: file.size,
+      type: file.type || guessType(name),
+      updatedAt: file.lastModified,
+      encoding: 'base64',
+      content: arrayBufferToBase64(await file.arrayBuffer()),
+    });
+  }
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
 }
 
 function safeSegment(value) {

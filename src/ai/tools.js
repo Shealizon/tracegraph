@@ -217,7 +217,7 @@ async function writeFile(workspace, args, mode, confirm) {
   return { path, written: true, chars: content.length };
 }
 
-async function webSearch(args) {
+export async function webSearch(args) {
   const query = String(args.query || '').trim();
   if (!query) throw new Error('搜索词不能为空');
   const limit = clamp(args.limit, 1, 8, 5);
@@ -263,7 +263,7 @@ function convergenceInstruction() {
   };
 }
 
-async function openUrl(args, registerSource) {
+export async function openUrl(args, registerSource) {
   const target = publicHttpUrl(args.url);
   const maxChars = clamp(args.max_chars, 1000, 30000, 12000);
   const readerUrl = `https://r.jina.ai/${target.href}`;
@@ -283,7 +283,7 @@ async function openUrl(args, registerSource) {
   };
 }
 
-async function resolveDoi(args, registerSource) {
+export async function resolveDoi(args, registerSource) {
   const doi = extractDoi(args.doi);
   if (!doi) throw new Error('请输入有效 DOI，例如 10.1090/cams/50');
   const path = doi.split('/').map(encodeURIComponent).join('/');

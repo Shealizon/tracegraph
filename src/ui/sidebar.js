@@ -184,7 +184,8 @@ function attachOverflowMenu(ctx, anchor) {
     { label: '阅读列表', icon: 'search', run: () => ctx.openReaderLibrary && ctx.openReaderLibrary() },
     { label: '项目配置', icon: 'settings', run: () => ctx.openProjectConfig && ctx.openProjectConfig() },
     { label: '导入文件', icon: 'upload', run: () => ctx.importFile && ctx.importFile() },
-    { label: '导出项目', icon: 'download', run: () => ctx.exportProject && ctx.exportProject() },
+    { label: '导出项目结构', icon: 'download', run: () => ctx.exportProject && ctx.exportProject() },
+    { label: '导出项目全部数据', icon: 'download', run: () => ctx.exportProjectData && ctx.exportProjectData() },
   ];
   anchor.addEventListener('click', (ev) => {
     ev.stopPropagation();

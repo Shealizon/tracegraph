@@ -46,7 +46,7 @@ export function saveConversationState(storage, key, state) {
   storage?.setItem(key, JSON.stringify({
     version: VERSION,
     activeId: conversations.some((conversation) => conversation.id === state.activeId) ? state.activeId : conversations[0]?.id || '',
-    conversations: conversations.map((conversation) => ({ ...conversation, messages: conversation.messages.slice(-120) })),
+    conversations: conversations.map((conversation) => ({ ...conversation, messages: conversation.messages })),
   }));
 }
 

@@ -1,5 +1,6 @@
 import rawDemoGraph from '../data/paper-graph.json';
 import { createDemoProject, normalizeProject, PROJECT_FORMAT } from './projectAdapter.js';
+import { debugCheckpoint } from '../debug/diagnostics.js';
 
 const DB_NAME = 'paper-graph-projects';
 const DB_VERSION = 1;
@@ -9,12 +10,14 @@ const DELETED_KEY = 'paper-graph-deleted-projects';
 let syncHandler = null;
 
 export async function initProjectStore() {
+  debugCheckpoint('src/project/store.js', 'init-start');
   const db = await openDb();
   const projects = await listProjects(db);
   if (!projects.length) {
     const demo = createDemoProject(rawDemoGraph);
     await saveProject(db, demo);
     localStorage.setItem(CURRENT_KEY, demo.id);
+    debugCheckpoint('src/project/store.js', 'demo-created', { projectId: demo.id });
     return { db, projects: [demo], currentProjectId: demo.id };
   }
   let currentProjectId = localStorage.getItem(CURRENT_KEY);
@@ -22,6 +25,7 @@ export async function initProjectStore() {
     currentProjectId = projects[0].id;
     localStorage.setItem(CURRENT_KEY, currentProjectId);
   }
+  debugCheckpoint('src/project/store.js', 'init-complete', { projectCount: projects.length, currentProjectId });
   return { db, projects, currentProjectId };
 }
 
@@ -42,7 +46,11 @@ export function openDb() {
 }
 
 export function listProjects(db) {
-  return txRequest(db, 'readonly', (store) => store.getAll()).then((items) => items.map(normalizeProject));
+  return txRequest(db, 'readonly', (store) => store.getAll()).then((items) => {
+    const projects = items.map(normalizeProject);
+    debugCheckpoint('src/project/store.js', 'projects-listed', { count: projects.length });
+    return projects;
+  });
 }
 
 export function getProject(db, id) {
@@ -58,6 +66,10 @@ export function saveProject(db, project) {
   return txRequest(db, 'readwrite', (store) => store.put(normalized)).then(() => {
     clearDeletedProject(normalized.id);
     syncHandler?.({ type: 'save', id: normalized.id });
+    debugCheckpoint('src/project/store.js', 'project-saved', {
+      projectId: normalized.id,
+      documentCount: normalized.documents?.length || 0,
+    });
     return normalized;
   });
 }
@@ -66,6 +78,7 @@ export function deleteProject(db, id) {
   return txRequest(db, 'readwrite', (store) => store.delete(id)).then(() => {
     recordDeletedProject(id);
     syncHandler?.({ type: 'delete', id });
+    debugCheckpoint('src/project/store.js', 'project-deleted', { projectId: id });
   });
 }
 
