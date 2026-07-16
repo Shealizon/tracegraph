@@ -104,8 +104,8 @@ export function buildAiPanel(ctx) {
   panel.setAttribute('aria-label', 'AI Assistant');
   panel.innerHTML = `
     <div class="ai-resize" data-resize aria-hidden="true"></div>
-    <button class="ai-collapse-rail" data-collapse title="折叠面板" aria-label="折叠面板">${panelCollapseIcon()}</button>
     <header class="ai-head">
+      <button class="ai-collapse-rail" data-collapse title="折叠面板" aria-label="折叠面板">${panelCollapseIcon()}</button>
       <div class="ai-head-primary">
         <button class="ai-brand" data-conversations title="切换或重命名对话">${sparkIcon()}<strong data-conversation-title>新对话</strong>${chevronIcon()}</button>
         <button class="icon-btn ai-new-chat" data-new title="新建对话">${newChatIcon()}</button>
