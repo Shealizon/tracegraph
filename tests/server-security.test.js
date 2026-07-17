@@ -43,4 +43,45 @@ describe('encrypted server workspaces', () => {
       await expect(afterLogout.authenticate(login.token)).rejects.toThrow('请先登录');
     } finally { await fs.rm(root, { recursive: true, force: true }); }
   }, 10_000);
+
+  it('lets an administrator create a managed user with a one-time generated password', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'paper-graph-managed-user-'));
+    try {
+      const store = new UserStore(root);
+      await store.init();
+      const admin = await store.register({ email: 'admin@example.com', password: 'admin-password', name: 'Admin' });
+      const created = await store.createUser(admin, { username: 'Alice' });
+
+      expect(created.user).toMatchObject({
+        username: 'alice',
+        email: 'alice@graph.akusm.com',
+        name: 'alice',
+        role: 'user',
+      });
+      expect(created.initialPassword).toMatch(/^alice[a-z]{5}@graph\.akusm\.com$/);
+      await expect(store.login({ account: 'alice', password: created.initialPassword }))
+        .resolves.toMatchObject({ user: { id: created.user.id } });
+      expect(await fs.readFile(path.join(root, 'users.json'), 'utf8')).not.toContain(created.initialPassword);
+      await expect(store.createUser({ role: 'user' }, { username: 'blocked' })).rejects.toThrow('需要管理员权限');
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
+  }, 10_000);
+
+  it('changes a user password without losing access to the encrypted workspace', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'paper-graph-password-'));
+    try {
+      const store = new UserStore(root);
+      await store.init();
+      await store.register({ email: 'admin@example.com', password: 'old-password', name: 'Admin' });
+      const login = await store.login({ email: 'admin@example.com', password: 'old-password' });
+      const auth = await store.authenticate(login.token);
+      await store.updateVault(auth.session, (vault) => { vault.state.passwordTest = 'preserved'; });
+
+      await store.changePassword(auth, { currentPassword: 'old-password', newPassword: 'new-secure-password' });
+
+      await expect(store.login({ email: 'admin@example.com', password: 'old-password' })).rejects.toThrow('账号或密码错误');
+      const nextLogin = await store.login({ email: 'admin@example.com', password: 'new-secure-password' });
+      const nextAuth = await store.authenticate(nextLogin.token);
+      expect(await store.readVault(nextAuth.session)).toMatchObject({ state: { passwordTest: 'preserved' } });
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
+  }, 10_000);
 });

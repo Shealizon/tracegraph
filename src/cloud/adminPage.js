@@ -11,8 +11,9 @@ export async function renderAdminPage() {
   if (!user || user.role !== 'admin') { location.href = location.pathname; return; }
   let root = document.getElementById('leading-root');
   if (!root) { root = document.createElement('div'); root.id = 'leading-root'; document.body.append(root); }
-  root.innerHTML = `<main class="admin-page"><header class="admin-topbar"><div><button class="admin-back" data-back>← 项目</button><h1>管理员面板</h1><p>管理账号、服务器 AI、Skills 与工具扩展。用户工作区内容保持加密，不在此展示。</p></div><div data-account></div></header><section class="admin-summary" data-summary></section><section class="admin-codex" id="codex"><div class="admin-section-heading"><div><span class="admin-eyebrow">SERVER AI</span><h2>Codex 登录</h2><p>Codex 只在服务器运行。通过设备码授权，不会向浏览器发送服务器令牌。</p></div><button class="btn btn--primary admin-primary" data-codex-login disabled>检查中…</button></div><div class="codex-status-card" data-codex-status><span class="codex-status-dot"></span><div><strong>正在检查服务器 Codex</strong><small>请稍候</small></div></div><div class="codex-device-login" data-codex-device hidden></div></section><section class="admin-extensions" id="extensions"><div class="admin-section-heading"><div><span class="admin-eyebrow">EXTENSIONS</span><h2>Skills 与工具</h2><p>扩展统一安装在服务器，并自动提供给所有已登录用户。只有管理员可以导入和管理。</p></div><button class="btn btn--primary admin-primary" data-extension-import>${ICON.upload}<span>导入扩展包</span></button><input type="file" accept=".json,application/json" data-extension-file hidden></div><div class="admin-extension-list" data-extension-list><div class="codex-status-card"><div><strong>正在读取扩展</strong><small>请稍候</small></div></div></div></section><div class="admin-section-heading admin-users-heading"><div><span class="admin-eyebrow">ACCESS</span><h2>用户</h2></div></div><section class="admin-table-wrap"><table class="admin-table"><thead><tr><th>用户</th><th>角色</th><th>状态</th><th>最近登录</th><th></th></tr></thead><tbody data-users></tbody></table></section></main>`;
+  root.innerHTML = `<main class="admin-page"><header class="admin-topbar"><div><button class="admin-back" data-back>← 项目</button><h1>管理员面板</h1><p>管理账号、服务器 AI、Skills 与工具扩展。用户工作区内容保持加密，不在此展示。</p></div><div data-account></div></header><section class="admin-summary" data-summary></section><section class="admin-codex" id="codex"><div class="admin-section-heading"><div><span class="admin-eyebrow">SERVER AI</span><h2>Codex 登录</h2><p>Codex 只在服务器运行。通过设备码授权，不会向浏览器发送服务器令牌。</p></div><button class="btn btn--primary admin-primary" data-codex-login disabled>检查中…</button></div><div class="codex-status-card" data-codex-status><span class="codex-status-dot"></span><div><strong>正在检查服务器 Codex</strong><small>请稍候</small></div></div><div class="codex-device-login" data-codex-device hidden></div></section><section class="admin-extensions" id="extensions"><div class="admin-section-heading"><div><span class="admin-eyebrow">EXTENSIONS</span><h2>Skills 与工具</h2><p>扩展统一安装在服务器，并自动提供给所有已登录用户。只有管理员可以导入和管理。</p></div><button class="btn btn--primary admin-primary" data-extension-import>${ICON.upload}<span>导入扩展包</span></button><input type="file" accept=".json,application/json" data-extension-file hidden></div><div class="admin-extension-list" data-extension-list><div class="codex-status-card"><div><strong>正在读取扩展</strong><small>请稍候</small></div></div></div></section><div class="admin-section-heading admin-users-heading"><div><span class="admin-eyebrow">ACCESS</span><h2>用户</h2><p>创建账号后，初始密码只显示一次。</p></div><button class="btn btn--primary admin-primary" data-user-create>添加用户</button></div><section class="admin-table-wrap"><table class="admin-table"><thead><tr><th>用户</th><th>角色</th><th>状态</th><th>最近登录</th><th></th></tr></thead><tbody data-users></tbody></table></section></main>`;
   root.querySelector('[data-back]').addEventListener('click', () => { location.href = location.pathname; });
+  root.querySelector('[data-user-create]').addEventListener('click', () => openCreateUserDialog({ onCreated: () => renderAdminPage() }));
   mountAccountControls(root.querySelector('[data-account]'), { onChanged: () => location.reload() });
   const [usersResult] = await Promise.all([
     serverApi.users(),
@@ -24,7 +25,7 @@ export async function renderAdminPage() {
   const tbody = root.querySelector('[data-users]');
   for (const item of users) {
     const row = document.createElement('tr');
-    row.innerHTML = `<td><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.email)}</small></td><td><select data-role><option value="user"${item.role === 'user' ? ' selected' : ''}>用户</option><option value="admin"${item.role === 'admin' ? ' selected' : ''}>管理员</option></select></td><td><span class="admin-status is-${item.status}">${item.status === 'active' ? '正常' : '已停用'}</span></td><td>${formatDate(item.lastLoginAt)}</td><td><button class="admin-action" data-toggle>${item.status === 'active' ? '停用' : '启用'}</button></td>`;
+    row.innerHTML = `<td><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.username ? `账号：${item.username}` : item.email)}</small></td><td><select data-role><option value="user"${item.role === 'user' ? ' selected' : ''}>用户</option><option value="admin"${item.role === 'admin' ? ' selected' : ''}>管理员</option></select></td><td><span class="admin-status is-${item.status}">${item.status === 'active' ? '正常' : '已停用'}</span></td><td>${formatDate(item.lastLoginAt)}</td><td><button class="admin-action" data-toggle>${item.status === 'active' ? '停用' : '启用'}</button></td>`;
     row.querySelector('[data-role]').disabled = item.id === user.id;
     row.querySelector('[data-role]').addEventListener('change', async (event) => {
       try { await serverApi.updateUser(item.id, { role: event.target.value }); toast('权限已更新'); } catch (error) { toast(error.message, { type: 'error' }); }
@@ -36,6 +37,60 @@ export async function renderAdminPage() {
     tbody.append(row);
   }
   if (location.hash === '#codex') requestAnimationFrame(() => root.querySelector('#codex')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+}
+
+function openCreateUserDialog({ onCreated = () => {} } = {}) {
+  const overlay = document.createElement('div');
+  overlay.className = 'auth-backdrop';
+  overlay.innerHTML = `<form class="auth-dialog"><header><div><span class="auth-eyebrow">NEW ACCOUNT</span><h2>添加用户</h2></div><button type="button" data-close aria-label="关闭">×</button></header><p class="auth-copy">输入用户名后，系统会创建同名登录账号并生成随机初始密码。</p><label>用户名<input name="username" type="text" minlength="1" maxlength="32" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="例如 alice" required></label><small class="auth-field-help">可使用小写字母、数字、点、下划线和连字符</small><p class="auth-error" data-error></p><button class="auth-submit" type="submit">创建用户</button></form>`;
+  document.body.append(overlay);
+  const form = overlay.querySelector('form');
+  let created = false;
+  const close = () => { overlay.remove(); if (created) onCreated(); };
+  overlay.querySelector('[data-close]').addEventListener('click', close);
+  overlay.addEventListener('click', (event) => { if (event.target === overlay) close(); });
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const submit = overlay.querySelector('.auth-submit');
+    const errorEl = overlay.querySelector('[data-error]');
+    submit.disabled = true;
+    errorEl.textContent = '';
+    try {
+      const result = await serverApi.createUser(form.elements.namedItem('username').value);
+      created = true;
+      showCreatedCredentials(overlay, result, close);
+    } catch (error) {
+      errorEl.textContent = error.message;
+      submit.disabled = false;
+    }
+  });
+  form.elements.namedItem('username').focus();
+}
+
+function showCreatedCredentials(overlay, { user, initialPassword }, close) {
+  const credentials = `登录账号：${user.username}\n初始密码：${initialPassword}`;
+  overlay.innerHTML = `<section class="auth-dialog admin-credentials"><header><div><span class="auth-eyebrow">ACCOUNT CREATED</span><h2>用户已创建</h2></div><button type="button" data-close aria-label="关闭">×</button></header><p class="auth-copy">请立即将以下信息安全地交给用户。关闭后无法再次查看初始密码。</p><label>登录账号<input data-created-username readonly value="${escapeAttr(user.username)}"></label><label>初始密码<input data-created-password readonly value="${escapeAttr(initialPassword)}"></label><p class="admin-credentials-warning">用户登录后可从账号菜单修改密码。</p><div class="admin-credentials-actions"><button type="button" class="btn" data-copy>复制账号和密码</button><button type="button" class="btn btn--primary" data-done>完成</button></div></section>`;
+  overlay.querySelector('[data-close]').addEventListener('click', close);
+  overlay.querySelector('[data-done]').addEventListener('click', close);
+  overlay.querySelector('[data-copy]').addEventListener('click', async (event) => {
+    try {
+      await copyText(credentials);
+      event.currentTarget.textContent = '已复制';
+    } catch { toast('复制失败，请手动复制', { type: 'error' }); }
+  });
+}
+
+async function copyText(value) {
+  if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(value); return; }
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.append(textarea);
+  textarea.select();
+  const copied = document.execCommand?.('copy');
+  textarea.remove();
+  if (!copied) throw new Error('copy unavailable');
 }
 
 async function renderExtensionsAdmin(root) {

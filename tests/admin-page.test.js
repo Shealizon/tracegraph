@@ -7,6 +7,7 @@ const api = vi.hoisted(() => ({
   adminExtensions: vi.fn(),
   saveExtensionEnvironment: vi.fn(),
   deleteExtensionEnvironment: vi.fn(),
+  createUser: vi.fn(),
 }));
 
 vi.mock('../src/cloud/api.js', () => ({ serverApi: api }));
@@ -66,5 +67,23 @@ describe('admin extension UI', () => {
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 
     await vi.waitFor(() => expect(api.saveExtensionEnvironment).toHaveBeenCalledWith('PADDLEOCR_TOKEN', 'token-value'));
+  });
+
+  it('creates a managed user and shows the one-time credentials', async () => {
+    api.createUser.mockResolvedValue({
+      user: { id: 'alice', username: 'alice', name: 'alice', email: 'alice@graph.akusm.com', role: 'user', status: 'active' },
+      initialPassword: 'aliceabcde@graph.akusm.com',
+    });
+    await renderAdminPage();
+
+    document.querySelector('[data-user-create]').click();
+    const form = document.querySelector('.auth-dialog');
+    form.elements.namedItem('username').value = 'Alice';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await vi.waitFor(() => expect(api.createUser).toHaveBeenCalledWith('Alice'));
+    expect(document.querySelector('[data-created-username]').value).toBe('alice');
+    expect(document.querySelector('[data-created-password]').value).toBe('aliceabcde@graph.akusm.com');
+    expect(document.body.textContent).toContain('关闭后无法再次查看初始密码');
   });
 });

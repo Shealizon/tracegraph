@@ -51,6 +51,10 @@ app.post('/api/auth/logout', asyncRoute(async (req, res) => {
   res.status(204).end();
 }));
 app.get('/api/auth/me', requireAuth, (req, res) => res.json({ user: req.auth.user }));
+app.post('/api/auth/password', requireAuth, asyncRoute(async (req, res) => {
+  await store.changePassword(req.auth, req.body || {});
+  res.status(204).end();
+}));
 
 app.get('/api/extensions/catalog', requireAuth, (_req, res) => {
   res.json({ ...extensions.list(), systemPrompt: extensions.skillPrompt() });
@@ -260,6 +264,7 @@ app.post('/api/tools/extract-tex', requireAuth, asyncRoute(async (req, res) => {
 }));
 
 app.get('/api/admin/users', requireAuth, asyncRoute(async (req, res) => res.json({ users: await store.listUsers(req.auth.user) })));
+app.post('/api/admin/users', requireAuth, asyncRoute(async (req, res) => res.status(201).json(await store.createUser(req.auth.user, req.body || {}))));
 app.patch('/api/admin/users/:id', requireAuth, asyncRoute(async (req, res) => res.json({ user: await store.updateUser(req.auth.user, req.params.id, req.body || {}) })));
 app.get('/api/admin/codex/status', requireAuth, requireAdmin, asyncRoute(async (_req, res) => res.json(await codexAuth.status({ force: true }))));
 app.post('/api/admin/codex/login/device', requireAuth, requireAdmin, asyncRoute(async (_req, res) => res.status(202).json({ login: await codexAuth.startDeviceLogin() })));

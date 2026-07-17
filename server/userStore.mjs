@@ -31,7 +31,7 @@ export class UserStore {
     }
   }
 
-  async register({ email, password, name }) {
+  async register({ email, password, name, username }) {
     const normalizedEmail = normalizeEmail(email);
     validatePassword(password);
     return this.withLock('registry', async () => {
@@ -45,6 +45,7 @@ export class UserStore {
       const user = {
         id,
         email: normalizedEmail,
+        username: username ? normalizeUsername(username) : '',
         name: String(name || normalizedEmail.split('@')[0]).trim().slice(0, 64),
         role: registry.users.length ? 'user' : 'admin',
         status: 'active',
@@ -62,17 +63,31 @@ export class UserStore {
     });
   }
 
-  async login({ email, password }) {
-    const normalizedEmail = normalizeEmail(email);
+  async createUser(requester, { username }) {
+    if (requester.role !== 'admin') throw httpError(403, '需要管理员权限');
+    const normalizedUsername = normalizeUsername(username);
+    const email = `${normalizedUsername}@graph.akusm.com`;
+    const initialPassword = `${normalizedUsername}${randomWord(5)}@graph.akusm.com`;
+    const user = await this.register({
+      email,
+      password: initialPassword,
+      name: normalizedUsername,
+      username: normalizedUsername,
+    });
+    return { user, initialPassword };
+  }
+
+  async login({ account, email, username, password }) {
+    const identifier = String(account || username || email || '').trim().toLowerCase();
     return this.withLock('registry', async () => {
       const registry = await this.readRegistry();
-      const user = registry.users.find((item) => item.email === normalizedEmail);
-      if (!user || !await verifyPassword(password, user.password)) throw httpError(401, '邮箱或密码错误');
+      const user = registry.users.find((item) => item.email === identifier || item.username === identifier || managedUsername(item.email) === identifier);
+      if (!user || !await verifyPassword(password, user.password)) throw httpError(401, '账号或密码错误');
       if (user.status !== 'active') throw httpError(403, '账号已停用');
       const keyRecord = JSON.parse(await fs.readFile(path.join(this.userDir(user.id), 'key.json'), 'utf8'));
       let workspaceKey;
       try { workspaceKey = await unwrapWorkspaceKey(keyRecord, password); }
-      catch { throw httpError(401, '邮箱或密码错误'); }
+      catch { throw httpError(401, '账号或密码错误'); }
       user.lastLoginAt = new Date().toISOString();
       await this.writeRegistry(registry);
       const token = randomId('ses_');
@@ -184,9 +199,30 @@ export class UserStore {
     });
   }
 
+  async changePassword(auth, { currentPassword, newPassword }) {
+    validatePassword(newPassword);
+    return this.withLock('registry', async () => {
+      const registry = await this.readRegistry();
+      const user = registry.users.find((item) => item.id === auth.user.id);
+      if (!user || !await verifyPassword(currentPassword, user.password)) throw httpError(401, '当前密码错误');
+      const keyPath = path.join(this.userDir(user.id), 'key.json');
+      const keyRecord = JSON.parse(await fs.readFile(keyPath, 'utf8'));
+      let workspaceKey;
+      try { workspaceKey = await unwrapWorkspaceKey(keyRecord, currentPassword); }
+      catch { throw httpError(401, '当前密码错误'); }
+      const nextPasswordRecord = await hashPassword(newPassword);
+      const nextKeyRecord = await wrapWorkspaceKey(workspaceKey, newPassword);
+      const tmp = `${keyPath}.${randomId('tmp_')}`;
+      await fs.writeFile(tmp, JSON.stringify(nextKeyRecord, null, 2), { mode: 0o600 });
+      await replaceFile(tmp, keyPath);
+      user.password = nextPasswordRecord;
+      await this.writeRegistry(registry);
+    });
+  }
+
   publicUser(user) {
     return {
-      id: user.id, email: user.email, name: user.name, role: user.role, status: user.status,
+      id: user.id, email: user.email, username: user.username || managedUsername(user.email), name: user.name, role: user.role, status: user.status,
       createdAt: user.createdAt, lastLoginAt: user.lastLoginAt,
     };
   }
@@ -222,6 +258,24 @@ function normalizeEmail(value) {
 function validatePassword(value) {
   const password = String(value || '');
   if (password.length < 8 || password.length > 200) throw httpError(400, '密码长度需为 8–200 位');
+}
+
+function normalizeUsername(value) {
+  const username = String(value || '').trim().toLowerCase();
+  if (!/^[a-z0-9](?:[a-z0-9._-]{0,30}[a-z0-9])?$/.test(username)) {
+    throw httpError(400, '用户名需为 1–32 位小写字母、数字、点、下划线或连字符，且首尾须为字母或数字');
+  }
+  return username;
+}
+
+function managedUsername(email) {
+  const match = String(email || '').match(/^([^@]+)@graph\.akusm\.com$/i);
+  return match?.[1] || '';
+}
+
+function randomWord(length) {
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz';
+  return Array.from({ length }, () => alphabet[crypto.randomInt(alphabet.length)]).join('');
 }
 
 function sessionId(token) { return crypto.createHash('sha256').update(String(token || '')).digest('base64url'); }
