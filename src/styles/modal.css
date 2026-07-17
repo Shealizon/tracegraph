@@ -333,6 +333,7 @@
   font: 12.5px/1 var(--font);
 }
 .reader-tool:disabled { opacity: .4; cursor: default; }
+.reader-tool-danger:not(:disabled):hover { color: var(--danger); background: var(--danger-bg); }
 .reader-tool svg { width: 15px; height: 15px; }
 .reader-tool[data-back] svg { transform: rotate(90deg); }
 .reader-forward svg { transform: rotate(-90deg); }

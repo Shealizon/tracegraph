@@ -168,6 +168,10 @@ export function initCardMenus(ctx) {
     items.push(menuItem(ICON.aiAdd, '添加整个内容到 AI', () => { ctx.aiPanel?.attachNode(nodeId); closePopup(); }));
     items.push(menuItem(ICON.pin, '固定', () => { ctx.modals.togglePin(node); closePopup(); }));
     items.push(menuItem(ICON.circle, '关闭为节点', () => { ctx.modals.closeModal(nodeId); closePopup(); }));
+    if (ctx.nodeEditingEnabled) {
+      items.push(menuItem(ICON.edit, '编辑节点', () => { ctx.openNodeEditor?.(nodeId); closePopup(); }));
+      items.push(menuItem(ICON.trash, '删除节点', () => { ctx.deleteNode?.(nodeId); closePopup(); }));
+    }
     items.push(menuItem(ICON.eyeOff, '隐藏', () => { ctx.hideNode(nodeId); closePopup(); }));
     openMenuAt(cx, cy, items);
   }

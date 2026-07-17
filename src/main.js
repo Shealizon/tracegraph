@@ -25,6 +25,7 @@ import {
 } from './data/notes.js';
 import { initTooltips } from './ui/tooltip.js';
 import { initCardMenus } from './ui/cardMenus.js';
+import { openNodeEditor, requestDeleteNode } from './ui/nodeEditor.js';
 import { annotationTextLengthToBoundary, markdownTextFromRange, normalizeSelectionForMath } from './view/annotation.js';
 import { buildAiPanel } from './ui/aiPanel.js';
 import { createNoteWindowController } from './ui/noteUi.js';
@@ -163,6 +164,7 @@ function startMain(db, project) {
     modals: null,
     refLayer: null,
     notes: normalizeProjectNotes(project.config?.notes, model.meta?.tags || model.tags || []),
+    nodeEditingEnabled: project.config?.allowNodeEditing === true,
     mode: initialState.mode || 'show-all',
     refsRaiseEnabled: initialState.refsRaiseEnabled ?? (localStorage.getItem('hg-refs-raise') !== '0'),
     // 主题模式：dark | light | system（跟随系统）
@@ -197,6 +199,17 @@ function startMain(db, project) {
         location.reload();
       } catch (e) { toast('导入失败：' + (e?.message || e), { type: 'error' }); }
     },
+  };
+  ctx.openNodeEditor = (nodeId = '') => openNodeEditor(ctx, nodeId);
+  ctx.createNode = () => openNodeEditor(ctx);
+  ctx.deleteNode = (nodeId) => requestDeleteNode(ctx, nodeId);
+  ctx.persistNodeProject = async (nextProject, { message = '节点已保存' } = {}) => {
+    const saved = await saveProject(db, nextProject);
+    Object.assign(project, saved);
+    toast(message);
+    await new Promise((resolve) => setTimeout(resolve, 220));
+    location.reload();
+    return saved;
   };
   runtimeDebugContext.phase = 'ready';
 

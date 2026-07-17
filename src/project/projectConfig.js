@@ -164,9 +164,16 @@ export function openProjectConfigDialog({ db, project, onSaved }) {
         <h2>项目配置</h2>
         <button class="icon-btn icon-btn--bordered" data-close title="关闭">${ICON.close}</button>
       </div>
-      <p class="project-dialog-desc">选择要纳入关系图的文件。展开「高级」可按单条精确开关节点与关系。</p>
+      <p class="project-dialog-desc">选择要纳入关系图的文件，并配置项目级编辑权限。展开「高级」可按单条精确开关节点与关系。</p>
       <div class="project-dialog-body">
         <label class="project-field">项目名称<input data-name value="${named ? escapeAttr(project.name) : ''}" placeholder="${escapeAttr(phName)}"></label>
+
+        <section class="cfg-section cfg-node-editing">
+          <label class="project-check project-check--feature">
+            <input type="checkbox" data-node-editing${project.config?.allowNodeEditing ? ' checked' : ''}>
+            <span><strong>允许节点编辑</strong><small>开启后显示新增、编辑和删除节点的操作入口；关闭时图谱保持只读。</small></span>
+          </label>
+        </section>
 
         <section class="cfg-section">
           <div class="cfg-section-head">
@@ -305,6 +312,7 @@ export function openProjectConfigDialog({ db, project, onSaved }) {
       name: $('[data-name]').value.trim() || phName,
       config: {
         ...pruned.config,
+        allowNodeEditing: $('[data-node-editing]').checked,
         enabledDocumentIds: docIds,
         disabledNodeIds: remainingNodeRows.map(({ node }) => node.id).filter((id) => !enabledNodeIds.has(id)),
         disabledRelationKeys: remainingRelationRows.map((r) => r.key).filter((key) => !enabledRelationKeys.has(key)),

@@ -332,6 +332,7 @@ function renderToolbar(reader) {
     <span class="reader-spacer"></span>
     <button class="reader-tool" data-add-current-ai ${tab?.kind === 'node' ? '' : 'disabled'} title="添加整个内容到 AI">${ICON.aiAdd}</button>
     <button class="reader-tool" data-copy-current ${tab?.kind === 'node' ? '' : 'disabled'} title="复制">${ICON.copy}</button>
+    ${reader.ctx.nodeEditingEnabled ? `<button class="reader-tool" data-create-node title="新增节点">${ICON.plus}</button><button class="reader-tool" data-edit-node ${tab?.kind === 'node' ? '' : 'disabled'} title="编辑节点">${ICON.edit}</button><button class="reader-tool reader-tool-danger" data-delete-node ${tab?.kind === 'node' ? '' : 'disabled'} title="删除节点">${ICON.trash}</button>` : ''}
     <button class="reader-tool" data-new-current title="新标签">${ICON.plus}</button>
     <button class="reader-tool" data-close-reader title="关闭">${ICON.close}</button>
   </div>`;
@@ -492,6 +493,15 @@ function bindReader(reader) {
   el.querySelector('[data-back]')?.addEventListener('click', () => goHistory(reader, -1));
   el.querySelector('[data-forward]')?.addEventListener('click', () => goHistory(reader, 1));
   el.querySelector('[data-copy-current]')?.addEventListener('click', (e) => openReaderCopyMenu(reader, e.currentTarget));
+  el.querySelector('[data-create-node]')?.addEventListener('click', () => reader.ctx.createNode?.());
+  el.querySelector('[data-edit-node]')?.addEventListener('click', () => {
+    const tab = activeTab(reader);
+    if (tab?.kind === 'node') reader.ctx.openNodeEditor?.(tab.nodeId);
+  });
+  el.querySelector('[data-delete-node]')?.addEventListener('click', () => {
+    const tab = activeTab(reader);
+    if (tab?.kind === 'node') reader.ctx.deleteNode?.(tab.nodeId);
+  });
   el.querySelector('[data-add-current-ai]')?.addEventListener('click', () => {
     const tab = activeTab(reader);
     if (tab?.kind === 'node') reader.ctx.aiPanel?.attachNode(tab.nodeId);

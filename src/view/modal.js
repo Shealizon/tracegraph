@@ -316,7 +316,9 @@ export class ModalManager {
       titleHTML: titleHTML(node),
       subHTML: paper ? `<span class="m-paper">${ICON.fileText || ''}${escapeHtml(paper)}</span>` : '',
       buttons: TOP_BUTTONS,
-      subButtons: TOOL_BUTTONS,
+      subButtons: ctx.nodeEditingEnabled
+        ? [...TOOL_BUTTONS.slice(0, -1), { act: 'edit-node', title: '编辑节点', icon: 'edit', sep: true }, { act: 'delete-node', title: '删除节点', icon: 'trash', tone: 'danger' }, TOOL_BUTTONS.at(-1)]
+        : TOOL_BUTTONS,
       bodyHTML: `<div class="statement">${stmtHtml}</div>${proofHtml ? `<div class="proof-wrap">${proofHtml}</div>` : ''}`,
       foot: !!proofHtml,
       footLabel: proofLabel,
@@ -385,6 +387,8 @@ export class ModalManager {
     el.querySelector('[data-act="details"]').addEventListener('click', () => this.ctx.openDetails(node.id, { newTab: true }));
     el.querySelector('[data-act="to-ai"]').addEventListener('click', () => this.ctx.aiPanel?.attachNode(node.id));
     el.querySelector('[data-act="hide"]').addEventListener('click', () => this.ctx.hideNode(node.id));
+    el.querySelector('[data-act="edit-node"]')?.addEventListener('click', () => this.ctx.openNodeEditor?.(node.id));
+    el.querySelector('[data-act="delete-node"]')?.addEventListener('click', () => this.ctx.deleteNode?.(node.id));
     // 复制：下拉「复制所有内容 / 复制标题」
     el.querySelector('[data-act="copy"]').addEventListener('click', (e) => {
       this._openCardMenu(e.currentTarget, [

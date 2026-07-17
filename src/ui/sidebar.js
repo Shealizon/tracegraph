@@ -56,6 +56,7 @@ export function buildSidebar(ctx, root) {
   const moreBtn = iconBtn('更多操作', 'more', null);
   head.appendChild(homeBtn);
   head.appendChild(titleWrap);
+  if (ctx.nodeEditingEnabled) head.appendChild(iconBtn('新增节点', 'plus', () => ctx.createNode?.()));
   head.appendChild(moreBtn);
   root.appendChild(head);
   attachOverflowMenu(ctx, moreBtn);
@@ -182,6 +183,7 @@ function attachOverflowMenu(ctx, anchor) {
   const onDoc = (ev) => { if (menu && !menu.contains(ev.target) && ev.target !== anchor) close(); };
   const items = [
     { label: '阅读列表', icon: 'search', run: () => ctx.openReaderLibrary && ctx.openReaderLibrary() },
+    ...(ctx.nodeEditingEnabled ? [{ label: '新增节点', icon: 'plus', run: () => ctx.createNode?.() }] : []),
     { label: '项目配置', icon: 'settings', run: () => ctx.openProjectConfig && ctx.openProjectConfig() },
     { label: '导入文件', icon: 'upload', run: () => ctx.importFile && ctx.importFile() },
     { label: '导出项目结构', icon: 'download', run: () => ctx.exportProject && ctx.exportProject() },

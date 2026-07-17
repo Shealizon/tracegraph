@@ -51,6 +51,7 @@ export function normalizeProject(project) {
       enabledDocumentIds: enabled,
       disabledNodeIds: project?.config?.disabledNodeIds || [],
       disabledRelationKeys: project?.config?.disabledRelationKeys || [],
+      allowNodeEditing: project?.config?.allowNodeEditing === true,
       tags,
       notes,
       viewState: project?.config?.viewState || {},
@@ -150,6 +151,7 @@ export function compileProject(project) {
       const node = {
         ...rawNode,
         id: newId,
+        sourceNodeId: origId,
         documentId: doc.id,
         documentName: doc.name,
         labels,
