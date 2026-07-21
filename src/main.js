@@ -41,11 +41,19 @@ installDiagnostics({ getContext: () => runtimeDebugContext });
 debugCheckpoint('src/main.js', 'module-ready', { location: location.href }, { level: 'info' });
 initTooltips();
 
-init().catch((err) => {
+init().then(completePageLoad).catch((err) => {
   debugError('src/main.js', 'init-failed', err);
   console.error(err);
+  completePageLoad();
   document.body.innerHTML = `<pre style="padding:24px;color:#d66">启动失败：${escapeHtml(err?.message || err)}</pre>`;
 });
+
+function completePageLoad() {
+  document.documentElement.classList.remove('is-app-loading');
+  const progress = document.getElementById('app-loading');
+  if (!progress) return;
+  progress.classList.add('is-complete');
+}
 
 async function init() {
   runtimeDebugContext.phase = 'initializing';

@@ -8,9 +8,38 @@
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
+    <script>
+      (() => {
+        let mode = 'system';
+        try { mode = localStorage.getItem('hg-theme-mode') || localStorage.getItem('hg-theme') || 'system'; } catch {}
+        const theme = mode === 'system'
+          ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+          : mode;
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.classList.add('is-app-loading');
+        document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f6f6f4' : '#26262b';
+        addEventListener('beforeunload', () => {
+          document.documentElement.classList.add('is-app-loading');
+          document.getElementById('app-loading')?.classList.remove('is-complete');
+        });
+      })();
+    </script>
+    <style>
+      html, body { margin: 0; min-height: 100%; }
+      html[data-theme="dark"] body { background: #26262b; }
+      html[data-theme="light"] body { background: #f6f6f4; }
+      html.is-app-loading body > :not(#app-loading) { visibility: hidden !important; }
+      #app-loading { position: fixed; inset: 0 0 auto; z-index: 10000; height: 3px; overflow: hidden; pointer-events: none; background: color-mix(in srgb, #7c9cff 14%, transparent); }
+      #app-loading span { display: block; width: 8%; height: 100%; background: linear-gradient(90deg, #6f8ff2, #91abff); box-shadow: 0 0 9px color-mix(in srgb, #7c9cff 65%, transparent); animation: app-load-grow 8s cubic-bezier(.1, .7, .2, 1) forwards; }
+      #app-loading.is-complete { visibility: hidden; opacity: 0; transition: opacity .18s ease .12s, visibility 0s linear .3s; }
+      #app-loading.is-complete span { width: 100%; animation: none; transition: width .16s ease-out; }
+      @keyframes app-load-grow { 0% { width: 8%; } 24% { width: 44%; } 55% { width: 68%; } 100% { width: 90%; } }
+      @media (prefers-reduced-motion: reduce) { #app-loading span { animation: none; width: 60%; } }
+    </style>
     <title>Tracegraph</title>
   </head>
   <body>
+    <div id="app-loading" role="progressbar" aria-label="页面加载中"><span></span></div>
     <div id="app">
       <aside id="sidebar"></aside>
       <main id="stage">
