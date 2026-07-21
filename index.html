@@ -19,7 +19,6 @@
         document.documentElement.classList.add('is-app-loading');
         document.querySelector('meta[name="theme-color"]').content = theme === 'light' ? '#f6f6f4' : '#26262b';
         addEventListener('beforeunload', () => {
-          document.documentElement.classList.add('is-app-loading');
           document.getElementById('app-loading')?.classList.remove('is-complete');
         });
       })();
