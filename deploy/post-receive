@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Deploy Tracegraph after updates to the main branch.
 set -euo pipefail
 
 DEPLOY_BRANCH="refs/heads/main"
