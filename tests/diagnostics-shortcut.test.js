@@ -26,7 +26,7 @@ describe('debug export shortcut', () => {
     });
     window.dispatchEvent(event);
 
-    const snapshot = window.__entailDebug.snapshot();
+    const snapshot = window.__tracegraphDebug.snapshot();
     const sourceModules = snapshot.moduleBreakpoints.filter((item) => item.module.startsWith('src/'));
     const sourceModuleCount = countJsFiles(path.join(process.cwd(), 'src'));
     expect(event.defaultPrevented).toBe(true);

@@ -1,12 +1,12 @@
-import rawDemoGraph from '../data/paper-graph.json';
+import rawDemoGraph from '../data/tracegraph.json';
 import { createDemoProject, normalizeProject, PROJECT_FORMAT } from './projectAdapter.js';
 import { debugCheckpoint } from '../debug/diagnostics.js';
 
-const DB_NAME = 'paper-graph-projects';
+const DB_NAME = 'tracegraph-projects';
 const DB_VERSION = 1;
 const STORE = 'projects';
-const CURRENT_KEY = 'paper-graph-current-project';
-const DELETED_KEY = 'paper-graph-deleted-projects';
+const CURRENT_KEY = 'tracegraph-current-project';
+const DELETED_KEY = 'tracegraph-deleted-projects';
 let syncHandler = null;
 
 export async function initProjectStore() {

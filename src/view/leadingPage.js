@@ -32,7 +32,7 @@ export function renderLeadingPage({ db, projects, currentProjectId }) {
     <div class="leading-page">
       <header class="leading-topbar">
         <div class="leading-brand">
-          <h1>Entail</h1>
+          <h1>Tracegraph</h1>
           <span>${projects.length} 个项目</span>
         </div>
         <div class="leading-account-actions"><button class="btn" data-export-all>${ICON.download}<span>导出全部数据</span></button><div data-leading-theme></div><div data-account></div></div>

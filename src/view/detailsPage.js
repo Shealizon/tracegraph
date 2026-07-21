@@ -12,7 +12,7 @@ import { annotationRectsFromRange, clampAnnotationChipLeft, groupAnnotationRects
 import { graphReferenceFromMember } from '../data/graphReference.js';
 import { setGraphReferenceClipboardData, writeGraphReference } from '../ui/graphClipboard.js';
 
-const STORE_PREFIX = 'paper-graph:reader:';
+const STORE_PREFIX = 'tracegraph:reader:';
 const CHROME_HIDE_AFTER = 36;
 let seq = 1;
 

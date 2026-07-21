@@ -11,7 +11,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || '0.0.0.0';
-const store = new UserStore(process.env.PAPER_GRAPH_DATA || path.join(root, 'server-data'));
+const store = new UserStore(process.env.TRACEGRAPH_DATA || path.join(root, 'server-data'));
 await store.init();
 const extensions = new ExtensionRegistry(path.join(store.dataRoot, 'extensions'), {
   builtinsRoot: path.join(root, 'extensions', 'builtin'),
@@ -31,7 +31,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'paper-graph', time: new Date().toISOString(), codex: process.env.CODEX_ENABLED !== '0' }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'tracegraph', time: new Date().toISOString(), codex: process.env.CODEX_ENABLED !== '0' }));
 app.get('/api/codex/status', asyncRoute(async (_req, res) => res.json(await codexAuth.status())));
 app.post('/api/auth/register', asyncRoute(async (req, res) => {
   if (process.env.ALLOW_REGISTRATION === '0') throw httpError(403, '服务器未开放自主注册');
@@ -94,19 +94,19 @@ app.get('/api/data/export', requireAuth, asyncRoute(async (req, res) => {
   const vault = await store.readVault(req.auth.session);
   const includeSecrets = req.query.secrets === '1';
   const providers = Object.values(vault.providers || {}).map((provider) => includeSecrets ? provider : ({ ...provider, apiKey: provider.apiKey ? '••••••••' : '' }));
-  res.setHeader('Content-Disposition', `attachment; filename="entail-${new Date().toISOString().slice(0, 10)}.json"`);
+  res.setHeader('Content-Disposition', `attachment; filename="tracegraph-${new Date().toISOString().slice(0, 10)}.json"`);
   res.json({
-    format: 'paper-graph-account@1', exportedAt: new Date().toISOString(),
+    format: 'tracegraph-account@1', exportedAt: new Date().toISOString(),
     projects: Object.values(vault.projects || {}), providers,
     state: vault.state || {}, files: Object.values(vault.files || {}),
   });
 }));
 app.post('/api/data/import', requireAuth, asyncRoute(async (req, res) => {
   const payload = req.body || {};
-  const projects = payload.format === 'paper-graph-account@1' ? payload.projects : [payload];
+  const projects = payload.format === 'tracegraph-account@1' ? payload.projects : [payload];
   const vault = await store.updateVault(req.auth.session, (value) => {
     for (const project of projects.filter(Boolean)) mergeProject(value, project);
-    if (payload.format === 'paper-graph-account@1') {
+    if (payload.format === 'tracegraph-account@1') {
       value.state = { ...(value.state || {}), ...(payload.state && typeof payload.state === 'object' ? payload.state : {}) };
       value.files ||= {};
       for (const file of Array.isArray(payload.files) ? payload.files : []) {
@@ -297,7 +297,7 @@ app.use((error, _req, res, _next) => {
   res.status(status).json({ error: error.message || '服务器错误' });
 });
 
-app.listen(port, host, () => console.log(`Entail server listening on http://${host}:${port}`));
+app.listen(port, host, () => console.log(`Tracegraph server listening on http://${host}:${port}`));
 
 async function requireAuth(req, res, next) {
   try { req.auth = await store.authenticate(readCookie(req, 'pg_session')); next(); }

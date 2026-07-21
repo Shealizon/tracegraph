@@ -11,9 +11,9 @@ from pathlib import Path
 from pypdf import PdfReader, PdfWriter
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9_]{2,}|[\u3400-\u9fff]")
-WORKSPACE = Path(os.environ["PAPER_GRAPH_WORKSPACE"]).resolve()
-OUTPUT = Path(os.environ["PAPER_GRAPH_OUTPUT"]).resolve()
-DATA = Path(os.environ["PAPER_GRAPH_EXTENSION_DATA"]).resolve()
+WORKSPACE = Path(os.environ["TRACEGRAPH_WORKSPACE"]).resolve()
+OUTPUT = Path(os.environ["TRACEGRAPH_OUTPUT"]).resolve()
+DATA = Path(os.environ["TRACEGRAPH_EXTENSION_DATA"]).resolve()
 
 
 def inside(root, value):

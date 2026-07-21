@@ -1,5 +1,5 @@
 {
-  "name": "paper-graph",
+  "name": "tracegraph",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -16,6 +16,7 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:perf": "npx vite-node scripts/graph-perf-check.mjs",
     "coverage": "vitest run --coverage"
   },
   "dependencies": {

@@ -62,7 +62,7 @@ describe('complete data exports', () => {
   it('builds a project bundle with project state, conversations, local storage and scoped files', async () => {
     const conversations = { version: 1, conversations: [{ id: 'c1', messages: [{ role: 'user', content: 'all' }] }] };
     const storage = memoryStorage({
-      'paper-graph-ai-conversations:project:1': JSON.stringify(conversations),
+      'tracegraph-ai-conversations:project:1': JSON.stringify(conversations),
       'hg-theme-mode': 'dark',
     });
     let requestedPrefix = '';
@@ -86,8 +86,8 @@ describe('complete data exports', () => {
 
   it('builds a global bundle for every project and every workspace', async () => {
     const storage = memoryStorage({
-      'paper-graph-ai-conversations:p1': JSON.stringify({ version: 1, conversations: [{ id: 'c1' }] }),
-      'paper-graph-ai-conversations:p2': JSON.stringify({ version: 1, conversations: [{ id: 'c2' }] }),
+      'tracegraph-ai-conversations:p1': JSON.stringify({ version: 1, conversations: [{ id: 'c1' }] }),
+      'tracegraph-ai-conversations:p2': JSON.stringify({ version: 1, conversations: [{ id: 'c2' }] }),
     });
     const projects = [{ id: 'p1' }, { id: 'p2' }];
     const payload = await buildApplicationDataExport({}, {
@@ -100,7 +100,7 @@ describe('complete data exports', () => {
     expect(payload.projects).toEqual(projects);
     expect(Object.keys(payload.ai.conversationsByProject)).toEqual(['p1', 'p2']);
     expect(payload.ai.workspaces[0].scope).toBe('orphan-workspace');
-    expect(snapshotStorage(storage)).toHaveProperty('paper-graph-ai-conversations:p1');
+    expect(snapshotStorage(storage)).toHaveProperty('tracegraph-ai-conversations:p1');
   });
 });
 
@@ -116,7 +116,7 @@ describe('normalized diagnostics', () => {
 
     const snapshot = createDebugSnapshot({ reason: 'test' });
 
-    expect(snapshot.format).toBe('entail-debug-log@1');
+    expect(snapshot.format).toBe('tracegraph-debug-log@1');
     expect(snapshot.context).toEqual({ projectId: 'p1', apiKey: '[REDACTED]' });
     expect(snapshot.records.at(-1)).toMatchObject({
       level: 'info',

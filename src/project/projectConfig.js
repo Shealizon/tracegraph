@@ -17,7 +17,7 @@ export function goLeading() {
 }
 
 export function downloadProject(project) {
-  downloadJson(project, `${safeName(project.name || project.id)}.paper-graph-project.json`);
+  downloadJson(project, `${safeName(project.name || project.id)}.tracegraph-project.json`);
 }
 
 // 为待并入的文档分配在目标项目内唯一的 id（与已有文档冲突时重新生成）

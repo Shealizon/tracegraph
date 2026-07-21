@@ -130,7 +130,7 @@ export class CodexAuthManager {
     send({
       method: 'initialize', id: 0,
       params: {
-        clientInfo: { name: 'paper_graph', title: 'Paper Graph', version: '0.1.0' },
+        clientInfo: { name: 'tracegraph', title: 'Tracegraph', version: '0.1.0' },
         capabilities: { experimentalApi: true },
       },
     });

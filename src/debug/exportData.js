@@ -2,9 +2,9 @@ import { exportBrowserWorkspaces, browserWorkspaceScope } from '../ai/workspace.
 import { listProjects } from '../project/store.js';
 import { debugCheckpoint, debugError } from './diagnostics.js';
 
-export const CONVERSATION_EXPORT_FORMAT = 'entail-conversation@1';
-export const PROJECT_DATA_EXPORT_FORMAT = 'entail-project-data@1';
-export const APPLICATION_DATA_EXPORT_FORMAT = 'entail-application-data@1';
+export const CONVERSATION_EXPORT_FORMAT = 'tracegraph-conversation@1';
+export const PROJECT_DATA_EXPORT_FORMAT = 'tracegraph-project-data@1';
+export const APPLICATION_DATA_EXPORT_FORMAT = 'tracegraph-application-data@1';
 
 export function buildConversationExport(conversation, {
   projectId = '',
@@ -24,7 +24,7 @@ export function downloadConversationData(conversation, options = {}) {
   try {
     const payload = buildConversationExport(conversation, options);
     const name = safeFilename(conversation.title || conversation.id || 'conversation');
-    downloadJsonFile(payload, `${name}.entail-conversation.json`);
+    downloadJsonFile(payload, `${name}.tracegraph-conversation.json`);
     debugCheckpoint('src/debug/exportData.js', 'conversation-exported', {
       conversationId: conversation.id,
       messageCount: conversation.messages?.length || 0,
@@ -49,8 +49,8 @@ export async function buildProjectDataExport(project, {
     exportedAt,
     project: cloneJson(project),
     ai: {
-      conversations: readJsonStorage(storage, `paper-graph-ai-conversations:${project.id}`),
-      legacyHistory: readJsonStorage(storage, `paper-graph-ai-history:${project.id}`),
+      conversations: readJsonStorage(storage, `tracegraph-ai-conversations:${project.id}`),
+      legacyHistory: readJsonStorage(storage, `tracegraph-ai-history:${project.id}`),
       workspaces,
     },
     browserLocalStorage: snapshotStorage(storage),
@@ -61,7 +61,7 @@ export async function downloadProjectData(project, options = {}) {
   try {
     const payload = await buildProjectDataExport(project, options);
     const name = safeFilename(project.name || project.id || 'project');
-    downloadJsonFile(payload, `${name}.entail-project-data.json`);
+    downloadJsonFile(payload, `${name}.tracegraph-project-data.json`);
     debugCheckpoint('src/debug/exportData.js', 'project-data-exported', {
       projectId: project.id,
       workspaceCount: payload.ai.workspaces.length,
@@ -90,7 +90,7 @@ export async function buildApplicationDataExport(db, {
     ai: {
       conversationsByProject: Object.fromEntries(projects.map((project) => [
         project.id,
-        readJsonStorage(storage, `paper-graph-ai-conversations:${project.id}`),
+        readJsonStorage(storage, `tracegraph-ai-conversations:${project.id}`),
       ])),
       workspaces,
     },
@@ -101,7 +101,7 @@ export async function buildApplicationDataExport(db, {
 export async function downloadApplicationData(db, options = {}) {
   try {
     const payload = await buildApplicationDataExport(db, options);
-    downloadJsonFile(payload, `entail-all-data-${filenameTimestamp(payload.exportedAt)}.json`);
+    downloadJsonFile(payload, `tracegraph-all-data-${filenameTimestamp(payload.exportedAt)}.json`);
     debugCheckpoint('src/debug/exportData.js', 'application-data-exported', {
       projectCount: payload.projects.length,
       workspaceCount: payload.ai.workspaces.length,

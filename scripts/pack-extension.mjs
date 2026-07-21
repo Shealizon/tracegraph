@@ -23,7 +23,7 @@ for (const relative of referenced) {
     data: utf8 ? data.toString('utf8') : data.toString('base64'),
   });
 }
-const bundle = { format: 'paper-graph-extension@1', manifest, files };
+const bundle = { format: 'tracegraph-extension@1', manifest, files };
 const output = path.resolve(process.argv[3] || `${manifest.id}-${manifest.version}.extension.json`);
 await fs.writeFile(output, JSON.stringify(bundle, null, 2));
 console.log(output);

@@ -4,8 +4,8 @@ import { ICON } from './icons.js';
 import { toast } from './feedback.js';
 import { writeGraphReference } from './graphClipboard.js';
 
-const PDF_RECT_KEY = 'paper-graph:pdf-preview-rect';
-const TEXT_RECT_KEY = 'paper-graph:text-preview-rect';
+const PDF_RECT_KEY = 'tracegraph:pdf-preview-rect';
+const TEXT_RECT_KEY = 'tracegraph:text-preview-rect';
 
 export function workspaceFileKind(file) {
   const path = String(file?.path || file?.name || '').toLowerCase();

@@ -4,7 +4,7 @@ import { renderMarkdownInto } from '../render/markdown.js';
 import { ICON } from './icons.js';
 import { confirmDialog, toast } from './feedback.js';
 
-const SIZE_KEY = 'paper-graph:note-window-size';
+const SIZE_KEY = 'tracegraph:note-window-size';
 const DEFAULT_SIZE = { width: 380, height: 440 };
 const PREVIEW_MIN_SIZE = { width: 300, height: 220 };
 const EDITOR_MIN_SIZE = { width: 430, height: 300 };

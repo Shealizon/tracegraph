@@ -2,10 +2,10 @@
 set -euo pipefail
 
 DEPLOY_BRANCH="refs/heads/main"
-WORK_TREE="/root/Desktop/paper-graph"
-APP_DIR="/opt/paper-graph"
-PUBLISH_DIR="/var/www/paper-graph"
-LOG_FILE="/tmp/paper-graph-deploy.log"
+WORK_TREE="/root/Desktop/tracegraph"
+APP_DIR="/opt/tracegraph"
+PUBLISH_DIR="/var/www/tracegraph"
+LOG_FILE="/tmp/tracegraph-deploy.log"
 
 while read -r oldrev newrev refname; do
   if [ "$refname" != "$DEPLOY_BRANCH" ]; then
@@ -14,17 +14,17 @@ while read -r oldrev newrev refname; do
   fi
 
   {
-    echo "=== paper-graph deploy $(date -Is) ==="
+    echo "=== tracegraph deploy $(date -Is) ==="
     echo "ref: $refname"
     echo "old: $oldrev"
     echo "new: $newrev"
 
-    if ! id papergraph >/dev/null 2>&1; then
-      useradd --system --home-dir /var/lib/paper-graph --create-home --shell /sbin/nologin papergraph
+    if ! id tracegraph >/dev/null 2>&1; then
+      useradd --system --home-dir /var/lib/tracegraph --create-home --shell /sbin/nologin tracegraph
     fi
     mkdir -p "$WORK_TREE" "$APP_DIR" "$PUBLISH_DIR"
-    install -d -o papergraph -g papergraph -m 0750 /var/lib/paper-graph /var/lib/paper-graph/data
-    git --work-tree="$WORK_TREE" --git-dir=/root/repos/paper-graph.git checkout -f main
+    install -d -o tracegraph -g tracegraph -m 0750 /var/lib/tracegraph /var/lib/tracegraph/data
+    git --work-tree="$WORK_TREE" --git-dir=/root/repos/tracegraph.git checkout -f main
 
     cd "$WORK_TREE"
     npm ci
@@ -44,13 +44,13 @@ while read -r oldrev newrev refname; do
 
     rm -rf "${PUBLISH_DIR:?}"/*
     cp -a dist/. "$PUBLISH_DIR"/
-    chown -R papergraph:papergraph "$APP_DIR" /var/lib/paper-graph
+    chown -R tracegraph:tracegraph "$APP_DIR" /var/lib/tracegraph
 
-    install -m 0644 deploy/paper-graph.service /etc/systemd/system/paper-graph.service
-    install -m 0644 deploy/nginx-graph.conf /etc/nginx/conf.d/graph.conf
+    install -m 0644 deploy/tracegraph.service /etc/systemd/system/tracegraph.service
+    install -m 0644 deploy/nginx-tracegraph.conf /etc/nginx/conf.d/tracegraph.conf
     systemctl daemon-reload
-    systemctl enable paper-graph.service
-    systemctl restart paper-graph.service
+    systemctl enable tracegraph.service
+    systemctl restart tracegraph.service
 
     nginx -t
     systemctl reload nginx

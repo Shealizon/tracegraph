@@ -2,7 +2,7 @@
 // extract.mjs  —  Phase 1 提取器
 //
 // 读取  ../one-sided-hardy-unique-continuation-verified.tex  (+ 同名 .aux)
-// 产出  ../hardy-graph/src/data/paper-graph.json
+// 产出  ../hardy-graph/src/data/tracegraph.json
 //
 // 对象化格式（"node -- label" 模型）：
 //   node   = { id,type,number,title,statementBody,proofBody,labels[],refs[] }
@@ -27,7 +27,7 @@ const ACHIEVE = resolve(PROJ, '..');
 
 const TEX_PATH = resolve(ACHIEVE, 'one-sided-hardy-unique-continuation-verified.tex');
 const AUX_PATH = resolve(ACHIEVE, 'one-sided-hardy-unique-continuation-verified.aux');
-const OUT_PATH = resolve(PROJ, 'src/data/paper-graph.json');
+const OUT_PATH = resolve(PROJ, 'src/data/tracegraph.json');
 
 // --- 论文里的自定义宏（供 KaTeX 运行时使用） ---------------------------------
 const MACROS = {

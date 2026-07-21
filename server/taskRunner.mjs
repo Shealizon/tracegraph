@@ -12,7 +12,7 @@ import { executeGraphTool, graphToolDefinitions, isGraphTool } from '../src/ai/g
 import { compileProject } from '../src/project/projectAdapter.js';
 
 const MAX_WORKSPACE_FILE_BYTES = 20 * 1024 * 1024;
-const SYNTHETIC_WORKSPACE_PATHS = new Set(['project.paper-graph.json']);
+const SYNTHETIC_WORKSPACE_PATHS = new Set(['project.tracegraph.json']);
 const PROVIDER_STREAM_RETRY_DELAYS = [800, 1_600, 3_200];
 
 export class TaskRunner {
@@ -262,7 +262,7 @@ export class TaskRunner {
         .map((item) => ({ ...item }));
       const workspaceFiles = initialWorkspaceFiles.map((item) => ({ ...item }));
       const prompt = [
-        '当前目录是该用户此次任务的临时可写工作区快照；项目数据位于 project.paper-graph.json，附件保持原工作区相对路径。读写操作仅限当前目录。',
+        '当前目录是该用户此次任务的临时可写工作区快照；项目数据位于 project.tracegraph.json，附件保持原工作区相对路径。读写操作仅限当前目录。',
         task.kind === 'compaction' ? '当前任务只需压缩对话上下文，不要调用任何工具。' : '',
         task.input.fileAccessMode === 'allow'
           ? '当前对话允许写入。你可以用 shell 或 apply_patch 在当前目录创建、修改或删除文件；任务成功后系统会把这些差异提交到对话的持久工作区。最终回复请引用工作区相对路径，不要引用 /tmp 等临时绝对路径。'
@@ -781,10 +781,10 @@ function recordWorkspaceChange(summary, filePath, kind) {
 }
 
 async function materializeCodexWorkspace(vault, task) {
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'entail-codex-'));
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tracegraph-codex-'));
   try {
     const project = Object.hasOwn(vault.projects || {}, task.projectId) ? vault.projects[task.projectId] : null;
-    if (project) await fs.writeFile(path.join(tempDir, 'project.paper-graph.json'), JSON.stringify(project, null, 2));
+    if (project) await fs.writeFile(path.join(tempDir, 'project.tracegraph.json'), JSON.stringify(project, null, 2));
     for (const file of Object.values(vault.files || {}).filter((item) => item.scope === task.workspaceScope)) {
       const target = path.resolve(tempDir, file.path);
       if (!target.startsWith(`${path.resolve(tempDir)}${path.sep}`)) continue;

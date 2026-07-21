@@ -1,7 +1,7 @@
 // =============================================================================
 // model/graph.js  —  Phase 2 模型层
 //
-// 载入 paper-graph.json，建立索引、标签锚点角度、依赖关系，并计算重要度评分：
+// 载入 tracegraph.json，建立索引、标签锚点角度、依赖关系，并计算重要度评分：
 //
 //   I(n) = deg_out(n) + Σ_{m -> n} I(m)        （无环时，沿凝聚 DAG 递归）
 //   若 n 处于真正的环（SCC 大小 > 1）则退化为  I(n) = deg(n)（总度数）
@@ -11,13 +11,13 @@
 //   - “指向 n 的节点集” = {A : 存在边 A->n} = n 的依赖集
 // =============================================================================
 
-import rawInput from '../data/paper-graph.json';
+import rawInput from '../data/tracegraph.json';
 import { compileGraph } from '../data/adapter.js';
 
 export const KIND_ORDER = { theorem: 0, proposition: 1, lemma: 2, bib: 3 };
 
 export function buildModel(input = rawInput) {
-  // 通过适配器统一规整：既支持论文 paper-graph.json（已编译格式），也支持通用
+  // 通过适配器统一规整：既支持论文 tracegraph.json（已编译格式），也支持通用
   // relation-graph schema（见 data/schema.js 与 docs/DATA-SCHEMA.md）。
   const raw = compileGraph(input);
   const nodes = raw.nodes.map((n) => ({ ...n }));

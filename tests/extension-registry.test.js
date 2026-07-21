@@ -10,12 +10,12 @@ import { createExtensionTools } from '../src/ai/extensionTools.js';
 const roots = [];
 
 afterEach(async () => {
-  delete process.env.PAPER_GRAPH_TEST_SECRET;
-  delete process.env.PAPER_GRAPH_PYTHON;
+  delete process.env.TRACEGRAPH_TEST_SECRET;
+  delete process.env.TRACEGRAPH_PYTHON;
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
-describe('paper graph extension registry', () => {
+describe('Tracegraph extension registry', () => {
   it('installs declared dependencies in an isolated venv and exposes skills and tools', async () => {
     const root = await temporaryRoot();
     const calls = [];
@@ -47,13 +47,13 @@ describe('paper graph extension registry', () => {
 
   it('runs an installed tool against a temporary workspace and collects declared artifacts', async () => {
     const root = await temporaryRoot();
-    process.env.PAPER_GRAPH_TEST_SECRET = 'must-not-leak';
+    process.env.TRACEGRAPH_TEST_SECRET = 'must-not-leak';
     const run = vi.fn(async (_command, _args, options = {}) => {
-      if (!options.env?.PAPER_GRAPH_OUTPUT) return { stdout: 'ok', stderr: '' };
-      expect(options.env.PAPER_GRAPH_TEST_SECRET).toBeUndefined();
+      if (!options.env?.TRACEGRAPH_OUTPUT) return { stdout: 'ok', stderr: '' };
+      expect(options.env.TRACEGRAPH_TEST_SECRET).toBeUndefined();
       const input = JSON.parse(options.input);
-      const workspaceText = await fs.readFile(path.join(options.env.PAPER_GRAPH_WORKSPACE, 'notes', 'input.txt'), 'utf8');
-      await fs.writeFile(path.join(options.env.PAPER_GRAPH_OUTPUT, 'result.txt'), `${input.args.prefix}:${workspaceText}`);
+      const workspaceText = await fs.readFile(path.join(options.env.TRACEGRAPH_WORKSPACE, 'notes', 'input.txt'), 'utf8');
+      await fs.writeFile(path.join(options.env.TRACEGRAPH_OUTPUT, 'result.txt'), `${input.args.prefix}:${workspaceText}`);
       return {
         stdout: JSON.stringify({
           message: 'created',
@@ -125,7 +125,7 @@ describe('paper graph extension registry', () => {
     for (const file of bundle.files) {
       await fs.writeFile(path.join(builtinDir, file.path), file.data);
     }
-    process.env.PAPER_GRAPH_PYTHON = 'legacy-python';
+    process.env.TRACEGRAPH_PYTHON = 'legacy-python';
     const calls = [];
     const run = vi.fn(async (command, args) => {
       calls.push([command, args]);
@@ -151,7 +151,7 @@ describe('paper graph extension registry', () => {
     const root = await temporaryRoot();
     const secretKey = crypto.randomBytes(32);
     const run = vi.fn(async (_command, _args, options = {}) => {
-      if (options.env?.PAPER_GRAPH_OUTPUT) {
+      if (options.env?.TRACEGRAPH_OUTPUT) {
         expect(options.env.EXAMPLE_TOKEN).toBe('token-value');
         return { stdout: JSON.stringify({ ok: true }), stderr: '' };
       }
@@ -256,14 +256,14 @@ describe('browser extension tools', () => {
 });
 
 async function temporaryRoot() {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'paper-graph-extension-test-'));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tracegraph-extension-test-'));
   roots.push(root);
   return root;
 }
 
 function exampleBundle() {
   return {
-    format: 'paper-graph-extension@1',
+    format: 'tracegraph-extension@1',
     manifest: {
       id: 'example-tools',
       name: 'Example Tools',

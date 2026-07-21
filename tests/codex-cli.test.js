@@ -195,7 +195,7 @@ describe('server Codex adapter', () => {
   });
 
   it('normalizes web and MCP items for the visible tool timeline', () => {
-    expect(normalizeCodexItemEvent({ id: 'w1', type: 'webSearch', query: 'paper graph' }, 'running')).toMatchObject({ name: 'web_search', status: 'running' });
+    expect(normalizeCodexItemEvent({ id: 'w1', type: 'webSearch', query: 'tracegraph' }, 'running')).toMatchObject({ name: 'web_search', status: 'running' });
     expect(normalizeCodexItemEvent({ id: 'm1', type: 'mcpToolCall', server: 'docs', tool: 'search', arguments: { q: 'x' }, status: 'completed', result: { ok: true } }, 'done'))
       .toMatchObject({ name: 'search', status: 'done', args: { q: 'x' }, result: { ok: true } });
   });
@@ -222,7 +222,7 @@ describe('server Codex adapter', () => {
       await fs.writeFile(path.join(tempDir, 'notes', 'changed.md'), 'new value');
       await fs.writeFile(path.join(tempDir, 'created.txt'), 'created');
       await fs.writeFile(path.join(tempDir, 'unchanged.txt'), 'same');
-      await fs.writeFile(path.join(tempDir, 'project.paper-graph.json'), '{"synthetic":true}');
+      await fs.writeFile(path.join(tempDir, 'project.tracegraph.json'), '{"synthetic":true}');
       const changes = await collectCodexWorkspaceChanges(tempDir, [
         { path: 'notes/changed.md', data: encoded('old value') },
         { path: 'unchanged.txt', data: encoded('same') },
@@ -232,7 +232,7 @@ describe('server Codex adapter', () => {
       expect(changes.modified).toEqual(['notes/changed.md']);
       expect(changes.deleted).toEqual(['deleted.txt']);
       expect(changes.upserts.map((file) => file.path)).toEqual(['created.txt', 'notes/changed.md']);
-      expect(changes.upserts.map((file) => file.path)).not.toContain('project.paper-graph.json');
+      expect(changes.upserts.map((file) => file.path)).not.toContain('project.tracegraph.json');
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
     }

@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import { decryptJson, encryptJson, randomId } from './security.mjs';
 import { httpError } from './userStore.mjs';
 
-const FORMAT = 'paper-graph-extension@1';
+const FORMAT = 'tracegraph-extension@1';
 const REGISTRY_VERSION = 1;
 const MAX_FILES = 120;
 const MAX_PACKAGE_BYTES = 12 * 1024 * 1024;
@@ -112,7 +112,7 @@ export class ExtensionRegistry {
       .flatMap((item) => item.skills);
     if (!skills.length) return '';
     return [
-      '服务器已安装以下 Paper Graph skills。根据任务选择最相关的 skill，并遵循其 instructions；不要声称使用未列出的 skill。',
+      '服务器已安装以下 Tracegraph skills。根据任务选择最相关的 skill，并遵循其 instructions；不要声称使用未列出的 skill。',
       ...skills.map((skill) => [
         `<skill id="${skill.id}" package="${skill.packageId}">`,
         `name: ${skill.name}`,
@@ -229,7 +229,7 @@ export class ExtensionRegistry {
     await fs.mkdir(extensionDataDir, { recursive: true });
     const executable = safeJoin(packageDir, found.record.python?.command || '.venv/bin/python');
     const entry = safeJoin(packageDir, found.tool.entry);
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'paper-graph-tool-'));
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tracegraph-tool-'));
     const workspaceDir = path.join(tempDir, 'workspace');
     const outputDir = path.join(tempDir, 'output');
     await fs.mkdir(workspaceDir, { recursive: true });
@@ -258,11 +258,11 @@ export class ExtensionRegistry {
             found.record.manifest.requiredEnv,
             Object.fromEntries(found.record.manifest.requiredEnv.map((key) => [key, this.environmentValue(key)])),
           ),
-          PAPER_GRAPH_WORKSPACE: workspaceDir,
-          PAPER_GRAPH_OUTPUT: outputDir,
-          PAPER_GRAPH_TOOL: found.tool.name,
-          PAPER_GRAPH_TOOL_ACTION: found.tool.action,
-          PAPER_GRAPH_EXTENSION_DATA: extensionDataDir,
+          TRACEGRAPH_WORKSPACE: workspaceDir,
+          TRACEGRAPH_OUTPUT: outputDir,
+          TRACEGRAPH_TOOL: found.tool.name,
+          TRACEGRAPH_TOOL_ACTION: found.tool.action,
+          TRACEGRAPH_EXTENSION_DATA: extensionDataDir,
           PYTHONUTF8: '1',
           PYTHONIOENCODING: 'utf-8',
         },
@@ -547,7 +547,7 @@ function parseToolOutput(stdout) {
 
 async function resolvePython(run) {
   const candidates = [
-    ...(process.env.PAPER_GRAPH_PYTHON ? [{ command: process.env.PAPER_GRAPH_PYTHON, prefix: [] }] : []),
+    ...(process.env.TRACEGRAPH_PYTHON ? [{ command: process.env.TRACEGRAPH_PYTHON, prefix: [] }] : []),
     { command: 'python3.12', prefix: [] },
     { command: 'python3.11', prefix: [] },
     { command: 'python3.10', prefix: [] },

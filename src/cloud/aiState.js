@@ -1,12 +1,12 @@
 import { serverApi } from './api.js';
 import { isAuthenticated } from './session.js';
 
-const PROVIDERS_KEY = 'paper-graph-ai-providers';
+const PROVIDERS_KEY = 'tracegraph-ai-providers';
 
 export async function hydrateCloudAiState(projectId) {
   if (!isAuthenticated()) return;
   await Promise.all([
-    hydrateKey(`conversations:${projectId}`, `paper-graph-ai-conversations:${projectId}`),
+    hydrateKey(`conversations:${projectId}`, `tracegraph-ai-conversations:${projectId}`),
     hydrateKey('providers', PROVIDERS_KEY),
   ]);
 }

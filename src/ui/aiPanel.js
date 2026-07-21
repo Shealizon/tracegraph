@@ -38,14 +38,14 @@ import {
 import { downloadConversationData } from '../debug/exportData.js';
 import { debugCheckpoint, debugError } from '../debug/diagnostics.js';
 
-const SETTINGS_KEY = 'paper-graph-ai-settings';
-const KEY_SESSION = 'paper-graph-ai-api-key';
-const PROVIDERS_KEY = 'paper-graph-ai-providers';
-const PROVIDER_KEY_SESSION = 'paper-graph-ai-provider-key';
-const WIDTH_KEY = 'paper-graph-ai-width';
-const OPEN_KEY = 'paper-graph-ai-open';
-const COLLAPSED_KEY = 'paper-graph-ai-collapsed';
-const COLLAPSED_POSITION_KEY = 'paper-graph-ai-collapsed-position';
+const SETTINGS_KEY = 'tracegraph-ai-settings';
+const KEY_SESSION = 'tracegraph-ai-api-key';
+const PROVIDERS_KEY = 'tracegraph-ai-providers';
+const PROVIDER_KEY_SESSION = 'tracegraph-ai-provider-key';
+const WIDTH_KEY = 'tracegraph-ai-width';
+const OPEN_KEY = 'tracegraph-ai-open';
+const COLLAPSED_KEY = 'tracegraph-ai-collapsed';
+const COLLAPSED_POSITION_KEY = 'tracegraph-ai-collapsed-position';
 const STARTER_PROMPTS = [
   '概括当前图谱的核心结构',
   '解释当前图谱中最重要的几个概念及它们之间的关系',
@@ -60,8 +60,8 @@ export function buildAiPanel(ctx) {
   if (existing) return existing._aiPanelApi;
   const projectId = ctx.project?.id || 'default';
   debugCheckpoint('src/ui/aiPanel.js', 'panel-build', { projectId });
-  const historyKey = `paper-graph-ai-history:${projectId}`;
-  const conversationsKey = `paper-graph-ai-conversations:${projectId}`;
+  const historyKey = `tracegraph-ai-history:${projectId}`;
+  const conversationsKey = `tracegraph-ai-conversations:${projectId}`;
   const conversationState = loadConversationState(localStorage, conversationsKey, loadJson(historyKey, []));
   for (const conversation of conversationState.conversations) {
     conversation.messages = conversation.messages.filter((message) => !isLegacyFileImportNotice(message));
@@ -1602,7 +1602,7 @@ export function buildAiPanel(ctx) {
       runtimeSelect.disabled = codex;
       card.querySelector('[data-base-field]').hidden = codex;
       card.querySelector('[data-key-field]').hidden = codex;
-      card.querySelector('[data-runtime-note]').textContent = codex ? 'Codex 使用服务器唯一实例，只能在云端运行。' : runtimeSelect.value === 'server' ? 'API Key 将进入你的加密服务端工作区。' : '请求和 API Key 均不会发送到 Entail 服务端。';
+      card.querySelector('[data-runtime-note]').textContent = codex ? 'Codex 使用服务器唯一实例，只能在云端运行。' : runtimeSelect.value === 'server' ? 'API Key 将进入你的加密服务端工作区。' : '请求和 API Key 均不会发送到 Tracegraph 服务端。';
     };
     protocolSelect.addEventListener('change', () => {
       const item = PROVIDER_PROTOCOLS.find((entry) => entry.id === protocolSelect.value);

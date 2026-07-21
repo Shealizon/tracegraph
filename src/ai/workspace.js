@@ -1,6 +1,6 @@
 import { debugCheckpoint } from '../debug/diagnostics.js';
 
-const ROOT_DIR = 'paper-graph-ai';
+const ROOT_DIR = 'tracegraph-ai';
 
 export function browserWorkspaceScope(value) {
   return safeSegment(value || 'default');

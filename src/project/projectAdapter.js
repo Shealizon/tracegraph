@@ -2,7 +2,7 @@ import { compileGraph } from '../data/adapter.js';
 import { mergeProfile, normalizeTags } from '../data/schema.js';
 import { normalizeProjectNotes, stripEmbeddedNotes } from '../data/notes.js';
 
-export const PROJECT_FORMAT = 'paper-graph-project@1';
+export const PROJECT_FORMAT = 'tracegraph-project@1';
 
 export function createDemoProject(rawGraph) {
   const now = new Date().toISOString();

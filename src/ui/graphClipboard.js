@@ -5,7 +5,7 @@ import {
   isFileFragmentReference,
 } from '../data/fileReference.js';
 
-export const GRAPH_REFERENCE_MIME = 'application/x-paper-graph-reference';
+export const GRAPH_REFERENCE_MIME = 'application/x-tracegraph-reference';
 const GRAPH_REFERENCE_WEB_MIME = `web ${GRAPH_REFERENCE_MIME}`;
 
 export function setGraphReferenceClipboardData(data, reference) {
@@ -79,7 +79,7 @@ export function readGraphReferenceClipboard(data) {
     try { return JSON.parse(raw); } catch { /* inspect HTML fallback */ }
   }
   const html = data.getData('text/html') || '';
-  const match = html.match(/data-paper-graph-reference="([^"]+)"/i);
+  const match = html.match(/data-tracegraph-reference="([^"]+)"/i);
   if (!match) return null;
   try { return JSON.parse(decodeURIComponent(match[1])); } catch { return null; }
 }
@@ -119,13 +119,13 @@ function graphReferenceHtml(reference) {
   const json = encodeURIComponent(JSON.stringify(reference));
   if (isFileFragmentReference(reference)) {
     const display = `${reference.fileName || reference.path}${reference.format === 'pdf' ? ` · p. ${reference.page}` : ''} · ${reference.text || ''}`;
-    return `<a href="${escapeHtml(fileFragmentReferenceHref(reference))}" data-paper-graph-reference="${json}">${escapeHtml(display)}</a>`;
+    return `<a href="${escapeHtml(fileFragmentReferenceHref(reference))}" data-tracegraph-reference="${json}">${escapeHtml(display)}</a>`;
   }
   const isTag = reference.kind === 'tag-reference' || reference.type === 'tag'
     || reference.kind === 'tag-note-reference' || reference.type === 'tag-note';
   const display = isTag ? (reference.label || reference.tagLabel || reference.tagId || '') : reference.type === 'span' ? (reference.text || reference.label || reference.nodeId || '') : (reference.label || reference.nodeId || '');
   const text = escapeHtml(display);
-  return `<a href="${escapeHtml(graphReferenceHref(reference))}" data-paper-graph-reference="${json}">${text}</a>`;
+  return `<a href="${escapeHtml(graphReferenceHref(reference))}" data-tracegraph-reference="${json}">${text}</a>`;
 }
 
 export function contentReferenceMarkdown(reference) {

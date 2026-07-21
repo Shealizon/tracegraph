@@ -24,7 +24,7 @@ describe('encrypted server workspaces', () => {
   });
 
   it('keeps encrypted login sessions valid across server restarts', async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'paper-graph-session-'));
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tracegraph-session-'));
     try {
       const first = new UserStore(root);
       await first.init();
@@ -45,7 +45,7 @@ describe('encrypted server workspaces', () => {
   }, 10_000);
 
   it('lets an administrator create a managed user with a one-time generated password', async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'paper-graph-managed-user-'));
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tracegraph-managed-user-'));
     try {
       const store = new UserStore(root);
       await store.init();
@@ -67,7 +67,7 @@ describe('encrypted server workspaces', () => {
   }, 10_000);
 
   it('changes a user password without losing access to the encrypted workspace', async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'paper-graph-password-'));
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tracegraph-password-'));
     try {
       const store = new UserStore(root);
       await store.init();

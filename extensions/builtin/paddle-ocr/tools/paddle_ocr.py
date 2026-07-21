@@ -10,7 +10,7 @@ from pypdf import PdfReader, PdfWriter
 
 JOB_URL = "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs"
 MODEL = "PaddleOCR-VL-1.5"
-WORKSPACE = Path(os.environ["PAPER_GRAPH_WORKSPACE"]).resolve()
+WORKSPACE = Path(os.environ["TRACEGRAPH_WORKSPACE"]).resolve()
 
 
 def source(value):

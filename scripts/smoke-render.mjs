@@ -5,7 +5,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const raw = JSON.parse(readFileSync(resolve(__dirname, '../src/data/paper-graph.json'), 'utf8'));
+const raw = JSON.parse(readFileSync(resolve(__dirname, '../src/data/tracegraph.json'), 'utf8'));
 
 const macros = { '\\C': '\\mathbb{C}', '\\R': '\\mathbb{R}', '\\norm': '\\left\\lVert #1\\right\\rVert', '\\one': '\\mathbf{1}' };
 const numMap = new Map();

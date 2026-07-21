@@ -134,7 +134,7 @@ describe('graph references and tag notes', () => {
       expect(copied).toBe(true);
       expect(clipboardWrite).not.toHaveBeenCalled();
       expect(clipboardData.values['text/plain']).toBe('copied text');
-      expect(clipboardData.values['text/html']).toContain('data-paper-graph-reference');
+      expect(clipboardData.values['text/html']).toContain('data-tracegraph-reference');
       expect(JSON.parse(clipboardData.values[GRAPH_REFERENCE_MIME])).toMatchObject({ nodeId: 'n1' });
     } finally {
       Object.defineProperty(globalThis, 'document', { configurable: true, value: originalDocument });

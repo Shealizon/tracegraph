@@ -1,4 +1,4 @@
-# Paper Graph Skills 与工具扩展
+# Tracegraph Skills 与工具扩展
 
 ## 权限与生命周期
 
@@ -10,7 +10,7 @@
 - `requiredEnv` 可由管理员在扩展卡片中配置。密钥使用服务器会话密钥进行 AES-256-GCM 加密，
   API 只返回“已配置/未配置”状态，绝不返回原值；操作系统环境变量优先级高于面板配置。
 
-生产镜像必须提供 Python 3.9+、`pip` 和 `venv`。可用 `PAPER_GRAPH_PYTHON` 指定解释器；
+生产镜像必须提供 Python 3.9+、`pip` 和 `venv`。可用 `TRACEGRAPH_PYTHON` 指定解释器；
 系统存在多个 Python 时会跳过不满足版本要求的旧解释器。单个内置扩展安装失败不会阻止主服务启动，
 失败原因会记录到服务日志和扩展目录的 `failures` 字段。
 
@@ -20,7 +20,7 @@
 
 ```json
 {
-  "format": "paper-graph-extension@1",
+  "format": "tracegraph-extension@1",
   "manifest": {
     "id": "example-tools",
     "name": "Example Tools",
@@ -87,7 +87,7 @@
 
 ```json
 {
-  "protocol": "paper-graph-extension@1",
+  "protocol": "tracegraph-extension@1",
   "tool": "example_read",
   "action": "read",
   "args": { "file": "uploads/example.pdf" },
@@ -102,11 +102,11 @@
 
 同样的信息也通过环境变量提供：
 
-- `PAPER_GRAPH_WORKSPACE`
-- `PAPER_GRAPH_OUTPUT`
-- `PAPER_GRAPH_EXTENSION_DATA`
-- `PAPER_GRAPH_TOOL`
-- `PAPER_GRAPH_TOOL_ACTION`
+- `TRACEGRAPH_WORKSPACE`
+- `TRACEGRAPH_OUTPUT`
+- `TRACEGRAPH_EXTENSION_DATA`
+- `TRACEGRAPH_TOOL`
+- `TRACEGRAPH_TOOL_ACTION`
 
 stdout 最后一行必须是 JSON 对象。生成文件用 `artifacts` 声明：
 

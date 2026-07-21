@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { ExtensionRegistry } from '../server/extensionRegistry.mjs';
 
-const root = await fs.mkdtemp(path.join(os.tmpdir(), 'paper-graph-extension-verify-'));
+const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tracegraph-extension-verify-'));
 try {
   const registry = new ExtensionRegistry(root, {
     builtinsRoot: path.resolve('extensions/builtin'),
@@ -16,7 +16,7 @@ try {
   assert.equal(catalog.tools.some((item) => item.name === 'paddle_ocr'), true);
 
   const created = await registry.execute('pdf_create_text', {
-    text: 'Paper Graph extension verification\nPDF tools are available.\n中文 PDF 工具可用。',
+    text: 'Tracegraph extension verification\nPDF tools are available.\n中文 PDF 工具可用。',
     title: 'Verification',
     output: 'verification.pdf',
   });

@@ -4,7 +4,7 @@ import { normalizeProject, graphToDocument, compileProject, removeProjectDocumen
 describe('projectAdapter · normalizeProject', () => {
   it('fills format/config defaults and doc fields', () => {
     const p = normalizeProject({ name: 'X', documents: [{ id: 'd1', graph: { nodes: [], edges: [] } }] });
-    expect(p.format).toBe('paper-graph-project@1');
+    expect(p.format).toBe('tracegraph-project@1');
     expect(p.config.enabledDocumentIds).toEqual(['d1']);
     expect(p.documents[0].sourceType).toBe('structured-json');
   });

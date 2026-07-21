@@ -1,4 +1,4 @@
-export const DEBUG_EXPORT_FORMAT = 'entail-debug-log@1';
+export const DEBUG_EXPORT_FORMAT = 'tracegraph-debug-log@1';
 const MAX_RECORDS = 5000;
 const records = [];
 const moduleBreakpoints = new Map();
@@ -72,7 +72,7 @@ export function installDiagnostics({ getContext } = {}) {
     event.preventDefault();
     exportDebugLog('ctrl-f10');
   });
-  window.__entailDebug = {
+  window.__tracegraphDebug = {
     checkpoint: debugCheckpoint,
     snapshot: createDebugSnapshot,
     export: exportDebugLog,
@@ -104,7 +104,7 @@ export function exportDebugLog(reason = 'manual') {
   debugCheckpoint('runtime/diagnostics', 'export', { reason }, { level: 'info' });
   const snapshot = createDebugSnapshot({ reason });
   const stamp = snapshot.exportedAt.replace(/[:.]/g, '-');
-  downloadDebugSnapshot(snapshot, `entail-debug-${stamp}.json`);
+  downloadDebugSnapshot(snapshot, `tracegraph-debug-${stamp}.json`);
   return snapshot;
 }
 
@@ -116,12 +116,12 @@ export function clearDebugRecords() {
 function captureConsole() {
   for (const level of ['debug', 'info', 'warn', 'error']) {
     const original = console[level]?.bind(console);
-    if (!original || original.__entailWrapped) continue;
+    if (!original || original.__tracegraphWrapped) continue;
     const wrapped = (...args) => {
       debugCheckpoint('runtime/console', level, { arguments: args }, { level });
       original(...args);
     };
-    wrapped.__entailWrapped = true;
+    wrapped.__tracegraphWrapped = true;
     console[level] = wrapped;
   }
 }

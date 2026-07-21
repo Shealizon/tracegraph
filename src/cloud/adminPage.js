@@ -161,7 +161,7 @@ async function renderExtensionsAdmin(root) {
     }
     list.append(card);
   }
-  if (!catalog.packages?.length && !catalog.failures?.length) list.innerHTML = '<div class="codex-status-card"><div><strong>尚未安装扩展</strong><small>导入一个 paper-graph-extension@1 JSON 包</small></div></div>';
+  if (!catalog.packages?.length && !catalog.failures?.length) list.innerHTML = '<div class="codex-status-card"><div><strong>尚未安装扩展</strong><small>导入一个 tracegraph-extension@1 JSON 包</small></div></div>';
   const input = root.querySelector('[data-extension-file]');
   const button = root.querySelector('[data-extension-import]');
   button.onclick = () => input.click();

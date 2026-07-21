@@ -6,7 +6,7 @@
 并直接复用整套交互（力导向图、modal 展开、引用 hover 预览、关系箭头、详情页）。
 
 > 你（或 LLM）只需产出符合本格式的 JSON，把它保存为
-> `src/data/paper-graph.json`（沿用旧文件名即可），重新 `npm run build` / `npm run dev`
+> `src/data/tracegraph.json`（沿用旧文件名即可），重新 `npm run build` / `npm run dev`
 > 即可看到效果。运行时会自动识别并编译通用格式。
 
 ---
@@ -127,7 +127,7 @@ fromLabel = refs.target（具体锚点，用于箭头精确定位）
 ## 5. 最小可用示例
 
 见同目录的 [`../src/data/graph.example.json`](../src/data/graph.example.json)。
-把它的内容写入 `src/data/paper-graph.json` 即可直接预览。
+把它的内容写入 `src/data/tracegraph.json` 即可直接预览。
 
 ---
 
@@ -147,7 +147,7 @@ fromLabel = refs.target（具体锚点，用于箭头精确定位）
 
 ## 7. 与旧论文格式的关系
 
-旧的 `paper-graph.json`（含 `statementBody` / `proofBody` / `labels[]` / `refs[].cmd`）
+旧的 `tracegraph.json`（含 `statementBody` / `proofBody` / `labels[]` / `refs[].cmd`）
 被视为**已编译的运行时格式**，仍可直接使用，无需改动。适配器会自动识别两种输入：
 
 - 含 `format: "relation-graph@1"` 或节点带 `sections/anchors` → 走通用编译。

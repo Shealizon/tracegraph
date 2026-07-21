@@ -58,7 +58,7 @@ export async function discoverCodexModels(options = {}) {
     child.stdin.on('error', () => {});
     child.stdin.write(`${JSON.stringify({
       method: 'initialize', id: 0,
-      params: { clientInfo: { name: 'paper_graph', title: 'Paper Graph', version: '0.1.0' } },
+      params: { clientInfo: { name: 'tracegraph', title: 'Tracegraph', version: '0.1.0' } },
     })}\n`);
   });
 }
@@ -66,7 +66,7 @@ export async function discoverCodexModels(options = {}) {
 export async function executeCodex({ prompt, cwd, model = '', signal, timeoutMs, spawnImpl } = {}) {
   if (process.env.CODEX_ENABLED === '0') throw new Error('服务器未启用 Codex');
   if (signal?.aborted) throw abortError(signal.reason);
-  const outputPath = path.join(cwd, '.paper-graph-codex-output.md');
+  const outputPath = path.join(cwd, '.tracegraph-codex-output.md');
   const args = buildCodexExecArgs({ model, outputPath });
   const child = spawnCodex(args, spawnImpl, cwd);
   const limit = positiveNumber(timeoutMs ?? process.env.CODEX_TASK_TIMEOUT_MS, DEFAULT_TASK_TIMEOUT);
@@ -279,7 +279,7 @@ export async function executeCodexStream({
     send({
       method: 'initialize', id: 0,
       params: {
-        clientInfo: { name: 'paper_graph', title: 'Paper Graph', version: '0.1.0' },
+        clientInfo: { name: 'tracegraph', title: 'Tracegraph', version: '0.1.0' },
         capabilities: { experimentalApi: dynamicTools.length > 0 },
       },
     });
