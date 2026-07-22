@@ -1,140 +1,202 @@
-# Tracegraph · 关系依赖图查看器
+# Tracegraph · 关系知识图谱工作台
 
-交互式可视化任意「带交叉引用的关系结构」中实体之间的依赖关系——类 Obsidian 关系图谱。
-源于可视化数学论文的定理/引理/公式引用链，现已通用化：论文、讲义、笔记、需求条目、
-知识卡片……凡是「实体之间存在引用/依赖」的结构都能导入并复用整套交互（力导向图、
-点击展开 modal、引用 hover 预览、并排对照、全屏详情、主线/章节标签等）。
+Tracegraph 用交互式关系图组织带引用、依赖和论证链的结构化知识。项目最初于
+2026-06-17 从数学论文关系图工具独立出来，现已发展为覆盖图谱浏览、沉浸阅读、标注笔记、
+AI 协作、文件工作区和加密云同步的完整工作台。
+
+它适用于论文、讲义、研究笔记、需求条目、知识卡片等场景：只要实体之间存在引用或依赖，
+就能导入同一套图模型，并使用力导向布局、递归预览、阅读链、标签、全文注释和 AI 工具进行探索。
+
+## 当前能力
+
+- **关系图谱**：D3 力导向布局、节点与卡片形变、依赖方向、递归引用预览、邻居高亮、
+  SCC 环检测和重要度评分。
+- **多项目、多文档**：项目级配置、跨文档引用解析、重复 ID 唯一化、文档与类型筛选、
+  IndexedDB 离线存储和完整数据导入导出。
+- **阅读与知识整理**：桌面和移动阅读器、多标签阅读链、Markdown/LaTeX 渲染、文本与位置标注、
+  有序/无序标签、独立或附着笔记、图谱/文件/片段引用。
+- **内容编辑**：受保护的节点新增、编辑与删除，以及项目配置、文档启停和关系重编译。
+- **AI 工作台**：流式对话、reasoning 与工具过程、上下文预算和压缩、附件、会话恢复与导出；
+  AI 可搜索图谱、批量读取节点和邻居、读取笔记与工作区文件、解析 PDF，并把生成文件写回工作区。
+- **多种模型运行方式**：浏览器本地模型、服务端持久云任务，以及带串行队列和隔离临时工作区的
+  Codex Cloud。
+- **云端账号与同步**：离线优先；登录后将项目、AI 状态和工作区同步到按用户隔离的
+  AES-256-GCM 加密存储。支持管理员托管账号、修改密码和封闭注册。
+- **Skills 与工具扩展**：管理员可导入 `tracegraph-extension@1`；Python 工具使用独立虚拟环境。
+  内置 PDF 工作台和 PaddleOCR 扩展。
+- **诊断与回归**：Vitest、覆盖率、稳定图算法性能门禁、KaTeX 冒烟测试、CDP 交互截图脚本，
+  以及会自动脱敏的运行时诊断导出。
+
+## 演进概览
+
+README 首次创建于 2026-06-17。根据该提交到当前 `HEAD` 的 Git 差异，项目主要经历了：
+
+| 时间 | 主要变化 |
+| --- | --- |
+| 2026-06-17—06-21 | 从单篇论文图扩展为多项目、多文档通用关系图；完善 deep-link、撤销、pin、LOD、跨文档引用和渲染性能。 |
+| 2026-06-22—06-25 | 建立统一标签与片段标注系统，加入移动端侧栏、多标签阅读器、选择复制和阅读链恢复。 |
+| 2026-07-14—07-15 | 新增 AI 面板、图谱工具调用、注释与独立笔记、上下文预算/压缩和移动端交互。 |
+| 2026-07-16 | 服务端化：账号、加密工作区、离线同步、持久 AI/Codex 任务、管理员扩展、PDF/OCR 与文件预览。 |
+| 2026-07-17 | 连续 PDF 阅读、统一片段引用、预览附件、托管账号与密码修改、受保护的节点 CRUD。 |
+| 2026-07-21 | 项目、协议、存储键与部署设施统一为 Tracegraph；补充品牌资源、加载进度和 Linux 部署换行约束。 |
+
+完整提交记录可通过 `git log --date=short --oneline` 查看。
 
 ## 快速开始
 
+### 环境要求
+
+- Node.js 22（生产镜像使用 Node 22）
+- npm
+- Python 3.9+、`pip` 和 `venv`（仅在运行 Python 扩展时需要）
+
+### 本地开发
+
 ```bash
-npm install
-npm run dev:server  # 终端 1：账号、同步、云端任务 API
-npm run dev         # 终端 2：Vite 客户端（自动打开浏览器）
-npm run build       # 构建到 dist/（base 为相对路径，可直接打开 dist/index.html）
-npm start           # 生产模式：API + dist，默认 http://localhost:8787
-npm test            # Vitest（监视模式）；npm run test:run 跑一次
+npm ci
+npm run dev:server  # 终端 1：API、账号、同步和云端任务，默认 :8787
+npm run dev         # 终端 2：Vite 客户端，默认 :5183 并代理 /api
 ```
 
-首次打开进入**引导页**（leading），内置一个 Hardy 唯一延拓性样例项目。无需任何
-构建步骤即可创建项目、导入文件、配置后进入关系图。
+Vite 会自动打开浏览器。首次进入引导页时会创建一个内置 Hardy 唯一延拓性样例项目。
+未登录也可以使用本地图谱、阅读、标注和浏览器侧 AI 能力。
+
+服务端配置项见 [`.env.example`](.env.example)。默认数据目录是 `server-data/`；生产环境应设置
+`TRACEGRAPH_DATA`，并妥善配置管理员账号、注册策略、Codex 和 OCR 相关变量。
+
+### 构建与生产运行
+
+```bash
+npm run build
+npm start            # 同一 Node 进程提供 dist/ 与 /api，默认 http://localhost:8787
+```
+
+也可使用容器：
+
+```bash
+docker compose up --build
+```
+
+详细安全模型、环境变量和生产部署说明见 [`docs/SERVER.md`](docs/SERVER.md)。
 
 ## 路由与界面
 
-URL 以查询参数区分两个界面：
+- `?screen=leading`（默认）：项目卡片墙，可新建、打开、配置、导入、导出和删除项目。
+- `?screen=main&project=<id>`：关系图主界面。
+- `?screen=reader&project=<id>`：沉浸阅读界面；阅读页与导航链会写入 URL。
+- 图谱视角、展开卡片、模式、力参数、隐藏项、pin、主题和阅读状态会编码到 URL hash，
+  可分享并恢复 deep-link。
 
-- `?screen=leading`（默认）— **引导页**：项目卡片墙。新建/打开/配置/导出/删除项目，
-  拖文件到页面即可新建项目并导入。
-- `?screen=main&project=<id>` — **关系图主界面**。视图状态（展开的卡片、缩放、
-  力参数、主题、标签等）编码在 URL `#hash` 里，可分享/恢复（deep-link）。
+## 项目、同步与导入导出
 
-## 项目与存储
+Tracegraph 是离线优先的多项目应用。浏览器 IndexedDB 始终保留本地副本；登录后，项目和删除墓碑
+会与用户的加密服务端工作区同步，冲突按 `updatedAt` 合并，退出登录不会清除本地数据。
 
-应用是**离线优先的多项目服务**：未登录时全部功能继续使用浏览器 IndexedDB；登录后项目会
-保留本地副本并同步到按用户隔离、密码加密保护的服务端工作区。冲突按 `updatedAt` 的最新修改
-合并，退出登录不会清除本地项目。部署、安全和 AI 云端任务说明见
-[`docs/SERVER.md`](docs/SERVER.md)。
+- **项目**：文档集合 + 启用状态 + 禁用节点/关系 + 标签和笔记 + 视图配置。
+- **导入格式**：
+  - `.json`：`relation-graph@1` 结构化图或 Tracegraph 项目文件。
+  - `.tex` / `.txt`：通用 TeX 自动识别；本地发现定理类环境并自动编号。
+- **项目结构导出**：`*.tracegraph-project.json`。
+- **项目完整导出**：`*.tracegraph-project-data.json`，包含项目、AI 对话、浏览器状态和项目工作区文件。
+- **全局完整导出**：`tracegraph-all-data-*.json`，包含全部项目、对话和工作区。
+- **AI 单会话导出**：包含完整轮次、reasoning、工具参数与结果、来源和附件元数据。
 
-- **项目** = 一组**文档** + 配置（启用哪些文档、禁用哪些节点/关系、标签、视图状态）。
-- 一个项目可包含多篇文档；跨文档引用按 id/文档名/slug 自动解析并连边，冲突 id 自动唯一化。
-- **导入**（引导页或主界面侧栏「导入文件」/项目配置弹窗，支持拖拽、多选）：
-  - `.json` — 结构化关系图（`relation-graph@1`）或导出的项目文件。
-  - `.tex` / `.txt` — 通用 TeX 自动识别：本地发现定理类环境并自动编号，无需固定格式。
-- **导出项目结构** — 下载 `*.tracegraph-project.json`，可再导入到任意设备。
-- **导出项目全部数据** — 侧栏「更多操作」可下载 `*.tracegraph-project-data.json`，其中包含项目、
-  完整 AI 对话状态、浏览器本地状态和该项目所有 OPFS 工作区文件（Base64）。
-- **全局数据导出** — 引导页「导出全部数据」会下载 `tracegraph-all-data-*.json`，包含所有项目、
-  所有项目的 AI 对话、全部工作区（含孤立工作区）与浏览器本地状态。
+## 数据格式：`relation-graph@1`
 
-## Skills 与工具扩展
-
-管理员可以导入 `tracegraph-extension@1` 扩展包。服务端会为 Python 工具创建隔离环境并
-自动安装声明的依赖；可用的 Skill 提示与工具定义会自动加入所有已登录用户的本地、云端和
-Codex AI 会话。仓库内置 PDF 工作台和 PaddleOCR 扩展，后者需配置
-`PADDLEOCR_TOKEN`。扩展格式、工具协议、安全限制和打包方式见
-[`docs/EXTENSIONS.md`](docs/EXTENSIONS.md)。
-
-## 数据格式（relation-graph@1）
-
-通用数据 schema 与领域解耦，运行时由 `data/adapter.js` 编译为内部格式。完整说明见
-[`docs/DATA-SCHEMA.md`](docs/DATA-SCHEMA.md)。核心结构：
+输入 schema 与具体领域解耦，由 [`src/data/adapter.js`](src/data/adapter.js) 编译为运行时图模型。
+完整字段说明见 [`docs/DATA-SCHEMA.md`](docs/DATA-SCHEMA.md)。核心结构如下：
 
 ```jsonc
 {
   "format": "relation-graph@1",
-  "meta":  { "title", "profile": "paper"|"generic", "bodyFormat": "latex"|"markdown"|"text", "macros": {} },
-  "types": [ { "id", "label", "color", "leaf"?, "order"? } ],   // 节点类型（皮肤）
-  "nodes": [ {
-    "id", "type", "number", "title",
-    "sections": [ { "kind": "statement"|"proof"|…, "body" } ],
-    "anchors":  [ { "id", "kind"?, "number"? } ],               // 可被引用的锚点
-    "refs":     [ { "target", "relation": "ref"|"cite", "where"? } ]
-  } ],
-  "tags": [ { "id", "kind": "ordered"|"unordered", "members": [nodeId…] } ]  // 可选
+  "meta": {
+    "title": "Example",
+    "profile": "paper",
+    "bodyFormat": "markdown",
+    "macros": {}
+  },
+  "types": [
+    { "id": "result", "label": "Result", "color": "#64748b", "leaf": false, "order": 1 }
+  ],
+  "nodes": [{
+    "id": "node-1",
+    "type": "result",
+    "number": "1",
+    "title": "Example node",
+    "sections": [{ "kind": "statement", "body": "..." }],
+    "anchors": [{ "id": "node-1", "kind": "statement" }],
+    "refs": [{ "target": "node-0", "relation": "ref", "where": "statement" }]
+  }],
+  "tags": [{ "id": "main", "kind": "ordered", "members": ["node-1"] }]
 }
 ```
 
-- **profile（皮肤）**决定有哪些节点类型、配色、是否为叶子、引用编号格式。内置 `paper`
-  （定理/命题/引理/文献）与 `generic`（主节点/节点/支撑/来源），也可在数据里自定义 `types`。
-- 依赖关系**只写 `refs`**（A 的正文引用 B），系统据此自动派生边，无需手写 `edges`。
-- 兼容老的论文运行时格式（`statementBody`/`proofBody`/`labels`/`refs.cmd`），直接透传。
+- `profile` 决定节点类型、配色、叶节点和引用编号格式；内置 `paper` 与 `generic`，也可自定义 `types`。
+- 依赖关系只需写在节点的 `refs` 中，系统会自动派生边。
+- `anchors` 为公式、段落等可引用位置提供稳定目标。
+- [`prompts/tracegraph-extract.md`](prompts/tracegraph-extract.md) 可用于让 LLM 从论文或讲义生成
+  `relation-graph@1` JSON。
 
-### 用 LLM 把论文转成 JSON
+## 图谱、阅读与笔记交互
 
-`prompts/tracegraph-extract.md` 是一份现成提示词：把任意学科的论文/讲义喂给 LLM，
-产出严格的 `relation-graph@1` JSON，存盘后直接导入即可。
+- 点击节点可展开为带物理质量的卡片；可继续展开被引用者或依赖项、锁定位置、进入详情阅读器。
+- 引用块 hover 会显示可递归层叠的预览；点击后并排打开目标并绘制关系箭头。
+- 阅读器支持多标签页、前后阅读链、滚动时自动收起工具栏、移动端选择复制和引用预览。
+- 标签可表示主线、章节、步骤、喜爱或阅读状态；成员可以是节点、文本片段或空间位置。
+- 笔记支持 Markdown、公式、图谱引用，可附着到标签成员，也可作为独立笔记存在并加入 AI 上下文。
+- 结构操作支持 `Ctrl/Cmd+Z` 撤销；`Ctrl+F10` 导出脱敏诊断日志。
 
-## 交互
+## AI、工作区与扩展
 
-- **点击节点** → 展开为 modal（A4 比例，超长滚动）。modal 有物理质量，会推开其它节点。
-- **顶部按钮**：切回节点 / 打开所有「被引用者」/ 打开所有「依赖」/ 全屏详情 / pin 锁定。
-- **底部**：折叠/展开证明。
-- **引用块**（彩色）：hover 弹出浮动预览（可递归层叠）；点击并排展开目标 modal + 关系箭头。
-- **节点 hover**：邻居高亮 + 完整信息预览浮窗。
-- **侧栏**：搜索跳转 / 视图模式（正常 · 仅显示 Modals · 关闭所有）/ 重置·reheat /
-  力参数 / 类型过滤 / 标签管理 / 主题（暗·跟随系统·亮）/ 导入·导出·项目配置 / 图例。
-- **AI 对话导出**：打开 AI 历史对话列表，点击每条对话右侧的下载按钮，可导出该对话所有轮次、
-  reasoning、工具参数与结果、来源及附件元数据。
-- **标签**：有序（主线/章节/步骤，带序号贴片）与无序（喜爱/已看过…）两类，打标模式下点节点
-  增删成员，可「仅看此标签」过滤。详见 `docs/`。
-- **重要度评分**：`I(n)=deg_out(n)+Σ_{m→n} I(m)`，环内退化为度数（Tarjan SCC）。圆越大越重要。
-- **撤销**：展开/折叠/隐藏/pin/重新布局等结构操作可 `Ctrl/Cmd+Z` 撤销。
-- **调试日志**：按 `Ctrl+F10` 导出当前会话的规范化调试日志。日志包含全部源码模块的 armed
-  断点清单、运行时检查点、控制台、网络请求、未捕获异常、页面环境与资源性能数据；密码、
-  API Key、令牌等敏感字段会自动脱敏。
-- **Deep-link**：URL hash 编码展开卡片、模式、缩放、力参数、隐藏、pin、主题等，可恢复整个视图。
+AI 会话可选择浏览器本地、云端或 Codex Cloud 运行。登录状态下，云端任务会在网页关闭后继续；
+会话附件和生成文件存放在用户的加密工作区中，可直接预览文本、图片和 PDF。
 
-## 目录
+管理员可以导入 `tracegraph-extension@1` 扩展包：
 
-```
-index.html               #app: sidebar + stage（edges/nodes/overlay/tag 四层）
-src/main.js               入口；leading/main 路由与关系图状态机（ctx）
-src/data/schema.js        profile（皮肤）定义 / 标签规整 / 类型与编号辅助
-src/data/adapter.js       relation-graph@1 通用 schema -> 运行时格式
-src/data/tracegraph.json 内置 Hardy 样例数据
-src/project/store.js      IndexedDB 多项目存储
-src/project/projectAdapter.js  项目规整 / 多文档编译（跨文档引用解析、id 唯一化）
-src/project/projectConfig.js   项目配置弹窗 / 导入导出 / 创建项目
-src/import/texExtract.js  固定格式 TeX(+aux) 抽取
-src/import/texGeneric.js  通用 TeX 自动识别抽取
-src/model/graph.js        索引 / SCC 环检测 / 重要度评分 / 依赖锥
-src/render/tex.js         正文片段 -> HTML（KaTeX + 编号 + 交互引用）
-src/view/leadingPage.js   引导页（项目卡片墙）
-src/view/forceGraph.js    d3 力导向图 + modal 矩形碰撞物理 + pan/zoom
-src/view/modal.js         节点 <-> modal 形变与按钮
-src/view/refLayer.js      hover 预览栈 / click 并排 / 关系箭头
-src/view/detailsPage.js   全屏详情页
-src/ui/sidebar.js         侧栏；ui/icons.js 图标；ui/feedback.js toast/confirm
+```bash
+npm run pack:extension -- ./my-extension ./my-extension.extension.json
+npm run verify:extensions
 ```
 
-## 开发/回归工具（scripts/）
+扩展协议、权限、Python 隔离和产物写回规则见 [`docs/EXTENSIONS.md`](docs/EXTENSIONS.md)。
 
-一组用 Chrome DevTools Protocol 做交互验证与截图的脚本（多数需先 `npm run preview`，
-并以 `--remote-debugging-port=9222` 启动 Chrome）：
+## 测试与回归
 
-- `smoke-render.mjs` — 用 KaTeX 对全部数学段做渲染冒烟测试（应 0 error）。
-- `cdp-verify.mjs <url> <out.png> <scenario>` — 交互验证与截图，
-  scenario ∈ `errors|click-ref|hover-ref|details|modals-only`。
-- `extract.mjs` / `extract-json.mjs` — 从 `.tex(+.aux)` 离线生成关系图 JSON。
-- `gen-stress.mjs` — 生成压力测试数据（见 `docs/STRESS.md`）；其余 `verify-*.mjs`/`*-shot.mjs`
-  为各专项回归（配色、去重 id、对话框、过滤、性能 tick 等）。
+```bash
+npm run test:run          # 单次运行全部 Vitest 测试
+npm run test              # 监视模式
+npm run coverage          # 纯逻辑层覆盖率
+npm run test:perf         # DAG、chain、star、cycle 的稳定图算法性能门禁
+npm run build             # 生产构建验证
+node scripts/smoke-render.mjs
+```
+
+`scripts/` 还包含基于 Chrome DevTools Protocol 的交互验证、截图、导入、配色、去重 ID、筛选和
+渲染性能脚本。测试基线、已知缺口和后续建议见 [`docs/TESTING-REPORT.md`](docs/TESTING-REPORT.md)。
+
+## 目录结构
+
+```text
+index.html                    应用 HTML 与品牌/加载入口
+src/main.js                   leading/main/reader 路由与应用状态机
+src/data/                     schema、图谱/文件引用、笔记和内置样例
+src/project/                  IndexedDB、项目编译、配置和节点操作
+src/model/graph.js            索引、SCC 环检测、重要度与依赖锥
+src/render/                   Markdown、KaTeX 和交互引用渲染
+src/view/                     力导向图、卡片、阅读器、引用层和标注
+src/ui/                       侧栏、AI、节点编辑、笔记和工作区预览
+src/ai/                       模型客户端、上下文、工具、附件和工作区
+src/cloud/                    账号、会话、同步、管理员和云端状态
+server/                       API、加密用户仓、任务队列、Codex 与扩展注册
+extensions/builtin/           PDF 工作台和 PaddleOCR
+deploy/                       systemd、Nginx 与 Git post-receive 部署配置
+scripts/                      抽取、打包、验证、截图和性能工具
+tests/                        单元、集成和回归测试
+docs/                         schema、服务端、扩展、压力测试和设计文档
+```
+
+## 部署
+
+仓库提供 Docker Compose，以及 `graph.akusm.com` 当前使用的 systemd、Nginx 和
+Git `post-receive` 配置。推送服务器远端的 `main` 后会自动执行依赖安装、审计、测试和构建，
+再更新 `/opt/tracegraph`、重启 `tracegraph.service` 并重载 Nginx。
